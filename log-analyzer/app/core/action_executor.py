@@ -1,11 +1,16 @@
 import logging
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 AUTO_SUPPRESS_MIN_CONFIDENCE = 0.80
 AUTO_ENRICH_MIN_CONFIDENCE = 0.55
+
+NOTIFICATION_ACTIONS = {
+    "send_discord_notification",
+    "send_email_notification",
+    "notify_oncall",
+}
 
 
 def execute_actions(incident, analysis, policy_decision, project) -> list[str]:
@@ -18,13 +23,27 @@ def execute_actions(incident, analysis, policy_decision, project) -> list[str]:
     executed = []
 
     try:
-        if _should_enrich(analysis):
+        from app.core.policy import BLOCKED_ACTIONS
+
+        allowed_actions = [
+            action
+            for action in getattr(policy_decision, "allowed_actions", []) or []
+            if action not in BLOCKED_ACTIONS
+        ]
+
+        if "auto_enrich" in allowed_actions and _should_enrich(analysis):
             if _auto_enrich(incident, analysis):
                 executed.append("auto_enrich")
 
-        if _should_suppress(analysis, policy_decision):
+        if "auto_suppress" in allowed_actions and _should_suppress(
+            analysis, policy_decision
+        ):
             if _auto_suppress(incident, analysis):
                 executed.append("auto_suppress")
+
+        for action in allowed_actions:
+            if action in NOTIFICATION_ACTIONS:
+                executed.append(action)
 
         _log_action(
             incident_id=incident.id,
@@ -33,6 +52,7 @@ def execute_actions(incident, analysis, policy_decision, project) -> list[str]:
             disposition=policy_decision.effective_disposition or analysis.disposition,
             severity=analysis.severity,
             confidence=analysis.confidence,
+            policy_decision=policy_decision,
             policy_tags=policy_decision.tags,
         )
 
@@ -138,6 +158,7 @@ def _log_action(
     disposition: str,
     severity: str,
     confidence: float,
+    policy_decision,
     policy_tags: list[str],
 ):
     """Write an ActionLog row for Phase 5 verification."""
@@ -148,13 +169,17 @@ def _log_action(
         entry = ActionLog(
             incident_id=incident_id,
             project_id=project_id,
+            requested_actions=getattr(policy_decision, "requested_actions", []) or [],
+            allowed_actions=getattr(policy_decision, "allowed_actions", []) or [],
+            blocked_actions=getattr(policy_decision, "blocked_actions", []) or [],
             actions_taken=actions_taken,
             disposition=disposition,
             severity=severity,
             confidence=confidence,
+            policy_reason=getattr(policy_decision, "reason", None),
             policy_tags=policy_tags,
             actioned_at=datetime.utcnow(),
-            outcome="pending",
+            outcome="completed" if actions_taken else "skipped",
         )
         db.add(entry)
         db.commit()

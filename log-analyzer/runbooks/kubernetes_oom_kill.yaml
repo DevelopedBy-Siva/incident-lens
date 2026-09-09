@@ -15,7 +15,7 @@ steps:
   - "Get OOM details from pod events: kubectl describe pod <pod-name>"
   - "Check current memory limit vs actual usage — limit may be set too low"
   - "Review recent code changes for memory leaks — heap profiling if available"
-  - "Temporarily increase memory limit as immediate mitigation: kubectl edit deployment"
+  - "Ask the service owner to review memory limits before applying a temporary resource change"
   - "Check if this is a gradual memory leak (restarts growing over time) vs spike"
   - "Set up vertical pod autoscaler or increase resource request/limit permanently"
   - "Add memory usage alerts at 80% threshold to get ahead of future OOM kills"

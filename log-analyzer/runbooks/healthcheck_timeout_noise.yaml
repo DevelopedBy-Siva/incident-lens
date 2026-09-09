@@ -1,0 +1,24 @@
+id: healthcheck_timeout_noise
+name: Healthcheck Timeout Noise
+description: Synthetic health checks or readiness probes timing out without customer impact
+default_severity: low
+disposition: OBSERVE
+patterns:
+  - "synthetic health check timeout"
+  - "health probe failed"
+  - "readiness probe timeout"
+  - "liveness probe timeout"
+  - "no customer impact"
+steps:
+  - "Confirm application traffic and customer-facing endpoints remain healthy"
+  - "Check probe timeout and interval settings against normal startup and response latency"
+  - "Review node or load balancer logs for transient network jitter"
+  - "Escalate only if customer requests, elevated 5xxs, or pod restarts appear"
+routing:
+  team: platform
+  notify: [slack]
+observe_threshold:
+  count: 20
+  window_minutes: 10
+  escalate_to: NEEDS_DEV
+cooldown_minutes: 30

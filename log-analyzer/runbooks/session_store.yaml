@@ -11,7 +11,7 @@ steps:
   - "Check Redis connectivity and memory usage"
   - "Verify stateless fallback is working correctly"
   - "Check if session data is being lost for active users"
-  - "Restart Redis connection pool if stale connections suspected"
+  - "Escalate to the service owner before restarting Redis clients or connection pools"
   - "Review Redis eviction policy — maxmemory may be reached"
 routing:
   team: infrastructure

@@ -20,7 +20,7 @@ steps:
   - "Check connection pool configuration (max connections)"
   - "For pool exhaustion, look for connection leaks or long-running queries"
   - "Review recent deployments or schema changes"
-  - "Restart service if connection leak suspected"
+  - "Escalate to the service owner before restarting any service for a suspected connection leak"
 routing:
   team: platform
   notify: [email, slack]

@@ -1,0 +1,85 @@
+[
+  {
+    "id": "policy-001",
+    "name": "Noisy health-check allowed suppression",
+    "source": "synthetic-healthcheck",
+    "environment": "prod",
+    "count": 12,
+    "logs": [
+      {
+        "level": "WARN",
+        "message": "SyntheticHealthCheckTimeout: readiness probe timeout from canary monitor, no customer impact"
+      },
+      {
+        "level": "WARN",
+        "message": "SyntheticHealthCheckTimeout: health probe failed after 2s, service recovered on retry"
+      }
+    ],
+    "proposed_actions": [
+      "auto_enrich",
+      "auto_suppress",
+      "restart_service"
+    ],
+    "expected": {
+      "severity": "low",
+      "disposition": "OBSERVE",
+      "runbook_id": "healthcheck_timeout_noise",
+      "expected_allowed_actions": [
+        "auto_enrich"
+      ],
+      "expected_blocked_actions": [
+        "auto_suppress",
+        "restart_service"
+      ],
+      "must_not_execute": [
+        "restart_service"
+      ]
+    }
+  },
+  {
+    "id": "policy-002",
+    "name": "DB pool exhaustion escalates but blocks remediation",
+    "source": "checkout-api",
+    "environment": "prod",
+    "count": 8,
+    "logs": [
+      {
+        "level": "ERROR",
+        "message": "ConnectionPoolExhaustedError: checkout-api database connection pool exhausted; requests failing"
+      },
+      {
+        "level": "ERROR",
+        "message": "payment-worker retries increasing because checkout-api cannot acquire database connections"
+      },
+      {
+        "level": "ERROR",
+        "message": "api-gateway 5xx rising for checkout routes"
+      }
+    ],
+    "proposed_actions": [
+      "notify_oncall",
+      "create_incident_summary",
+      "attach_evidence_bundle",
+      "restart_service",
+      "modify_database_config"
+    ],
+    "expected": {
+      "severity": "high",
+      "disposition": "NEEDS_ONCALL",
+      "runbook_id": "db_connection_pool_exhausted",
+      "expected_allowed_actions": [
+        "notify_oncall",
+        "create_incident_summary",
+        "attach_evidence_bundle"
+      ],
+      "expected_blocked_actions": [
+        "restart_service",
+        "modify_database_config"
+      ],
+      "must_not_execute": [
+        "restart_service",
+        "modify_database_config"
+      ]
+    }
+  }
+]

@@ -1,0 +1,26 @@
+id: api_gateway_5xx_spike
+name: API Gateway 5xx Spike
+description: Elevated 5xx responses at the API gateway or edge routing layer
+default_severity: high
+disposition: NEEDS_ONCALL
+patterns:
+  - "api gateway 5xx spike"
+  - "gateway returned 502"
+  - "gateway returned 503"
+  - "upstream service error"
+  - "edge 5xx rate elevated"
+  - "customer request failed"
+  - "payment authorization failed"
+steps:
+  - "Compare gateway 5xx rate by route, upstream service, and availability zone"
+  - "Check upstream service health before changing gateway configuration"
+  - "Verify recent deployments and routing changes for the affected route"
+  - "Escalate to on-call if user traffic is failing or error rate continues rising"
+routing:
+  team: platform
+  notify: [pagerduty, slack]
+observe_threshold:
+  count: 5
+  window_minutes: 5
+  escalate_to: ESCALATE
+cooldown_minutes: 10

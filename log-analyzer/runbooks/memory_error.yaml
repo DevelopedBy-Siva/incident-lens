@@ -10,7 +10,7 @@ patterns:
   - "regex:heap.*max.*mb"
 
 steps:
-  - "IMMEDIATE: Restart affected service instances"
+  - "Escalate to on-call before restarting affected service instances"
   - "Check heap dump if available"
   - "Review recent deployments for memory leaks"
   - "Analyze heap usage trends in monitoring"

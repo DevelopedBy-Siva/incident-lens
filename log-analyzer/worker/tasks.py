@@ -142,6 +142,17 @@ def _stamp_actioned(incident_id: str):
         db.close()
 
 
+def _notification_allowed(disposition: str, policy) -> bool:
+    allowed = set(getattr(policy, "allowed_actions", []) or [])
+    if disposition == "ESCALATE":
+        return "send_discord_notification" in allowed or "notify_oncall" in allowed
+    if disposition == "NEEDS_ONCALL":
+        return "send_email_notification" in allowed or "notify_oncall" in allowed
+    if disposition == "NEEDS_DEV":
+        return "send_discord_notification" in allowed
+    return False
+
+
 # ---------------------------------------------------------------------------
 # InvestigationRun writer — audit trail for /investigation endpoint
 # ---------------------------------------------------------------------------
@@ -366,9 +377,10 @@ def analyze_incident(incident, project, force=False):
         else:
             effective_analysis = analysis
 
-        # Notify
-        notification_service.route_notification(incident, effective_analysis)
-        _stamp_actioned(incident.id)
+        # Notify only when the action-level policy allows the notification.
+        if _notification_allowed(effective_analysis.disposition, policy):
+            notification_service.route_notification(incident, effective_analysis)
+            _stamp_actioned(incident.id)
 
         # Phase 4 — actions
         actions = execute_actions(incident, analysis, policy, project)

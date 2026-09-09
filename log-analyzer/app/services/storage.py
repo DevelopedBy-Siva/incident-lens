@@ -8,6 +8,8 @@ from sqlalchemy import (
     Float,
     Boolean,
     Text,
+    inspect,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -87,10 +89,14 @@ class ActionLog(Base):
     incident_id = Column(String, nullable=False, index=True)
     project_id = Column(String, nullable=False, index=True)
     actioned_at = Column(DateTime, default=datetime.utcnow, index=True)
+    requested_actions = Column(JSON, nullable=True)
+    allowed_actions = Column(JSON, nullable=True)
+    blocked_actions = Column(JSON, nullable=True)
     actions_taken = Column(JSON, nullable=True)
     disposition = Column(String, nullable=True)
     severity = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)
+    policy_reason = Column(String, nullable=True)
     policy_tags = Column(JSON, nullable=True)
     outcome = Column(String, default="pending", index=True)
     resolved_at = Column(DateTime, nullable=True)
@@ -126,7 +132,35 @@ class InvestigationRun(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_action_log_columns()
     print("[DB] Tables initialised")
+
+
+def _ensure_action_log_columns():
+    """Best-effort additive migration for deployments using create_all."""
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("action_logs"):
+            return
+
+        existing = {column["name"] for column in inspector.get_columns("action_logs")}
+        missing = {
+            "requested_actions": "JSON",
+            "allowed_actions": "JSON",
+            "blocked_actions": "JSON",
+            "policy_reason": "VARCHAR",
+        }
+
+        with engine.begin() as conn:
+            for column_name, column_type in missing.items():
+                if column_name not in existing:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE action_logs ADD COLUMN {column_name} {column_type}"
+                        )
+                    )
+    except Exception as e:
+        print(f"[DB] ActionLog column check skipped: {e}")
 
 
 def get_db():

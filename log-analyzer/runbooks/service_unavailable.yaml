@@ -11,7 +11,7 @@ patterns:
   - "external service unavailable"
 steps:
   - "Check health endpoint of the failing service"
-  - "Review circuit breaker state — may need manual reset"
+  - "Review circuit breaker state and ask the service owner before any manual reset"
   - "Check if service is OOMing or crash-looping"
   - "Verify deployment — recent release may have introduced a bug"
   - "Check dependent services (DB, Redis) the failing service relies on"

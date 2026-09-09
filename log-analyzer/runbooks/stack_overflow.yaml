@@ -9,7 +9,7 @@ patterns:
   - "circular reference"
   - "stack overflow"
 steps:
-  - "IMMEDIATE: Restart affected service — it may be hung"
+  - "Escalate to on-call before restarting an affected service that may be hung"
   - "Identify the recursive method from the stack trace"
   - "Check for circular object references in serialization"
   - "Add recursion depth guard or convert to iterative approach"

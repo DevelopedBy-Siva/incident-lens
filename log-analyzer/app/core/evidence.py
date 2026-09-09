@@ -35,6 +35,8 @@ class EvidenceBundle:
     runbook_name: Optional[str] = None
     runbook_steps: list[str] = field(default_factory=list)
     runbook_score: float = 0.0
+    runbook_selection_source: Optional[str] = None
+    candidate_runbooks: list[str] = field(default_factory=list)
 
     root_cause_id: Optional[str] = None
     root_cause_signature: Optional[str] = None
@@ -74,12 +76,16 @@ class EvidenceBundle:
             parts.append(
                 f"  Name:  {self.runbook_name}  (score={self.runbook_score:.2f})"
             )
+            if self.runbook_selection_source:
+                parts.append(f"  Selection source: {self.runbook_selection_source}")
             if self.runbook_steps:
                 parts.append("  Steps:")
                 for i, step in enumerate(self.runbook_steps[:6], 1):
                     parts.append(f"    {i}. {step}")
         else:
             parts.append("  (no runbook matched above threshold)")
+            if self.candidate_runbooks:
+                parts.append(f"  Candidates: {', '.join(self.candidate_runbooks)}")
 
         if self.root_cause_id:
             parts.append("\n=== Known root cause ===")
@@ -118,9 +124,13 @@ def build_evidence(incident, project) -> EvidenceBundle:
         logger.warning("[EVIDENCE] Failed to fetch related incidents: %s", e)
 
     try:
-        from app.core.runbook_matcher import match_runbook
+        from app.core.runbook_matcher import select_runbook_for_incident
 
-        runbook, score = match_runbook(incident)
+        selection = select_runbook_for_incident(incident, evidence=bundle, project=project)
+        runbook = selection.runbook
+        score = selection.score
+        bundle.runbook_selection_source = selection.source
+        bundle.candidate_runbooks = list(selection.candidate_runbooks)
         if runbook and score > 0:
             bundle.runbook_id = runbook.id
             bundle.runbook_name = runbook.name

@@ -14,7 +14,7 @@ steps:
   - "Identify affected index and shard: GET /_cat/shards?v&health=red"
   - "Check node availability — a failed node causes primary shard loss"
   - "If node is down, check disk space and system resources on that node"
-  - "Force shard reallocation if stuck: POST /_cluster/reroute?retry_failed=true"
+  - "Escalate to the search/platform owner before attempting shard reallocation"
   - "Check index settings — replica count of 0 means no failover on primary loss"
   - "Review recent index operations for bulk writes that may have caused pressure"
 routing:

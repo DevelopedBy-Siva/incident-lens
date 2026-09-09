@@ -10,7 +10,7 @@ patterns:
   - "disk space"
   - "no space left"
 steps:
-  - "IMMEDIATE: Identify and remove large or stale log files"
+  - "Ask on-call to identify large or stale files and confirm they are safe before removal"
   - "Check for runaway log rotation or missing cleanup jobs"
   - "Expand volume or add additional storage if possible"
   - "Review data retention policies for /data and /var/lib/postgresql"

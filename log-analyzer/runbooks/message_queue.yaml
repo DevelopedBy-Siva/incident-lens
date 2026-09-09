@@ -11,7 +11,7 @@ patterns:
   - "message queue full"
 steps:
   - "Check consumer process health — may be crashed or throttled"
-  - "Scale up consumer instances to drain the backlog"
+  - "Ask on-call to verify consumer health before scaling consumers to drain the backlog"
   - "Review message processing time — may have become slower"
   - "Check for poison pill messages blocking the queue"
   - "Set a DLQ (dead letter queue) if not already configured"

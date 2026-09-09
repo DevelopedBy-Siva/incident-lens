@@ -1,0 +1,24 @@
+id: deployment_regression
+name: Deployment Regression
+description: Error rate or latency regression shortly after a production deployment
+default_severity: high
+disposition: NEEDS_ONCALL
+patterns:
+  - "deployment regression"
+  - "error rate increased after deploy"
+  - "new release causing failures"
+  - "post deploy 5xx spike"
+  - "canary health degraded"
+steps:
+  - "Verify deployment health, version skew, and canary metrics for the affected service"
+  - "Compare errors against the deployment timestamp and recent code changes"
+  - "Ask the service owner to review rollback criteria before initiating rollback"
+  - "Escalate to on-call if the regression affects customer traffic or core workflows"
+routing:
+  team: platform
+  notify: [pagerduty, slack]
+observe_threshold:
+  count: 3
+  window_minutes: 5
+  escalate_to: ESCALATE
+cooldown_minutes: 10

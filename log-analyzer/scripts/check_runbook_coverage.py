@@ -49,8 +49,12 @@ def main():
     for scenario_name, scenario in log_server.SCENARIOS.items():
         for idx, step in enumerate(scenario["steps"], start=1):
             if step.get("level", "ERROR").upper() in {"ERROR", "WARN", "WARNING", "CRITICAL"}:
+                if "log" in step:
+                    sample = step["log"]
+                else:
+                    sample = log_server.format_scenario_log(step, scenario_name, 1, idx)
                 scenario_samples.append(
-                    (f"scenario:{scenario_name}:step:{idx}", step["log"])
+                    (f"scenario:{scenario_name}:step:{idx}", sample)
                 )
 
     samples = generator_samples + scenario_samples

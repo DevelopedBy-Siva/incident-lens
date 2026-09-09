@@ -1,0 +1,24 @@
+id: vendor_api_timeout
+name: Vendor API Timeout
+description: Third-party vendor API requests timing out or returning transient gateway failures
+default_severity: medium
+disposition: NEEDS_DEV
+patterns:
+  - "vendor api timeout"
+  - "third party api timeout"
+  - "external vendor timed out"
+  - "vendor gateway timeout"
+  - "partner api did not respond"
+steps:
+  - "Check the vendor status page and compare failures across vendor endpoints"
+  - "Review timeout, retry, and circuit breaker settings for the integration"
+  - "Confirm fallback behavior is preserving user workflow or data integrity"
+  - "Escalate to the integration owner if failures persist or affect critical flows"
+routing:
+  team: integrations
+  notify: [slack]
+observe_threshold:
+  count: 10
+  window_minutes: 10
+  escalate_to: NEEDS_ONCALL
+cooldown_minutes: 20

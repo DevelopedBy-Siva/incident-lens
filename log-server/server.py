@@ -344,117 +344,273 @@ ERROR_RATE = 0.20
 SLOW_REQUEST_RATE = 0.10
 
 
+REQUIRED_SCENARIO_FIELDS = {
+    "timestamp",
+    "level",
+    "service",
+    "source",
+    "environment",
+    "message",
+    "request_id",
+    "trace_id",
+    "endpoint",
+    "operation",
+    "status_code",
+    "latency_ms",
+    "error_type",
+    "host",
+    "pod",
+}
+
+
+def _quote_value(value) -> str:
+    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{text}"' if any(ch.isspace() for ch in text) else text
+
+
+def _scenario_step(
+    message: str,
+    *,
+    level: str = "ERROR",
+    service: str,
+    source: str | None = None,
+    environment: str = "prod",
+    endpoint: str = "/api/checkout",
+    operation: str = "request",
+    status_code: int = 500,
+    latency_ms: int = 1200,
+    error_type: str = "ApplicationError",
+    host: str = "prod-app-01",
+    pod: str | None = None,
+    delay_seconds: float = 1,
+) -> dict:
+    pod = pod or f"{service}-7d9f"
+    return {
+        "delay_seconds": delay_seconds,
+        "level": level,
+        "service": service,
+        "source": source or service,
+        "environment": environment,
+        "message": message,
+        "endpoint": endpoint,
+        "operation": operation,
+        "status_code": status_code,
+        "latency_ms": latency_ms,
+        "error_type": error_type,
+        "host": host,
+        "pod": pod,
+    }
+
+
+def format_scenario_log(step: dict, scenario_name: str, run_idx: int, step_idx: int) -> str:
+    ts = datetime.now(timezone.utc).isoformat()
+    fields = {
+        "timestamp": ts,
+        "level": step.get("level", "ERROR"),
+        "service": step.get("service", SERVICE_NAME),
+        "source": step.get("source", step.get("service", SERVICE_NAME)),
+        "environment": step.get("environment", "prod"),
+        "scenario": scenario_name,
+        "run": run_idx,
+        "step": step_idx,
+        "message": step["message"],
+        "request_id": step.get("request_id", f"req_{random.randint(100000, 999999)}"),
+        "trace_id": step.get("trace_id", f"trace_{random.randint(10000000, 99999999)}"),
+        "endpoint": step.get("endpoint", "unknown"),
+        "operation": step.get("operation", "unknown"),
+        "status_code": step.get("status_code", 0),
+        "latency_ms": step.get("latency_ms", 0),
+        "error_type": step.get("error_type", "None"),
+        "host": step.get("host", "unknown"),
+        "pod": step.get("pod", "unknown"),
+    }
+    kv = " ".join(f"{key}={_quote_value(value)}" for key, value in fields.items())
+    return f"[{ts}] {fields['level']}: {kv}"
+
+
 SCENARIOS = {
-    "db_cascade": {
-        "description": "DB pool exhaustion → payment timeout → NullPointerException → UnhandledException",
+    "healthcheck_timeout_noise": {
+        "description": "Synthetic health checks timing out without customer impact.",
+        "services": ["synthetic-monitor", "checkout-api"],
+        "expected_runbook": "healthcheck_timeout_noise",
+        "expected_severity": "low",
+        "expected_disposition": "NO_ACTION",
+        "expected_allowed_actions": ["auto_suppress"],
+        "expected_blocked_actions": [],
         "steps": [
-            {
-                "delay_seconds": 0,
-                "level": "ERROR",
-                "log": "ConnectionPoolExhaustedError: All 20 connections in use — request queued for >30s",
-            },
-            {
-                "delay_seconds": 30,
-                "level": "ERROR",
-                "log": "PaymentGatewayTimeout: Stripe did not respond within 10s — no DB connection available to log transaction",
-            },
-            {
-                "delay_seconds": 45,
-                "level": "ERROR",
-                "log": "NullPointerException: Unexpected null reference in PaymentController.process() at line 187 — response object was null after gateway timeout",
-            },
-            {
-                "delay_seconds": 30,
-                "level": "ERROR",
-                "log": "UnhandledException: IllegalStateException propagated to global handler — order marked failed, request returned 500",
-            },
+            _scenario_step("synthetic health check timeout from us-east probe no customer impact", level="WARN", service="synthetic-monitor", endpoint="/health", operation="healthcheck", status_code=504, latency_ms=2100, error_type="HealthCheckTimeout", host="monitor-01", pod="synthetic-monitor-6c4d", delay_seconds=0),
+            _scenario_step("health probe failed readiness probe timeout no customer impact", level="WARN", service="checkout-api", endpoint="/ready", operation="readiness_probe", status_code=503, latency_ms=1800, error_type="ReadinessProbeTimeout", host="worker-02", pod="checkout-api-54fd", delay_seconds=1),
+            _scenario_step("readiness probe timeout recovered traffic healthy no customer impact", level="INFO", service="checkout-api", endpoint="/ready", operation="readiness_probe", status_code=200, latency_ms=42, error_type="None", host="worker-02", pod="checkout-api-54fd", delay_seconds=1),
         ],
     },
-    "auth_cascade": {
-        "description": "Session store failure → JWT invalid signature → rate limiter false positive",
+    "db_pool_exhaustion": {
+        "description": "Checkout and payment failures caused by exhausted database connections.",
+        "services": ["checkout-api", "payment-worker", "api-gateway", "postgres"],
+        "expected_runbook": "db_connection_pool_exhausted",
+        "expected_severity": "critical",
+        "expected_disposition": "ESCALATE",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["restart_service", "modify_database_config"],
         "steps": [
-            {
-                "delay_seconds": 0,
-                "level": "ERROR",
-                "log": "SessionStoreError: Redis session store unreachable — falling back to stateless mode",
-            },
-            {
-                "delay_seconds": 40,
-                "level": "ERROR",
-                "log": "InvalidSignatureError: JWT signature verification failed — session store unavailable, token cannot be re-validated",
-            },
-            {
-                "delay_seconds": 35,
-                "level": "ERROR",
-                "log": "RateLimitExceeded: Too many login attempts from 192.168.1.47 — rate limiter state lost, replaying from zero",
-            },
+            _scenario_step("database connection pool exhausted all connections in use request queued", service="postgres", endpoint="/db/orders", operation="checkout_query", status_code=500, latency_ms=30000, error_type="ConnectionPoolExhaustedError", host="db-primary-1", pod="postgres-primary-0", delay_seconds=0),
+            _scenario_step("too many connections from checkout-api checkout database timeout", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=12000, error_type="DatabaseConnectionTimeout", host="app-01", pod="checkout-api-6f8d", delay_seconds=1),
+            _scenario_step("payment-worker transaction retries exceeded after checkout database timeout", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=15000, error_type="RetryLimitExceeded", host="worker-03", pod="payment-worker-7b2a", delay_seconds=1),
+            _scenario_step("api-gateway 5xx rising checkout returned 500 from upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=4100, error_type="UpstreamServiceError", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
         ],
     },
-    "deployment_gone_wrong": {
-        "description": "Simulates a bad deployment: config change causes memory pressure then OOM",
+    "payment_gateway_degraded": {
+        "description": "External payment provider degradation causing authorization failures.",
+        "services": ["checkout-api", "payment-worker"],
+        "expected_runbook": "payment_gateway",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
+        "expected_blocked_actions": ["restart_service"],
         "steps": [
-            {
-                "delay_seconds": 0,
-                "level": "INFO",
-                "log": "DeploymentStarted: Releasing v2.3.1 — connection pool size changed from 20 to 10",
-            },
-            {
-                "delay_seconds": 20,
-                "level": "WARN",
-                "log": "ConnectionPoolExhaustedError: All 10 connections in use — request queued (pool was recently halved)",
-            },
-            {
-                "delay_seconds": 30,
-                "level": "ERROR",
-                "log": "ConnectionPoolExhaustedError: All 10 connections in use — pool exhausted, requests failing",
-            },
-            {
-                "delay_seconds": 20,
-                "level": "ERROR",
-                "log": "PaymentGatewayTimeout: Stripe did not respond within 10s — DB unavailable",
-            },
-            {
-                "delay_seconds": 15,
-                "level": "ERROR",
-                "log": "OutOfMemoryError: Java heap space exhausted (2041MB/2048MB) — GC overhead limit exceeded",
-            },
+            _scenario_step("PaymentGatewayTimeout: Stripe did not respond payment gateway timeout transaction aborted", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=504, latency_ms=10000, error_type="PaymentGatewayTimeout", host="worker-01", pod="payment-worker-22ca", delay_seconds=0),
+            _scenario_step("PayPal did not respond transaction authorization failed payment retry limit exceeded", service="payment-worker", endpoint="/jobs/payment-authorize", operation="retry_authorization", status_code=504, latency_ms=9800, error_type="PaymentGatewayTimeout", host="worker-02", pod="payment-worker-54de", delay_seconds=1),
+            _scenario_step("Braintree unavailable transaction authorization failed transaction aborted", service="checkout-api", endpoint="/api/checkout", operation="submit_payment", status_code=502, latency_ms=6200, error_type="ProviderUnavailable", host="app-03", pod="checkout-api-3bd4", delay_seconds=1),
         ],
     },
-    "memory_leak": {
-        "description": "Gradual memory leak cycle — heap grows until OOM kill, then restarts",
+    "api_gateway_5xx_spike": {
+        "description": "Customer-facing 5xx spike at the gateway across checkout routes.",
+        "services": ["api-gateway", "checkout-api"],
+        "expected_runbook": "api_gateway_5xx_spike",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
+        "expected_blocked_actions": ["restart_service"],
         "steps": [
-            {
-                "delay_seconds": 0,
-                "level": "WARN",
-                "log": "MemoryPressureWarning: Heap at 71% — GC frequency increasing",
-            },
-            {
-                "delay_seconds": 60,
-                "level": "WARN",
-                "log": "MemoryPressureWarning: Heap at 83% — GC pause times exceeding 500ms",
-            },
-            {
-                "delay_seconds": 60,
-                "level": "ERROR",
-                "log": "MemoryPressureWarning: Heap at 94% — GC overhead critical, response times degraded",
-            },
-            {
-                "delay_seconds": 60,
-                "level": "ERROR",
-                "log": "OOMKilled: Container api-server-7d9f exceeded memory limit and was killed by the kernel",
-            },
-            {
-                "delay_seconds": 5,
-                "level": "INFO",
-                "log": "ServiceRestarted: api-server-7d9f restarted by orchestrator — heap reset to 0%",
-            },
+            _scenario_step("api gateway 5xx spike gateway returned 502 upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=2500, error_type="UpstreamServiceError", host="edge-02", pod="api-gateway-11ab", delay_seconds=0),
+            _scenario_step("gateway returned 503 service unavailable edge 5xx rate elevated", service="api-gateway", endpoint="/api/cart", operation="route_request", status_code=503, latency_ms=3100, error_type="ServiceUnavailableError", host="edge-02", pod="api-gateway-11ab", delay_seconds=1),
+            _scenario_step("gateway returned 504 gateway timeout upstream service error 5xx rate above threshold", service="api-gateway", endpoint="/api/orders", operation="route_request", status_code=504, latency_ms=8000, error_type="GatewayTimeout", host="edge-03", pod="api-gateway-27fe", delay_seconds=1),
         ],
     },
+    "memory_pressure_or_oom": {
+        "description": "Memory pressure grows into a customer-impacting OOM kill.",
+        "services": ["checkout-api"],
+        "expected_runbook": "kubernetes_oom_kill",
+        "expected_severity": "critical",
+        "expected_disposition": "ESCALATE",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["restart_service", "change_infrastructure"],
+        "steps": [
+            _scenario_step("MemoryPressureWarning: Heap at 91% gc overhead critical Java heap space", level="WARN", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=200, latency_ms=1900, error_type="MemoryPressureWarning", host="app-04", pod="checkout-api-7d9f", delay_seconds=0),
+            _scenario_step("OutOfMemoryError Java heap space container memory limit exceeded", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=4200, error_type="OutOfMemoryError", host="app-04", pod="checkout-api-7d9f", delay_seconds=1),
+            _scenario_step("OOMKilled pod checkout-api-7d9f exceeded memory limit killed by the kernel", level="CRITICAL", service="checkout-api", endpoint="/api/checkout", operation="pod_restart", status_code=500, latency_ms=0, error_type="OOMKilled", host="app-04", pod="checkout-api-7d9f", delay_seconds=1),
+        ],
+    },
+    "auth_failure_cascade": {
+        "description": "Auth token validation failures cascade across login and session checks.",
+        "services": ["auth-service", "session-api", "api-gateway"],
+        "expected_runbook": "auth_failure_cascade",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
+        "expected_blocked_actions": ["rotate_secrets", "restart_service"],
+        "steps": [
+            _scenario_step("authentication failure cascade auth token validation failed JWKS fetch failed", service="auth-service", endpoint="/oauth/token", operation="validate_token", status_code=401, latency_ms=3400, error_type="TokenValidationFailed", host="auth-01", pod="auth-service-33df", delay_seconds=0),
+            _scenario_step("session verification failed jwt validation failed across services 401 increase", service="session-api", endpoint="/api/session", operation="verify_session", status_code=401, latency_ms=2200, error_type="SessionVerificationFailed", host="auth-02", pod="session-api-21ac", delay_seconds=1),
+            _scenario_step("login failure spike token introspection timeout 403 increase", service="api-gateway", endpoint="/api/login", operation="route_request", status_code=403, latency_ms=5100, error_type="TokenIntrospectionTimeout", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+        ],
+    },
+    "deployment_regression": {
+        "description": "Error rate rises shortly after a new checkout deployment and feature flag enablement.",
+        "services": ["checkout-api", "api-gateway"],
+        "expected_runbook": "deployment_regression",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["rollback_release", "deploy_code"],
+        "steps": [
+            _scenario_step("new deployment version checkout-api v2.3.1 feature flag enabled checkout-v2", level="INFO", service="checkout-api", endpoint="/deployments/checkout-api", operation="deploy", status_code=200, latency_ms=300, error_type="None", host="deploy-01", pod="checkout-api-5ac1", delay_seconds=0),
+            _scenario_step("deployment regression error rate increased after deploy post deploy 5xx spike", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=3800, error_type="DeploymentRegression", host="app-02", pod="checkout-api-5ac1", delay_seconds=1),
+            _scenario_step("canary health degraded new release causing failures rollback candidate requires human approval", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=2700, error_type="CanaryHealthDegraded", host="edge-03", pod="api-gateway-27fe", delay_seconds=1),
+        ],
+    },
+    "queue_backlog": {
+        "description": "Message queue backlog and dead-letter growth from slow consumers.",
+        "services": ["order-worker", "message-queue"],
+        "expected_runbook": "message_queue",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
+        "expected_blocked_actions": ["scale_cluster"],
+        "steps": [
+            _scenario_step("QueueDepthCritical: email-queue has 42991 pending messages consumer lag growing queue backlog increasing", service="message-queue", endpoint="/queues/email-queue", operation="poll_depth", status_code=200, latency_ms=600, error_type="QueueDepthCritical", host="mq-01", pod="message-queue-0", delay_seconds=0),
+            _scenario_step("message queue full consumer lag growing message retry exhausted", service="order-worker", endpoint="/jobs/order-created", operation="consume_message", status_code=500, latency_ms=7500, error_type="MessageRetryExhausted", host="worker-04", pod="order-worker-41cd", delay_seconds=1),
+            _scenario_step("dead letter queue receiving checkout events pending messages continue rising", service="message-queue", endpoint="/queues/dead-letter", operation="dead_letter", status_code=500, latency_ms=500, error_type="DeadLetterQueueGrowth", host="mq-01", pod="message-queue-0", delay_seconds=1),
+        ],
+    },
+    "vendor_api_timeout": {
+        "description": "Third-party vendor API timeouts and rate limiting in integrations.",
+        "services": ["integration-worker"],
+        "expected_runbook": "vendor_api_timeout",
+        "expected_severity": "medium",
+        "expected_disposition": "NEEDS_DEV",
+        "expected_allowed_actions": ["create_incident_summary", "send_discord_notification"],
+        "expected_blocked_actions": ["deploy_code"],
+        "steps": [
+            _scenario_step("vendor API timeout Salesforce external vendor timed out partner api did not respond", service="integration-worker", endpoint="/jobs/sync-crm", operation="sync_contact", status_code=504, latency_ms=10000, error_type="VendorApiTimeout", host="worker-05", pod="integration-worker-63ae", delay_seconds=0),
+            _scenario_step("HubSpot unavailable third-party rate limited vendor gateway timeout", service="integration-worker", endpoint="/jobs/sync-crm", operation="sync_company", status_code=429, latency_ms=8500, error_type="ThirdPartyRateLimited", host="worker-05", pod="integration-worker-63ae", delay_seconds=1),
+            _scenario_step("Shopify unavailable third party api timeout fallback queue preserved", service="integration-worker", endpoint="/jobs/sync-orders", operation="sync_order", status_code=504, latency_ms=9300, error_type="VendorApiTimeout", host="worker-06", pod="integration-worker-18bf", delay_seconds=1),
+        ],
+    },
+    "false_suppression_trap": {
+        "description": "Noisy repeated failures that include clear customer-impact signals and must not be suppressed.",
+        "services": ["checkout-api", "payment-worker", "api-gateway"],
+        "expected_runbook": "api_gateway_5xx_spike",
+        "expected_severity": "high",
+        "expected_disposition": "NEEDS_ONCALL",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["auto_suppress"],
+        "steps": [
+            _scenario_step("checkout returned 500 customer request failed api gateway 5xx spike", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=3600, error_type="CustomerRequestFailed", host="app-01", pod="checkout-api-6f8d", delay_seconds=0),
+            _scenario_step("payment authorization failed customer request failed repeated timeout", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=7800, error_type="PaymentAuthorizationFailed", host="worker-01", pod="payment-worker-22ca", delay_seconds=1),
+            _scenario_step("db-health degraded checkout returned 500 5xx rate above threshold", service="api-gateway", endpoint="/db-health", operation="db_health", status_code=503, latency_ms=2900, error_type="DbHealthDegraded", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+        ],
+    },
+    "low_frequency_high_impact": {
+        "description": "One or two low-frequency events with severe impact signals.",
+        "services": ["checkout-api", "ledger-api"],
+        "expected_runbook": "kubernetes_oom_kill",
+        "expected_severity": "critical",
+        "expected_disposition": "ESCALATE",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["auto_suppress", "delete_data"],
+        "steps": [
+            _scenario_step("OutOfMemoryError Java heap space fatal error data loss detected", level="CRITICAL", service="ledger-api", endpoint="/api/ledger/post", operation="post_transaction", status_code=500, latency_ms=0, error_type="OutOfMemoryError", host="app-09", pod="ledger-api-81ba", delay_seconds=0),
+            _scenario_step("segmentation fault fatal error pod OOMKilled exceeded memory limit killed by the kernel", level="CRITICAL", service="ledger-api", endpoint="/api/ledger/post", operation="recover_transaction", status_code=500, latency_ms=0, error_type="SegmentationFault", host="app-09", pod="ledger-api-81ba", delay_seconds=1),
+        ],
+    },
+    "ambiguous_cascade": {
+        "description": "Multi-service cascade requiring correlation across DB, checkout, payment, and gateway.",
+        "services": ["postgres", "checkout-api", "payment-worker", "api-gateway"],
+        "expected_runbook": "db_connection_pool_exhausted",
+        "expected_severity": "critical",
+        "expected_disposition": "ESCALATE",
+        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_blocked_actions": ["restart_service", "modify_database_config"],
+        "steps": [
+            _scenario_step("db-primary connection pool exhausted all connections in use request queued", service="postgres", endpoint="/db/orders", operation="checkout_query", status_code=500, latency_ms=30000, error_type="ConnectionPoolExhaustedError", host="db-primary-1", pod="postgres-primary-0", delay_seconds=0),
+            _scenario_step("checkout-api timeout checkout database timeout customer request failed", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=14000, error_type="CheckoutDatabaseTimeout", host="app-01", pod="checkout-api-6f8d", delay_seconds=1),
+            _scenario_step("payment-worker retry limit exceeded payment-worker transaction retries exceeded", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=15000, error_type="RetryLimitExceeded", host="worker-02", pod="payment-worker-54de", delay_seconds=1),
+            _scenario_step("api-gateway 502 spike gateway returned 502 upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=4300, error_type="UpstreamServiceError", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+        ],
+    },
+}
+
+SCENARIO_ALIASES = {
+    "db_cascade": "ambiguous_cascade",
+    "auth_cascade": "auth_failure_cascade",
+    "deployment_gone_wrong": "deployment_regression",
+    "memory_leak": "memory_pressure_or_oom",
 }
 
 
 async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
     """Execute a scenario — push each step to Loki with controlled timing."""
+    scenario_name = SCENARIO_ALIASES.get(scenario_name, scenario_name)
     scenario = SCENARIOS[scenario_name]
     steps = scenario["steps"]
     speed = max(speed, 0.01)
@@ -471,14 +627,14 @@ async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0)
                 )
                 await asyncio.sleep(delay)
 
-            ts = datetime.now(timezone.utc).isoformat()
-            level = step.get("level", "ERROR")
-            log_line = f"[{ts}] {level}: {step['log']}"
+            log_line = format_scenario_log(step, scenario_name, run_idx + 1, i + 1)
 
             success = await push_to_loki(
                 [log_line],
                 extra_labels={
                     "scenario": scenario_name,
+                    "service": step.get("service", SERVICE_NAME),
+                    "env": step.get("environment", "prod"),
                     "step": str(i + 1),
                     "run": str(run_idx + 1),
                 },
@@ -735,10 +891,12 @@ async def run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
     """
     Fire a correlated error scenario against Loki.
     """
+    requested_name = scenario_name
+    scenario_name = SCENARIO_ALIASES.get(scenario_name, scenario_name)
     if scenario_name not in SCENARIOS:
         raise HTTPException(
             status_code=404,
-            detail=f"Unknown scenario '{scenario_name}'. Available: {list(SCENARIOS.keys())}",
+            detail=f"Unknown scenario '{requested_name}'. Available: {list(SCENARIOS.keys())}",
         )
     if repeat < 1:
         raise HTTPException(status_code=400, detail="repeat must be >= 1")
@@ -752,6 +910,7 @@ async def run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
     total_delay = sum(s["delay_seconds"] for s in steps) * repeat / max(speed, 0.01)
     return {
         "scenario": scenario_name,
+        "requested_scenario": requested_name,
         "description": scenario["description"],
         "status": "started",
         "steps": len(steps),
@@ -801,13 +960,20 @@ async def list_scenarios():
         "scenarios": {
             name: {
                 "description": scenario["description"],
+                "services": scenario.get("services", []),
+                "expected_runbook": scenario.get("expected_runbook"),
+                "expected_severity": scenario.get("expected_severity"),
+                "expected_disposition": scenario.get("expected_disposition"),
+                "expected_allowed_actions": scenario.get("expected_allowed_actions", []),
+                "expected_blocked_actions": scenario.get("expected_blocked_actions", []),
                 "steps": len(scenario["steps"]),
                 "estimated_duration_seconds": sum(
                     s["delay_seconds"] for s in scenario["steps"]
                 ),
             }
             for name, scenario in SCENARIOS.items()
-        }
+        },
+        "aliases": SCENARIO_ALIASES,
     }
 
 
@@ -817,6 +983,58 @@ async def health():
     return {
         "status": "healthy",
         "loki": "connected" if loki_ok else "unreachable",
+    }
+
+
+@app.get("/ready")
+async def ready():
+    return {
+        "status": "ready",
+        "generator": "running" if log_generator and log_generator.running else "idle",
+        "transport": "loki",
+    }
+
+
+@app.get("/db-health")
+async def db_health():
+    return {
+        "status": "degraded" if not LOKI_URL else "healthy",
+        "database": "simulated",
+        "message": "db-health endpoint is synthetic; no real database dependency is checked",
+    }
+
+
+@app.post("/api/recover")
+async def recover():
+    """
+    Stop active background generation and emit a short recovery signal.
+    """
+    if log_generator and log_generator.running:
+        await log_generator.stop()
+
+    recovery_line = format_scenario_log(
+        _scenario_step(
+            "RecoveryComplete: service metrics returned to baseline manual remediation verified",
+            level="INFO",
+            service=SERVICE_NAME,
+            endpoint="/api/recover",
+            operation="recover",
+            status_code=200,
+            latency_ms=120,
+            error_type="None",
+            host="log-server-01",
+            pod="log-server",
+            delay_seconds=0,
+        ),
+        "recovery",
+        1,
+        1,
+    )
+    pushed = await push_to_loki([recovery_line], extra_labels={"scenario": "recovery"})
+    return {
+        "status": "recovered",
+        "generator": "idle",
+        "recovery_log_pushed": pushed,
     }
 
 

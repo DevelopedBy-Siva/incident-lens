@@ -152,10 +152,14 @@ def get_actions(
                 {
                     "id": log.id,
                     "actioned_at": log.actioned_at.isoformat(),
+                    "requested_actions": getattr(log, "requested_actions", None) or [],
+                    "allowed_actions": getattr(log, "allowed_actions", None) or [],
+                    "blocked_actions": getattr(log, "blocked_actions", None) or [],
                     "actions_taken": log.actions_taken or [],
                     "disposition": log.disposition,
                     "severity": log.severity,
                     "confidence": log.confidence,
+                    "policy_reason": getattr(log, "policy_reason", None),
                     "policy_tags": log.policy_tags or [],
                     "outcome": log.outcome,
                     "resolved_at": (
@@ -278,8 +282,12 @@ def get_investigation(
         result["action_log"] = [
             {
                 "actioned_at": al.actioned_at.isoformat(),
+                "requested_actions": getattr(al, "requested_actions", None) or [],
+                "allowed_actions": getattr(al, "allowed_actions", None) or [],
+                "blocked_actions": getattr(al, "blocked_actions", None) or [],
                 "actions_taken": al.actions_taken or [],
                 "outcome": al.outcome,
+                "policy_reason": getattr(al, "policy_reason", None),
                 "policy_tags": al.policy_tags or [],
             }
             for al in action_logs

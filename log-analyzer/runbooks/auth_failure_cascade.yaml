@@ -1,0 +1,24 @@
+id: auth_failure_cascade
+name: Authentication Failure Cascade
+description: Broad authentication failures causing dependent services or user flows to fail
+default_severity: high
+disposition: NEEDS_ONCALL
+patterns:
+  - "authentication failure cascade"
+  - "auth service unavailable"
+  - "jwt validation failed across services"
+  - "login failure spike"
+  - "token introspection timeout"
+steps:
+  - "Check auth service health, latency, and dependency errors before changing configuration"
+  - "Compare login, token refresh, and downstream authorization failure rates"
+  - "Verify recent key rotation, identity provider changes, and auth deployments"
+  - "Escalate to security and on-call if failures are widespread or access is blocked"
+routing:
+  team: security
+  notify: [pagerduty, slack]
+observe_threshold:
+  count: 5
+  window_minutes: 5
+  escalate_to: ESCALATE
+cooldown_minutes: 10
