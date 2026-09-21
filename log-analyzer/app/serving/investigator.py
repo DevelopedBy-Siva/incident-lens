@@ -139,7 +139,9 @@ class ToolExecutor:
 
     def _get_related_incidents(self, minutes: int) -> str:
         from datetime import datetime, timedelta
-        from app.services.storage import Incident, Analysis, SessionLocal
+        from app.data.models import Incident
+        from app.serving.models import Analysis
+        from app.shared.database import SessionLocal
 
         minutes = min(minutes, 30)
         cutoff = datetime.utcnow() - timedelta(minutes=minutes)
@@ -182,7 +184,7 @@ class ToolExecutor:
             db.close()
 
     def _get_runbook(self, runbook_id: str) -> str:
-        from app.core.runbook_loader import get_runbooks
+        from app.serving.runbook_loader import get_runbooks
 
         runbooks = get_runbooks()
         for rb in runbooks:
@@ -202,7 +204,8 @@ class ToolExecutor:
 
     def _get_incident_timeline(self, minutes: int) -> str:
         from datetime import datetime, timedelta
-        from app.services.storage import Incident, SessionLocal
+        from app.data.models import Incident
+        from app.shared.database import SessionLocal
 
         minutes = min(minutes, 30)
         cutoff = datetime.utcnow() - timedelta(minutes=minutes)
@@ -345,7 +348,7 @@ class InvestigationLoop:
         Returns an IncidentAnalysis-compatible object, or None on failure.
         Always falls back to the standard decision_engine if the loop fails.
         """
-        from app.core.decision_engine import (
+        from app.serving.decision_engine import (
             get_decision_engine,
             validate_analysis,
             IncidentAnalysis,
@@ -519,14 +522,14 @@ class InvestigationLoop:
     def _fallback(self, incident, project, evidence):
         """Fall back to the standard single-shot decision engine."""
         logger.info("[INVESTIGATOR] Using fallback decision_engine for %s", incident.id)
-        from app.core.decision_engine import get_decision_engine
+        from app.serving.decision_engine import get_decision_engine
 
         return get_decision_engine().analyze_incident(
             incident, project=project, evidence=evidence
         )
 
     def _parse_final(self, text: str, incident) -> Optional[object]:
-        from app.core.decision_engine import validate_analysis, IncidentAnalysis
+        from app.serving.decision_engine import validate_analysis, IncidentAnalysis
         import re
 
         clean = re.sub(r"```(?:json)?", "", text).strip()

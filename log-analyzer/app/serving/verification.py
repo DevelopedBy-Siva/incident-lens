@@ -25,7 +25,9 @@ def run():
 
 
 def _sweep():
-    from app.services.storage import ActionLog, Incident, Analysis, SessionLocal
+    from app.data.models import Incident
+    from app.serving.models import ActionLog, Analysis
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -64,7 +66,7 @@ def _sweep():
 
 
 def _verify_one(log_entry, db):
-    from app.services.storage import Incident
+    from app.data.models import Incident
 
     incident = db.query(Incident).filter(Incident.id == log_entry.incident_id).first()
     if not incident:
@@ -137,8 +139,9 @@ def _maybe_reescalate(incident, log_entry):
     logger.info("[VERIFIER] Re-escalating under-triaged incident %s", incident.id)
 
     try:
-        from app.services.storage import Project, SessionLocal
-        from worker.tasks import analyze_incident
+        from app.control.models import Project
+        from app.shared.database import SessionLocal
+        from app.serving.orchestrator import analyze_incident
 
         db2 = SessionLocal()
         try:
@@ -163,7 +166,7 @@ def _maybe_tune_runbook(incident, log_entry, went_quiet: bool, db):
     the observe_threshold in the runbook is too high. Log it.
     (Full YAML rewrite is a manual step — we just emit a tuning hint here.)
     """
-    from app.services.storage import Analysis
+    from app.serving.models import Analysis
 
     analysis = (
         db.query(Analysis)
@@ -185,7 +188,7 @@ def _maybe_tune_runbook(incident, log_entry, went_quiet: bool, db):
 
 
 def _update_investigation_verifier_state(incident_id: str, outcome: str, checked_at, db):
-    from app.services.storage import InvestigationRun
+    from app.serving.models import InvestigationRun
 
     run = (
         db.query(InvestigationRun)

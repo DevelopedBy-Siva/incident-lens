@@ -16,7 +16,7 @@ spec = importlib.util.spec_from_file_location("log_server_module", SERVER_PATH)
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
-from app.core.runbook_matcher import get_runbook_candidates  # noqa: E402
+from app.serving.runbook_matcher import get_runbook_candidates  # noqa: E402
 
 
 REQUIRED_SCENARIOS = {

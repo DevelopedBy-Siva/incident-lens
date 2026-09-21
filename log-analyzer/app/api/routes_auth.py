@@ -5,8 +5,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, validator
 from sqlalchemy.orm import Session
 
-from app.services.storage import get_db, Project
-from app.services.auth import (
+from app.control.models import Project
+from app.shared.database import get_db
+from app.control.auth import (
     hash_password,
     verify_password,
     create_access_token,

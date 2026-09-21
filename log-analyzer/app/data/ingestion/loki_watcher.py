@@ -65,7 +65,8 @@ def fetch_logs_for_project(project, start: datetime, end: datetime) -> list[str]
 
 
 def _load_active_projects():
-    from app.services.storage import Project, SessionLocal
+    from app.control.models import Project
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -90,7 +91,7 @@ def run():
     print(f"[LOKI-WATCHER] Starting — poll_interval={POLL_INTERVAL}s")
     print("[LOKI-WATCHER] Credentials loaded per-project from DB")
 
-    from worker.tasks import process_log_batch
+    from app.data.pipeline import process_log_batch
 
     last_queried: dict[str, datetime] = {}
 

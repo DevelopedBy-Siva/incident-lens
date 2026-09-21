@@ -1,11 +1,7 @@
-# app/services/cleanup.py
-from app.services.storage import (
-    SessionLocal,
-    Incident,
-    Analysis,
-    ActionLog,
-    InvestigationRun,
-)
+"""Control-plane maintenance commands for incident-processing data."""
+from app.data.models import Incident
+from app.serving.models import Analysis, ActionLog, InvestigationRun
+from app.shared.database import SessionLocal
 import logging
 
 logger = logging.getLogger(__name__)

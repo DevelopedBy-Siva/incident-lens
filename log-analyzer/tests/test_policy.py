@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core import policy as policy_module
+from app.serving import policy as policy_module
 
 
 def incident(**overrides):
@@ -171,14 +171,21 @@ class ActionLogCooldownTests(unittest.TestCase):
             def desc(self):
                 return self
 
-        fake_storage = types.ModuleType("app.services.storage")
-        fake_storage.SessionLocal = lambda: FakeSession()
-        fake_storage.ActionLog = SimpleNamespace(
+        fake_database = types.ModuleType("app.shared.database")
+        fake_database.SessionLocal = lambda: FakeSession()
+        fake_models = types.ModuleType("app.serving.models")
+        fake_models.ActionLog = SimpleNamespace(
             actioned_at=FakeColumn(),
             incident_id=FakeColumn(),
         )
 
-        with patch.dict(sys.modules, {"app.services.storage": fake_storage}):
+        with patch.dict(
+            sys.modules,
+            {
+                "app.shared.database": fake_database,
+                "app.serving.models": fake_models,
+            },
+        ):
             self.assertTrue(policy_module._was_recently_acted_on(incident(), 20))
 
 

@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core import policy as policy_module
+from app.serving import policy as policy_module
 
 
 def incident(**overrides):

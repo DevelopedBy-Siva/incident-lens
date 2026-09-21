@@ -2,9 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core import runbook_matcher
-from app.core.runbook_loader import Runbook
-from app.core.runbook_matcher import (
+from app.serving import runbook_matcher
+from app.serving.runbook_loader import Runbook
+from app.serving.runbook_matcher import (
     HIGH_CONFIDENCE_THRESHOLD,
     get_runbook_candidates,
     match_runbook,

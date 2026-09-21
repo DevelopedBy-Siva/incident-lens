@@ -23,7 +23,7 @@ def execute_actions(incident, analysis, policy_decision, project) -> list[str]:
     executed = []
 
     try:
-        from app.core.policy import BLOCKED_ACTIONS
+        from app.serving.policy import BLOCKED_ACTIONS
 
         allowed_actions = [
             action
@@ -72,7 +72,8 @@ def _auto_enrich(incident, analysis) -> bool:
     Write ticket_body and cause_explanation back to the incident row.
     Gives the dashboard rich context without any external call.
     """
-    from app.services.storage import Incident, SessionLocal
+    from app.data.models import Incident
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -107,7 +108,8 @@ def _auto_suppress(incident, analysis) -> bool:
     Automatically close incidents the LLM is very confident are noise.
     Only fires for NO_ACTION at high confidence.
     """
-    from app.services.storage import Incident, SessionLocal
+    from app.data.models import Incident
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -162,7 +164,8 @@ def _log_action(
     policy_tags: list[str],
 ):
     """Write an ActionLog row for Phase 5 verification."""
-    from app.services.storage import ActionLog, SessionLocal
+    from app.serving.models import ActionLog
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:

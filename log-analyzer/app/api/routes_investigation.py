@@ -19,7 +19,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 
-from app.services.storage import get_db, Incident, Analysis, Project
+from app.control.models import Project
+from app.data.models import Incident
+from app.serving.models import Analysis
+from app.shared.database import get_db
 from app.api.routes_auth import get_current_project
 
 router = APIRouter()
@@ -44,7 +47,7 @@ def get_evidence(
 
     # Try to return stored snapshot from InvestigationRun
     try:
-        from app.services.storage import InvestigationRun
+        from app.serving.models import InvestigationRun
 
         run = (
             db.query(InvestigationRun)
@@ -69,9 +72,9 @@ def get_evidence(
         pass
 
     # Live build
-    from app.core.evidence import build_evidence
+    from app.serving.evidence import build_serving_evidence
 
-    evidence = build_evidence(incident, project)
+    evidence = build_serving_evidence(incident, project)
 
     return {
         "incident_id": incident_id,
@@ -137,7 +140,7 @@ def get_actions(
     _get_incident_or_404(incident_id, project.id, db)
 
     try:
-        from app.services.storage import ActionLog
+        from app.serving.models import ActionLog
 
         logs = (
             db.query(ActionLog)
@@ -224,7 +227,7 @@ def get_investigation(
         }
 
     try:
-        from app.services.storage import InvestigationRun, ActionLog
+        from app.serving.models import InvestigationRun, ActionLog
 
         run = (
             db.query(InvestigationRun)

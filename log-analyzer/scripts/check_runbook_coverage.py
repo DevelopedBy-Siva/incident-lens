@@ -30,7 +30,7 @@ def _make_incident(source: str, message: str):
 
 
 def main():
-    from app.core.runbook_matcher import match_runbook
+    from app.serving.runbook_matcher import match_runbook
 
     log_server = _load_log_server_module()
     uncovered = []

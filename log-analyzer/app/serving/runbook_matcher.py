@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
-from app.core.runbook_loader import Runbook, get_runbooks
+from app.serving.runbook_loader import Runbook, get_runbooks
 
 HIGH_CONFIDENCE_THRESHOLD = 0.75
 BORDERLINE_THRESHOLD = 0.40
@@ -203,7 +203,7 @@ def select_runbook_for_incident(
 
 def _call_llm_tiebreaker(incident, evidence, candidates, project=None) -> Optional[dict]:
     try:
-        from app.core.decision_engine import _make_llm
+        from app.serving.decision_engine import _make_llm
 
         llm = _make_llm(project=project)
         if llm is None:

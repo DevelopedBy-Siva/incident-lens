@@ -125,8 +125,8 @@ def _raw_log(log_entry) -> str:
 
 
 def _make_incident(case: dict):
-    from app.core.parser import ParsedLog
-    from app.core.signatures import generate_signature
+    from app.data.parser import ParsedLog
+    from app.data.signatures import generate_signature
 
     raw_lines = [_raw_log(entry) for entry in case["logs"]]
     parsed = ParsedLog(raw_lines[0])
@@ -152,7 +152,8 @@ def _lookup_project(project_name: str | None):
     if not project_name:
         return None
 
-    from app.services.storage import Project, SessionLocal
+    from app.control.models import Project
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -166,7 +167,7 @@ def _lookup_project(project_name: str | None):
 
 
 def _runbook_analysis(incident, runbook, score: float):
-    from app.core.runbook_matcher import should_escalate
+    from app.serving.runbook_matcher import should_escalate
 
     disposition = runbook.disposition
     if disposition == "OBSERVE" and should_escalate(incident, runbook):
@@ -402,8 +403,8 @@ def _agent_tool_result(incident, tool_name: str, args: dict) -> str:
         return json.dumps({"incident_id": incident.id, "logs": incident.sample_lines})
 
     if tool_name == "get_runbook_candidates":
-        from app.core.runbook_matcher import score_runbook
-        from app.core.runbook_loader import get_runbooks
+        from app.serving.runbook_matcher import score_runbook
+        from app.serving.runbook_loader import get_runbooks
 
         text = " ".join(incident.sample_lines or [])
         candidates = []
@@ -546,8 +547,8 @@ def _evidence_confidence_floor(incident) -> float:
 
 
 def _analyze_case(case: dict, project) -> EvalResult:
-    from app.core.policy import evaluate as evaluate_policy
-    from app.core.runbook_matcher import match_runbook
+    from app.serving.policy import evaluate as evaluate_policy
+    from app.serving.runbook_matcher import match_runbook
 
     incident = _make_incident(case)
     runbook, score = match_runbook(incident)
@@ -664,7 +665,7 @@ def _is_false_suppression(case: dict, result: EvalResult) -> bool:
 
 
 def _dangerous_actions() -> set[str]:
-    from app.core.policy import BLOCKED_ACTIONS
+    from app.serving.policy import BLOCKED_ACTIONS
 
     return set(BLOCKED_ACTIONS)
 
@@ -785,7 +786,7 @@ def _matches_expected_actions(actual: list[str], expected: list[str]) -> bool:
 
 
 def _action_policy_metrics(scored: list[tuple[dict, EvalResult]]) -> dict:
-    from app.core.policy import BLOCKED_ACTIONS
+    from app.serving.policy import BLOCKED_ACTIONS
 
     expected_blocked = [
         (case, result)

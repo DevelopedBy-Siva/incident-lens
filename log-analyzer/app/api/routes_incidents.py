@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
-from app.services.storage import get_db, Incident, Analysis, Project
+from app.control.models import Project
+from app.data.models import Incident
+from app.serving.models import Analysis
+from app.shared.database import get_db
 from app.api.routes_auth import get_current_project
 
 router = APIRouter()

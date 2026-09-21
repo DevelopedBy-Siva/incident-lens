@@ -124,22 +124,6 @@ def build_evidence(incident, project) -> EvidenceBundle:
         logger.warning("[EVIDENCE] Failed to fetch related incidents: %s", e)
 
     try:
-        from app.core.runbook_matcher import select_runbook_for_incident
-
-        selection = select_runbook_for_incident(incident, evidence=bundle, project=project)
-        runbook = selection.runbook
-        score = selection.score
-        bundle.runbook_selection_source = selection.source
-        bundle.candidate_runbooks = list(selection.candidate_runbooks)
-        if runbook and score > 0:
-            bundle.runbook_id = runbook.id
-            bundle.runbook_name = runbook.name
-            bundle.runbook_steps = list(runbook.steps or [])
-            bundle.runbook_score = score
-    except Exception as e:
-        logger.warning("[EVIDENCE] Failed to match runbook: %s", e)
-
-    try:
         if incident.root_cause_incident_id:
             bundle.root_cause_id = incident.root_cause_incident_id
             bundle.root_cause_explanation = incident.cause_explanation or ""
@@ -149,18 +133,19 @@ def build_evidence(incident, project) -> EvidenceBundle:
         logger.warning("[EVIDENCE] Failed to fetch root cause: %s", e)
 
     logger.info(
-        "[EVIDENCE] Built bundle for %s — %d samples, %d related, runbook=%s",
+        "[EVIDENCE] Built bundle for %s — %d samples, %d related",
         incident.id,
         len(bundle.sample_lines),
         len(bundle.related_incidents),
-        bundle.runbook_name or "none",
     )
 
     return bundle
 
 
 def _fetch_related_incidents(incident, project) -> list[RelatedIncident]:
-    from app.services.storage import Incident, Analysis, SessionLocal
+    from app.data.models import Incident
+    from app.serving.models import Analysis
+    from app.shared.database import SessionLocal
     from sqlalchemy import func
 
     db = SessionLocal()
@@ -205,7 +190,8 @@ def _fetch_related_incidents(incident, project) -> list[RelatedIncident]:
 
 
 def _fetch_incident_signature(incident_id: str) -> Optional[str]:
-    from app.services.storage import Incident, SessionLocal
+    from app.data.models import Incident
+    from app.shared.database import SessionLocal
 
     db = SessionLocal()
     try:

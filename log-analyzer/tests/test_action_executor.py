@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.core.action_executor import execute_actions
-from app.core.policy import PolicyDecision
+from app.serving.action_executor import execute_actions
+from app.serving.policy import PolicyDecision
 
 
 def incident(**overrides):
@@ -54,9 +54,9 @@ class ActionExecutorTests(unittest.TestCase):
             blocked_actions=["auto_suppress"],
         )
 
-        with patch("app.core.action_executor._auto_enrich", fake_auto_enrich), patch(
-            "app.core.action_executor._auto_suppress", fake_auto_suppress
-        ), patch("app.core.action_executor._log_action", fake_log_action):
+        with patch("app.serving.action_executor._auto_enrich", fake_auto_enrich), patch(
+            "app.serving.action_executor._auto_suppress", fake_auto_suppress
+        ), patch("app.serving.action_executor._log_action", fake_log_action):
             executed = execute_actions(incident(), analysis(), decision, project())
 
         self.assertEqual(executed, ["auto_enrich"])
@@ -84,8 +84,8 @@ class ActionExecutorTests(unittest.TestCase):
             blocked_actions=[],
         )
 
-        with patch("app.core.action_executor._auto_enrich", fake_auto_enrich), patch(
-            "app.core.action_executor._log_action", fake_log_action
+        with patch("app.serving.action_executor._auto_enrich", fake_auto_enrich), patch(
+            "app.serving.action_executor._log_action", fake_log_action
         ):
             executed = execute_actions(incident(), analysis(), decision, project())
 

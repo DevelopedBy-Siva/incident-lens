@@ -10,10 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.services.storage import init_db
-from app.services.cleanup import cleanup_all_data
+from app.shared.database import init_db
+from app.control.maintenance import cleanup_all_data
 from app.api import routes_ingest, routes_incidents, routes_auth
-from app.api import routes_investigation  # ← new
+from app.api import routes_investigation
 
 load_dotenv()
 
@@ -27,7 +27,7 @@ def start_worker():
     import traceback
 
     try:
-        from worker.loki_watcher import run as run_worker
+        from app.data.ingestion.loki_watcher import run as run_worker
 
         run_worker()
     except Exception as e:
@@ -39,7 +39,7 @@ def start_verifier():
     import traceback
 
     try:
-        from worker.verifier import run as run_verifier
+        from app.serving.verification import run as run_verifier
 
         run_verifier()
     except Exception as e:

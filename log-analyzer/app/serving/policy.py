@@ -158,7 +158,8 @@ def _was_recently_acted_on(incident, cooldown_minutes: int) -> bool:
     Uses ActionLog as the source of truth. Falls back open on query failures.
     """
     try:
-        from app.services.storage import ActionLog, SessionLocal
+        from app.serving.models import ActionLog
+        from app.shared.database import SessionLocal
 
         db = SessionLocal()
         try:

@@ -1,145 +1,15 @@
-"""
-worker/tasks.py  —  IncidentLens full pipeline with InvestigationRun audit trail
+"""Serving-plane incident analysis orchestration and audit trail."""
 
-Pipeline per incident:
-  1. cluster_log_db           existing
-  2. build_evidence           Phase 1
-  3. InvestigationLoop        Phase 2  (tool-calling, falls back gracefully)
-  4. policy.evaluate          Phase 3
-  5. route_notification       existing
-  6. execute_actions          Phase 4
-  7. _write_investigation_run  audit trail for /investigation endpoint
-"""
-
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
+from app.data.incidents import (
+    apply_root_cause_chain,
+    fetch_recent_root_cause_candidates,
+    stamp_actioned,
+)
+
 logger = logging.getLogger(__name__)
-
-CLUSTER_WINDOW_MINUTES = 2
-MAX_SAMPLES = 10
-ROOT_CAUSE_LOOKBACK_MINUTES = 10
-
-
-# ---------------------------------------------------------------------------
-# Clustering (unchanged)
-# ---------------------------------------------------------------------------
-
-
-def cluster_log_db(project_id, source, environment, parsed_log, signature):
-    from app.services.storage import Incident, SessionLocal
-
-    db = SessionLocal()
-    try:
-        window_start = datetime.utcnow() - timedelta(minutes=CLUSTER_WINDOW_MINUTES)
-        incident = (
-            db.query(Incident)
-            .filter(
-                Incident.project_id == project_id,
-                Incident.signature == signature,
-                Incident.status == "open",
-                Incident.last_seen >= window_start,
-            )
-            .order_by(Incident.last_seen.desc())
-            .first()
-        )
-        if incident:
-            incident.count += 1
-            incident.last_seen = datetime.utcnow()
-            if len(incident.sample_lines or []) < MAX_SAMPLES:
-                lines = list(incident.sample_lines or [])
-                lines.append(parsed_log.raw)
-                incident.sample_lines = lines
-            db.commit()
-            db.refresh(incident)
-            return incident, False
-
-        new_incident = Incident(
-            project_id=project_id,
-            source=source,
-            environment=environment,
-            signature=signature,
-            first_seen=datetime.utcnow(),
-            last_seen=datetime.utcnow(),
-            count=1,
-            sample_lines=[parsed_log.raw],
-            status="open",
-        )
-        db.add(new_incident)
-        db.commit()
-        db.refresh(new_incident)
-        return new_incident, True
-    finally:
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# Root cause helpers (unchanged)
-# ---------------------------------------------------------------------------
-
-
-def _fetch_recent_root_cause_candidates(project_id, new_incident_id):
-    from app.services.storage import Incident, SessionLocal
-
-    cutoff = datetime.utcnow() - timedelta(minutes=ROOT_CAUSE_LOOKBACK_MINUTES)
-    db = SessionLocal()
-    try:
-        candidates = (
-            db.query(Incident)
-            .filter(
-                Incident.project_id == project_id,
-                Incident.id != new_incident_id,
-                Incident.status == "open",
-                Incident.first_seen >= cutoff,
-                Incident.root_cause_incident_id == None,
-            )
-            .order_by(Incident.first_seen.asc())
-            .all()
-        )
-        for c in candidates:
-            db.expunge(c)
-        return candidates
-    finally:
-        db.close()
-
-
-def _apply_root_cause_chain(new_incident_id, cause_incident_id, explanation):
-    from app.services.storage import Incident, SessionLocal
-
-    db = SessionLocal()
-    try:
-        incident = db.query(Incident).filter(Incident.id == new_incident_id).first()
-        if incident:
-            incident.root_cause_incident_id = cause_incident_id
-            incident.cause_explanation = explanation
-            db.commit()
-            print(f"[CHAIN] {new_incident_id} → {cause_incident_id}")
-    except Exception as e:
-        db.rollback()
-        print(f"[CHAIN] Failed: {e}")
-    finally:
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# Cooldown stamp
-# ---------------------------------------------------------------------------
-
-
-def _stamp_actioned(incident_id: str):
-    from app.services.storage import Incident, SessionLocal
-
-    db = SessionLocal()
-    try:
-        row = db.query(Incident).filter(Incident.id == incident_id).first()
-        if row and hasattr(row, "last_actioned_at"):
-            row.last_actioned_at = datetime.utcnow()
-            db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.warning("[TASKS] stamp_actioned failed for %s: %s", incident_id, e)
-    finally:
-        db.close()
 
 
 def _notification_allowed(disposition: str, policy) -> bool:
@@ -173,7 +43,8 @@ def _write_investigation_run(
 ):
     """Persist the full agent run for inspection via /api/incidents/{id}/investigation."""
     try:
-        from app.services.storage import InvestigationRun, SessionLocal
+        from app.serving.models import InvestigationRun
+        from app.shared.database import SessionLocal
 
         db = SessionLocal()
         try:
@@ -223,13 +94,14 @@ def _write_investigation_run(
 
 
 def analyze_incident(incident, project, force=False):
-    from app.services.storage import Analysis, SessionLocal
-    from app.core.runbook_matcher import match_runbook, should_escalate
-    from app.core.evidence import build_evidence
-    from app.core.investigator import get_investigation_loop
-    from app.core.policy import evaluate as policy_eval
-    from app.core.action_executor import execute_actions
-    from app.services.notifications import get_notification_service
+    from app.serving.models import Analysis
+    from app.shared.database import SessionLocal
+    from app.serving.runbook_matcher import match_runbook, should_escalate
+    from app.serving.evidence import build_serving_evidence
+    from app.serving.investigator import get_investigation_loop
+    from app.serving.policy import evaluate as policy_eval
+    from app.serving.action_executor import execute_actions
+    from app.serving.notifications import get_notification_service
 
     db = SessionLocal()
     try:
@@ -243,7 +115,7 @@ def analyze_incident(incident, project, force=False):
         notification_service = get_notification_service(project=project)
 
         # Phase 1 — evidence
-        evidence = build_evidence(incident, project)
+        evidence = build_serving_evidence(incident, project)
 
         # Tracking vars for InvestigationRun
         tool_calls_log = []
@@ -380,7 +252,7 @@ def analyze_incident(incident, project, force=False):
         # Notify only when the action-level policy allows the notification.
         if _notification_allowed(effective_analysis.disposition, policy):
             notification_service.route_notification(incident, effective_analysis)
-            _stamp_actioned(incident.id)
+            stamp_actioned(incident.id)
 
         # Phase 4 — actions
         actions = execute_actions(incident, analysis, policy, project)
@@ -420,17 +292,17 @@ def analyze_incident(incident, project, force=False):
 
 
 def run_root_cause_chaining(new_incident, project_id, project):
-    from app.core.decision_engine import get_decision_engine
+    from app.serving.decision_engine import get_decision_engine
 
     try:
-        candidates = _fetch_recent_root_cause_candidates(project_id, new_incident.id)
+        candidates = fetch_recent_root_cause_candidates(project_id, new_incident.id)
         if not candidates:
             return
         print(f"[CHAIN] {new_incident.id} vs {len(candidates)} candidate(s)")
         engine = get_decision_engine()
         result = engine.chain_root_cause(new_incident, candidates, project=project)
         if result and result.has_cause and result.cause_incident_id:
-            _apply_root_cause_chain(
+            apply_root_cause_chain(
                 new_incident.id,
                 result.cause_incident_id,
                 result.cause_explanation or "",
@@ -439,73 +311,3 @@ def run_root_cause_chaining(new_incident, project_id, project):
             print(f"[CHAIN] No link for {new_incident.id}")
     except Exception as e:
         print(f"[CHAIN] Failed: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Batch entry point — loki_watcher.py unchanged
-# ---------------------------------------------------------------------------
-
-
-def process_log_batch(payload: dict):
-    from app.core.parser import ParsedLog
-    from app.core.signatures import generate_signature
-    from app.services.storage import SessionLocal, Project
-
-    project_id = payload.get("project_id")
-    source = payload["source"]
-    environment = payload["environment"]
-    logs = payload["logs"]
-    project = payload.get("_project")
-
-    if project is None:
-        db = SessionLocal()
-        try:
-            project = db.query(Project).filter(Project.id == project_id).first()
-            if project:
-                db.expunge(project)
-            else:
-                print(f"[WORKER] Project {project_id} not found")
-                return
-        finally:
-            db.close()
-
-    print(f"[WORKER] {len(logs)} logs for '{project.name}'")
-    created = updated = failed = 0
-
-    for log_line in logs:
-        try:
-            parsed = ParsedLog(log_line)
-            if parsed.level not in ["ERROR", "WARN", "WARNING", "CRITICAL"]:
-                continue
-
-            sig = generate_signature(source, parsed)
-            incident, is_new = cluster_log_db(
-                project_id=project_id,
-                source=source,
-                environment=environment,
-                parsed_log=parsed,
-                signature=sig,
-            )
-
-            if is_new:
-                analyze_incident(incident, project=project, force=False)
-                run_root_cause_chaining(incident, project_id, project=project)
-                created += 1
-            else:
-                if incident.count in {5, 10, 20}:
-                    analyze_incident(incident, project=project, force=True)
-                updated += 1
-
-        except Exception as e:
-            print(f"[WORKER] Failed: {e} | {log_line[:80]}")
-            failed += 1
-
-    print(f"[WORKER] created={created} updated={updated} failed={failed}")
-    if failed > 0 and created == 0 and updated == 0:
-        raise RuntimeError(f"Batch entirely failed — {failed} errors")
-
-    return {
-        "incidents_created": created,
-        "incidents_updated": updated,
-        "failed": failed,
-    }

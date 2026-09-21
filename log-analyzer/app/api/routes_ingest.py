@@ -1,7 +1,7 @@
 import os
 import requests
 from fastapi import APIRouter, Depends, HTTPException
-from app.services.storage import Project
+from app.control.models import Project
 from app.api.routes_auth import get_current_project
 
 router = APIRouter()
@@ -67,7 +67,7 @@ def eval_ingest(
         raise HTTPException(
             status_code=403, detail="Eval ingest is only available for the demo project"
         )
-    from worker.tasks import process_log_batch
+    from app.data.pipeline import process_log_batch
 
     result = process_log_batch(
         {

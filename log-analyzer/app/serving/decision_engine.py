@@ -312,7 +312,7 @@ Was the new incident caused by one of the earlier incidents?
         Args:
             incident: Incident ORM object
             project:  Project ORM object (for credentials)
-            evidence: EvidenceBundle from app.core.evidence.build_evidence()
+            evidence: EvidenceBundle from app.data.evidence.build_evidence()
                       If None, falls back to incident.sample_lines[:3] (old behaviour)
         """
         t0 = time.time()
