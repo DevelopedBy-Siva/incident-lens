@@ -15,3 +15,8 @@ bcrypt==3.2.2
 python-jose[cryptography]==3.3.0
 redis[asyncio]==5.0.1
 langfuse==2.60.10
+torch>=2.4,<3
+transformers==5.17.0
+peft==0.21.0
+accelerate>=1.0,<2
+safetensors>=0.4,<1

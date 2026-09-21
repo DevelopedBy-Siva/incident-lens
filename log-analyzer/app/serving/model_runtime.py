@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.control.models import DEFAULT_BASE_MODEL, Project
+from app.control.models import Project
 from app.control.repositories import ProjectRepository
 from app.serving.model_provider import (
     GroqProvider,
@@ -11,6 +11,7 @@ from app.serving.model_provider import (
     ProviderResponse,
 )
 from app.shared.database import SessionLocal
+from app.shared.model_config import configured_base_model
 from app.training.models import ModelArtifact, ModelArtifactStatus
 from app.training.repositories import ModelArtifactRepository
 
@@ -34,7 +35,7 @@ class ArtifactResolution:
 
 class BaseModelResolver:
     def resolve(self, project: Project) -> str:
-        return project.base_model or DEFAULT_BASE_MODEL
+        return configured_base_model()
 
 
 class ArtifactResolver:
@@ -245,7 +246,7 @@ class ModelRuntime:
             {
                 "id": "system",
                 "name": "system",
-                "base_model": DEFAULT_BASE_MODEL,
+                "base_model": configured_base_model(),
                 "active_artifact_id": None,
                 "groq_api_key": None,
             },

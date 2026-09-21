@@ -155,21 +155,71 @@ training failure:   QUEUED -> RUNNING -> FAILED
 evaluation failure: QUEUED -> RUNNING -> EVALUATING -> FAILED
 ```
 
-The current training engine is deliberately a placeholder. It exercises the
-complete lifecycle and reports realistic execution metadata, but it does not
-run LoRA, create an adapter, use a GPU, or produce model weights. Evaluation
-checks dataset availability, record count, and successful engine execution.
+The training engine performs real supervised fine-tuning with Hugging Face
+Transformers and PEFT. Every project uses the same configurable shared base
+model, `Qwen/Qwen2.5-0.5B-Instruct` by default, and produces only a
+project-specific LoRA adapter. The base-model weights are never copied into a
+project artifact.
 
-After evaluation passes, IncidentLens registers an `adapter-vN` ModelArtifact
-and writes only an `artifacts/<project>/<version>/metadata.json` file. The file
-explicitly records that training was simulated and that it contains no model
-weights. Set `ARTIFACT_STORAGE_PATH` to change the local artifact root.
+The immutable Dataset Builder JSONL is consumed directly. Each `input` object
+becomes the user-side incident context and each `expected_output` object becomes
+the assistant completion. The trainer applies the Qwen chat template and masks
+prompt tokens so loss is calculated on the confirmed output rather than on the
+incident evidence.
+
+The default LoRA profile is:
+
+```text
+rank:                        8
+alpha:                       16
+dropout:                     0.05
+epochs:                      1
+learning rate:               0.0001
+batch size:                  1
+gradient accumulation:       1
+maximum sequence length:     1024
+validation fraction:         0.10
+```
+
+The target modules are Qwen attention and MLP projections: `q_proj`, `k_proj`,
+`v_proj`, `o_proj`, `gate_proj`, `up_proj`, and `down_proj`. All profile values
+are configurable through the environment variables listed below.
+
+Before training, the worker reserves an immutable
+`artifacts/<project>/<adapter-vN>/` directory. PEFT writes the real adapter and
+tokenizer metadata into it:
+
+```text
+adapter_model.safetensors
+adapter_config.json
+tokenizer_config.json
+metadata.json
+```
+
+Tokenizer implementations may write additional tokenizer files. The final
+metadata includes training duration, training and validation loss, dataset
+version, the complete LoRA profile, evaluation metrics, framework versions, and
+a SHA-256 manifest of generated adapter files. It explicitly distinguishes
+adapter weights from base-model weights.
+
+Evaluation checks dataset availability and record count, successful completion,
+finite training loss, finite validation loss when a validation split exists,
+and adapter integrity. An artifact is registered as READY and activated only
+after every check passes. Partial output is removed when training or evaluation
+fails; an adapter retained after a metadata-write failure is registered FAILED
+and is never activated.
 
 Artifact registration, project activation, and the final PASSED job transition
 are coordinated by the Training Worker. If training, evaluation, or metadata
 writing fails, the job becomes FAILED and the project's existing active
 artifact remains unchanged. Successful artifacts are activated for future use,
 but the current Groq inference path does not load adapter weights.
+
+The production backend uses portable Transformers + PEFT rather than Unsloth.
+Unsloth is not enabled because the current deployment contract does not
+guarantee a supported NVIDIA/CUDA environment. `TrainingEngine` remains the
+replacement boundary for adding an Unsloth or hosted training backend without
+changing jobs, evaluation, artifact registration, or activation.
 
 ### Model runtime
 
@@ -347,6 +397,21 @@ GROQ_API_KEY_2=your_second_key
 GROQ_API_KEY_3=your_third_key
 GROQ_MODEL=openai/gpt-oss-20b
 GROQ_MODEL_FALLBACKS=openai/gpt-oss-20b,openai/gpt-oss-120b
+
+LORA_BASE_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
+LORA_RANK=8
+LORA_ALPHA=16
+LORA_DROPOUT=0.05
+LORA_EPOCHS=1
+LORA_LEARNING_RATE=0.0001
+LORA_BATCH_SIZE=1
+LORA_GRADIENT_ACCUMULATION_STEPS=1
+LORA_MAX_SEQUENCE_LENGTH=1024
+LORA_VALIDATION_FRACTION=0.1
+LORA_SEED=42
+LORA_TARGET_MODULES=q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+ARTIFACT_STORAGE_PATH=artifacts
+HF_TOKEN=optional_hugging_face_token
 
 LANGFUSE_PUBLIC_KEY=your_public_key
 LANGFUSE_SECRET_KEY=your_secret_key

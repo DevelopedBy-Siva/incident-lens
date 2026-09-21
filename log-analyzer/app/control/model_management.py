@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.control.models import Project
 from app.control.repositories import ProjectRepository
+from app.shared.model_config import configured_base_model
 from app.training.models import (
     Dataset,
     DatasetStatus,
@@ -83,7 +84,7 @@ class ModelManagementService:
         evaluation_score: float | None = None,
         status: ModelArtifactStatus = ModelArtifactStatus.READY,
     ) -> ModelArtifact:
-        project = self._require_project(project_id)
+        self._require_project(project_id)
         dataset = self.datasets.get_for_project(dataset_id, project_id)
         if not dataset:
             raise ValueError("Dataset does not belong to project")
@@ -92,7 +93,7 @@ class ModelManagementService:
         artifact = ModelArtifact(
             project_id=project_id,
             artifact_version=artifact_version,
-            base_model=project.base_model,
+            base_model=configured_base_model(),
             adapter_path=adapter_path,
             dataset_id=dataset_id,
             evaluation_score=evaluation_score,

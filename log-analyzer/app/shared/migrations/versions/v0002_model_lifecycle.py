@@ -1,6 +1,7 @@
 from sqlalchemy import inspect, text
 
 from app.control.models import Project
+from app.shared.model_config import DEFAULT_BASE_MODEL
 from app.training.models import Dataset, ModelArtifact, TrainingJob
 
 VERSION = "0002_model_lifecycle"
@@ -20,7 +21,7 @@ def upgrade(connection) -> None:
             connection.execute(
                 text(
                     "ALTER TABLE projects ADD COLUMN base_model "
-                    "VARCHAR NOT NULL DEFAULT 'qwen-v2'"
+                    f"VARCHAR NOT NULL DEFAULT '{DEFAULT_BASE_MODEL}'"
                 )
             )
         if "active_artifact_id" not in project_columns:

@@ -4,8 +4,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, String
 
 from app.shared.database import Base
-
-DEFAULT_BASE_MODEL = "qwen-v2"
+from app.shared.model_config import DEFAULT_BASE_MODEL, configured_base_model
 
 
 class Project(Base):
@@ -17,7 +16,7 @@ class Project(Base):
     base_model = Column(
         String,
         nullable=False,
-        default=DEFAULT_BASE_MODEL,
+        default=configured_base_model,
         server_default=DEFAULT_BASE_MODEL,
     )
     active_artifact_id = Column(String, nullable=True)

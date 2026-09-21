@@ -126,7 +126,8 @@ class ModelRuntimeTests(unittest.TestCase):
                         "artifact_id": artifact.id,
                         "project_id": self.project.id,
                         "base_model": artifact_base_model,
-                        "contains_model_weights": False,
+                        "contains_adapter_weights": True,
+                        "contains_base_model_weights": False,
                     }
                 ),
                 encoding="utf-8",
@@ -157,7 +158,12 @@ class ModelRuntimeTests(unittest.TestCase):
             self.assertEqual(session.active_artifact.id, artifact.id)
             self.assertEqual(session.active_artifact.version, "adapter-v1")
             self.assertEqual(session.adapter_path, artifact.adapter_path)
-            self.assertFalse(session.active_artifact.metadata["contains_model_weights"])
+            self.assertTrue(
+                session.active_artifact.metadata["contains_adapter_weights"]
+            )
+            self.assertFalse(
+                session.active_artifact.metadata["contains_base_model_weights"]
+            )
             self.assertTrue(session.capabilities["adapter_metadata_available"])
             self.assertFalse(session.capabilities["adapter_loading"])
             self.assertEqual(session.validation_warnings, ())

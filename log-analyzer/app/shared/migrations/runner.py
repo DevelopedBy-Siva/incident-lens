@@ -3,9 +3,14 @@ from sqlalchemy import text
 from app.shared.migrations.versions import (
     v0002_model_lifecycle,
     v0003_dataset_record_count,
+    v0004_shared_base_model,
 )
 
-MIGRATIONS = (v0002_model_lifecycle, v0003_dataset_record_count)
+MIGRATIONS = (
+    v0002_model_lifecycle,
+    v0003_dataset_record_count,
+    v0004_shared_base_model,
+)
 
 
 def run_migrations(engine) -> None:

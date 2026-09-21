@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import tempfile
@@ -15,6 +16,7 @@ from app.api import routes_model_management
 from app.api.routes_auth import get_current_project
 from app.control.model_management import ModelManagementService
 from app.control.models import DEFAULT_BASE_MODEL, Project
+from app.serving.model_runtime import ModelRuntime
 from app.shared.database import Base
 from app.training.artifact_metadata import LocalArtifactMetadataWriter
 from app.training.dataset_storage import LocalDatasetStorage
@@ -27,17 +29,59 @@ from app.training.models import (
     TrainingJobStatus,
 )
 from app.training.training_engine import (
-    PlaceholderTrainingEngine,
     TrainingEngine,
     TrainingRequest,
     TrainingResult,
 )
+from app.training.training_profile import LoraTrainingProfile
 from app.training.worker import TrainingJobStateError, TrainingWorker
 
 
 class FailingTrainingEngine(TrainingEngine):
     def train(self, request: TrainingRequest) -> TrainingResult:
-        raise RuntimeError("simulated engine failure")
+        raise RuntimeError("test engine failure")
+
+
+class SuccessfulTestTrainingEngine(TrainingEngine):
+    def train(self, request: TrainingRequest) -> TrainingResult:
+        output = Path(request.adapter_output_path)
+        files = {
+            "adapter_config.json": json.dumps(
+                {
+                    "base_model_name_or_path": request.base_model,
+                    "peft_type": "LORA",
+                }
+            ).encode(),
+            "adapter_model.safetensors": b"test-adapter-weights",
+            "tokenizer_config.json": b"{}",
+        }
+        for name, content in files.items():
+            (output / name).write_bytes(content)
+        manifest = tuple(
+            {
+                "name": name,
+                "size_bytes": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+            for name, content in sorted(files.items())
+        )
+        return TrainingResult(
+            succeeded=True,
+            engine="test-peft-lora",
+            adapter_path=str(output),
+            metrics={
+                "training_completed": True,
+                "base_model": request.base_model,
+                "training_loss": 0.25,
+                "validation_loss": None,
+                "duration_seconds": 1.25,
+                "weights_created": True,
+                "records_seen": request.expected_record_count,
+                "lora_configuration": request.profile.as_metadata(),
+            },
+            framework_versions={"transformers": "test", "peft": "test"},
+            artifact_files=manifest,
+        )
 
 
 class FailingArtifactWriter(LocalArtifactMetadataWriter):
@@ -70,7 +114,7 @@ class TrainingPipelineTests(unittest.TestCase):
         storage: LocalDatasetStorage,
         *,
         record_count: int = 1,
-        content: bytes = b'{"input":{},"expected_output":{}}\n',
+        content: bytes = b'{"input":{"incident":"x"},"expected_output":{"severity":"low"}}\n',
     ):
         key = storage.storage_key(self.project.id, "dataset-v1", "jsonl")
         storage.save(key, content)
@@ -81,42 +125,35 @@ class TrainingPipelineTests(unittest.TestCase):
             self.project.id, dataset.id, record_count
         )
 
-    def test_placeholder_engine_explicitly_reports_no_weights(self):
-        result = PlaceholderTrainingEngine().train(
-            TrainingRequest(
+    def test_evaluation_checks_losses_dataset_and_adapter_integrity(self):
+        with tempfile.TemporaryDirectory() as artifact_directory:
+            request = TrainingRequest(
                 project_id="project-1",
                 dataset_id="dataset-1",
                 dataset_version="dataset-v1",
                 base_model=DEFAULT_BASE_MODEL,
-                dataset_content=b"{}\n",
+                dataset_content=b'{"input":{},"expected_output":{}}\n',
                 expected_record_count=1,
+                adapter_output_path=artifact_directory,
+                profile=LoraTrainingProfile(),
             )
-        )
+            result = SuccessfulTestTrainingEngine().train(request)
+            dataset = type("DatasetRecord", (), {"record_count": 1})()
 
-        self.assertTrue(result.succeeded)
-        self.assertTrue(result.simulated)
-        self.assertEqual(result.engine, "placeholder-v1")
-        self.assertFalse(result.metrics["weights_created"])
-        self.assertEqual(result.metrics["records_seen"], 1)
+            passed = BasicEvaluationService().evaluate(
+                dataset, request.dataset_content, result
+            )
+            mismatched = BasicEvaluationService().evaluate(
+                dataset, request.dataset_content * 2, result
+            )
 
-    def test_evaluation_checks_availability_size_and_training_success(self):
-        dataset = type("DatasetRecord", (), {"record_count": 1})()
-        result = TrainingResult(
-            succeeded=True,
-            engine="test-engine",
-            simulated=True,
-            metrics={},
-        )
+            self.assertTrue(passed.passed)
+            self.assertEqual(passed.score, 1.0)
+            self.assertTrue(passed.metrics["artifact_integrity"])
+            self.assertFalse(mismatched.passed)
+            self.assertFalse(mismatched.metrics["record_count_matches"])
 
-        passed = BasicEvaluationService().evaluate(dataset, b"{}\n", result)
-        mismatched = BasicEvaluationService().evaluate(dataset, b"{}\n{}\n", result)
-
-        self.assertTrue(passed.passed)
-        self.assertEqual(passed.score, 1.0)
-        self.assertFalse(mismatched.passed)
-        self.assertFalse(mismatched.metrics["record_count_matches"])
-
-    def test_worker_creates_metadata_only_artifact_and_activates_it(self):
+    def test_worker_creates_real_adapter_metadata_and_activates_it(self):
         with tempfile.TemporaryDirectory() as dataset_directory:
             with tempfile.TemporaryDirectory() as artifact_directory:
                 storage = LocalDatasetStorage(dataset_directory)
@@ -125,6 +162,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 worker = TrainingWorker(
                     self.db,
                     dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
                     artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
                 )
 
@@ -145,9 +183,14 @@ class TrainingPipelineTests(unittest.TestCase):
                 self.assertEqual(self.project.active_artifact_id, artifact.id)
                 metadata_path = Path(artifact.adapter_path) / "metadata.json"
                 self.assertTrue(metadata_path.is_file())
-                self.assertEqual(
-                    [entry.name for entry in metadata_path.parent.iterdir()],
-                    ["metadata.json"],
+                self.assertTrue(
+                    (metadata_path.parent / "adapter_model.safetensors").is_file()
+                )
+                self.assertTrue(
+                    (metadata_path.parent / "adapter_config.json").is_file()
+                )
+                self.assertTrue(
+                    (metadata_path.parent / "tokenizer_config.json").is_file()
                 )
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 self.assertEqual(metadata["project_id"], self.project.id)
@@ -155,8 +198,24 @@ class TrainingPipelineTests(unittest.TestCase):
                 self.assertEqual(metadata["base_model"], DEFAULT_BASE_MODEL)
                 self.assertEqual(metadata["artifact_version"], "adapter-v1")
                 self.assertEqual(metadata["evaluation_score"], 1.0)
-                self.assertTrue(metadata["training_simulated"])
-                self.assertFalse(metadata["contains_model_weights"])
+                self.assertEqual(
+                    metadata["schema_version"], "incidentlens-lora-artifact-v1"
+                )
+                self.assertTrue(metadata["contains_adapter_weights"])
+                self.assertFalse(metadata["contains_base_model_weights"])
+                self.assertEqual(metadata["training_duration_seconds"], 1.25)
+                self.assertEqual(metadata["lora_configuration"]["rank"], 8)
+                self.assertEqual(metadata["framework_versions"]["peft"], "test")
+                self.assertNotIn("training_simulated", metadata)
+
+                runtime_session = ModelRuntime(
+                    session_factory=self.Session
+                ).resolve_project_model(self.project.id)
+                self.assertEqual(runtime_session.active_artifact.id, artifact.id)
+                self.assertEqual(runtime_session.adapter_path, artifact.adapter_path)
+                self.assertTrue(
+                    runtime_session.active_artifact.metadata["contains_adapter_weights"]
+                )
 
                 self.db.refresh(dataset)
                 self.assertEqual(dataset.status, DatasetStatus.READY)
@@ -201,6 +260,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 worker = TrainingWorker(
                     self.db,
                     dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
                     artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
                 )
 
@@ -220,6 +280,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 worker = TrainingWorker(
                     self.db,
                     dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
                     artifact_writer=FailingArtifactWriter(artifact_directory),
                 )
 
@@ -251,6 +312,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 worker = TrainingWorker(
                     self.db,
                     dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
                     artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
                 )
 
@@ -270,6 +332,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 worker = TrainingWorker(
                     self.db,
                     dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
                     artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
                 )
 
@@ -317,15 +380,21 @@ class TrainingPipelineTests(unittest.TestCase):
                         "ARTIFACT_STORAGE_PATH": artifact_directory,
                     },
                 ):
-                    client = TestClient(api)
-                    queued_response = client.post(
-                        "/api/training-jobs", json={"dataset_id": dataset.id}
-                    )
-                    self.assertEqual(queued_response.status_code, 201)
-                    queued = queued_response.json()
-                    self.assertEqual(queued["status"], "QUEUED")
+                    with patch(
+                        "app.training.worker.configured_training_engine",
+                        return_value=SuccessfulTestTrainingEngine(),
+                    ):
+                        client = TestClient(api)
+                        queued_response = client.post(
+                            "/api/training-jobs", json={"dataset_id": dataset.id}
+                        )
+                        self.assertEqual(queued_response.status_code, 201)
+                        queued = queued_response.json()
+                        self.assertEqual(queued["status"], "QUEUED")
 
-                    run_response = client.post(f"/api/training-jobs/{queued['id']}/run")
+                        run_response = client.post(
+                            f"/api/training-jobs/{queued['id']}/run"
+                        )
 
                 self.assertEqual(run_response.status_code, 200)
                 completed = run_response.json()

@@ -15,6 +15,9 @@ from app.shared.migrations.versions.v0002_model_lifecycle import upgrade as upgr
 from app.shared.migrations.versions.v0003_dataset_record_count import (
     upgrade as upgrade_v3,
 )
+from app.shared.migrations.versions.v0004_shared_base_model import (
+    upgrade as upgrade_v4,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -160,6 +163,32 @@ class ModelLifecycleTests(unittest.TestCase):
 
 
 class ModelLifecycleMigrationTests(unittest.TestCase):
+    def test_shared_base_model_migration_replaces_legacy_alias(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE projects ("
+                    "id VARCHAR PRIMARY KEY, "
+                    "base_model VARCHAR NOT NULL"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO projects (id, base_model) "
+                    "VALUES ('project-1', 'qwen-v2')"
+                )
+            )
+            upgrade_v4(connection)
+
+        with engine.connect() as connection:
+            base_model = connection.execute(
+                text("SELECT base_model FROM projects WHERE id = 'project-1'")
+            ).scalar_one()
+        self.assertEqual(base_model, DEFAULT_BASE_MODEL)
+        engine.dispose()
+
     def test_upgrade_preserves_legacy_projects_and_adds_lifecycle_schema(self):
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as connection:
