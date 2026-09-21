@@ -339,6 +339,17 @@ python log-analyzer/scripts/check_runbook_coverage.py
 
 ![Settings](./imgs/settings.png)
 
+### AI platform dashboard
+
+The existing incident dashboard now includes the project's local model status.
+The **Models** page shows the shared base model, active adapter, evaluation
+scores, and immutable artifact history; any READY artifact can be activated.
+The **Training** page exposes the full dataset → training job → model artifact
+workflow and only polls while a job is active. Settings displays the read-only
+local runtime and dataset/artifact storage configuration. See the
+[frontend guide](./log-analyzer-frontend/README.md) for the UI workflow and API
+mapping.
+
 ### Discord
 
 ![Discord](./imgs/discord.png)
@@ -378,7 +389,7 @@ python -m uvicorn server:app --port 5001 --app-dir log-server
 
 # Frontend
 cd log-analyzer-frontend
-npm install
+npm ci
 npm start
 ```
 
@@ -414,6 +425,7 @@ LORA_VALIDATION_FRACTION=0.1
 LORA_SEED=42
 LORA_TARGET_MODULES=q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
 ARTIFACT_STORAGE_PATH=artifacts
+DATASET_STORAGE_PATH=datasets
 HF_TOKEN=optional_hugging_face_token
 
 LANGFUSE_PUBLIC_KEY=your_public_key

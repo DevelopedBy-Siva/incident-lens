@@ -13,8 +13,10 @@ import {
   RotateCcw,
   GitBranch,
   Terminal,
+  BrainCircuit,
 } from "lucide-react";
 import { incidentsAPI } from "../services/api";
+import { displayModelName } from "./modelLifecycle/ModelUi";
 
 const SEVERITY_STYLES = {
   critical: "bg-red-500/15 text-red-400 border border-red-500/30",
@@ -85,29 +87,29 @@ function TrailSection({ icon: Icon, label, children, accent = "sky" }) {
   );
 }
 
-function AgentTrail({ incidentId }) {
+function AgentTrail({ incidentId, modelInfo, analysisSource }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
-
-  const load = async () => {
-    if (loaded) return;
-    setLoading(true);
-    try {
-      const res = await incidentsAPI.getInvestigation(incidentId);
-      setData(res.data);
-      setLoaded(true);
-    } catch (e) {
-      setError("Could not load investigation trail");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   React.useEffect(() => {
-    load();
-  }, []);
+    let active = true;
+    setLoading(true);
+    incidentsAPI
+      .getInvestigation(incidentId)
+      .then((response) => {
+        if (active) setData(response.data);
+      })
+      .catch(() => {
+        if (active) setError("Could not load investigation trail");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [incidentId]);
 
   if (loading) {
     return (
@@ -124,6 +126,42 @@ function AgentTrail({ incidentId }) {
 
   return (
     <div className="mt-3 space-y-2">
+      <TrailSection icon={BrainCircuit} label="Model information" accent="blue">
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <div className="text-gray-600">Inference model</div>
+            <div className="text-gray-300 mt-0.5 capitalize">
+              {displayModelName(modelInfo?.base_model)}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-600">Adapter</div>
+            <div className="text-gray-300 mt-0.5">
+              {modelInfo?.active_artifact_version || "No active adapter"}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-600">Artifact version</div>
+            <div className="text-gray-300 mt-0.5">
+              {modelInfo?.active_artifact_version || "—"}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-600">Decision source</div>
+            <div className="text-gray-300 mt-0.5">
+              {analysisSource === "runbook"
+                ? "Runbook"
+                : analysisSource
+                  ? "Local Runtime"
+                  : "Pending"}
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          Current serving configuration at view time.
+        </p>
+      </TrailSection>
+
       {inv && (
         <TrailSection icon={Search} label="Evidence gathered" accent="sky">
           <div className="grid grid-cols-3 gap-2 text-xs">
@@ -312,7 +350,7 @@ function AgentTrail({ incidentId }) {
   );
 }
 
-function IncidentCard({ incident, analysis, onClose, onIgnore }) {
+function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [trailOpen, setTrailOpen] = useState(false);
 
@@ -483,7 +521,11 @@ function IncidentCard({ incident, analysis, onClose, onIgnore }) {
 
       {trailOpen && (
         <div className="px-5 pb-5 pt-3 border-t border-gray-800 bg-gray-900/20">
-          <AgentTrail incidentId={incident.id} />
+          <AgentTrail
+            incidentId={incident.id}
+            modelInfo={modelInfo}
+            analysisSource={analysis?.analysis_source}
+          />
         </div>
       )}
     </div>

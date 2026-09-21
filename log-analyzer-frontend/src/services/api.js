@@ -43,6 +43,21 @@ export const incidentsAPI = {
   getInvestigation: (id) => api.get(`/api/incidents/${id}/investigation`),
 };
 
+export const modelLifecycleAPI = {
+  getRuntime: () => api.get("/api/model-runtime"),
+  listDatasets: () => api.get("/api/datasets"),
+  getDataset: (id) => api.get(`/api/datasets/${id}`),
+  buildDataset: () => api.post("/api/datasets/build"),
+  listTrainingJobs: () => api.get("/api/training-jobs"),
+  getTrainingJob: (id) => api.get(`/api/training-jobs/${id}`),
+  createTrainingJob: (datasetId) =>
+    api.post("/api/training-jobs", { dataset_id: datasetId }),
+  runTrainingJob: (id) => api.post(`/api/training-jobs/${id}/run`),
+  listArtifacts: () => api.get("/api/model-artifacts"),
+  getArtifact: (id) => api.get(`/api/model-artifacts/${id}`),
+  activateArtifact: (id) => api.post(`/api/model-artifacts/${id}/activate`),
+};
+
 export const isAuthenticated = () => !!localStorage.getItem("token");
 
 export const logout = () => {

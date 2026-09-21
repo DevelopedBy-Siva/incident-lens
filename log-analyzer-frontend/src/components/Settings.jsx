@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { authAPI } from "../services/api";
+import { authAPI, modelLifecycleAPI } from "../services/api";
 import Navbar from "./Navbar";
 import {
   Save,
@@ -9,6 +9,7 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
+  Cpu,
 } from "lucide-react";
 
 const HIDDEN_MARKER = "HIDDEN: TEST CREDENTIAL";
@@ -113,15 +114,29 @@ function PlainInput({
   );
 }
 
+function RuntimeValue({ label, value, mono = false }) {
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-3">
+      <div className="text-xs text-gray-600">{label}</div>
+      <div
+        className={`text-sm text-gray-300 mt-1 break-all ${mono ? "font-mono" : ""}`}
+      >
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
 function Settings() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [isTest, setIsTest] = useState(false);
+  const [runtime, setRuntime] = useState(null);
   const [openSections, setOpenSections] = useState({
     loki: true,
-    llm: false,
+    runtime: true,
     observability: false,
     notifications: false,
     security: false,
@@ -133,7 +148,6 @@ function Settings() {
     loki_username: "",
     loki_api_key: "",
     loki_service: "",
-    groq_api_key: "",
     langfuse_public_key: "",
     langfuse_secret_key: "",
     langfuse_host: "",
@@ -146,8 +160,12 @@ function Settings() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await authAPI.getMe();
-        const p = res.data;
+        const [projectResponse, runtimeResponse] = await Promise.all([
+          authAPI.getMe(),
+          modelLifecycleAPI.getRuntime(),
+        ]);
+        const p = projectResponse.data;
+        setRuntime(runtimeResponse.data);
         setIsTest(p.is_test);
         setSetupStatus(p.setup_status || {});
         setForm({
@@ -155,7 +173,6 @@ function Settings() {
           loki_username: p.loki_username || "",
           loki_api_key: p.loki_api_key || "",
           loki_service: p.loki_service || "",
-          groq_api_key: p.groq_api_key || "",
           langfuse_public_key: p.langfuse_public_key || "",
           langfuse_secret_key: p.langfuse_secret_key || "",
           langfuse_host: p.langfuse_host || "https://cloud.langfuse.com",
@@ -259,8 +276,8 @@ function Settings() {
                 Setup incomplete
               </p>
               <p className="text-sky-400/70 text-xs mt-0.5">
-                Configure at minimum: Loki credentials + Groq API key to start
-                monitoring.
+                Configure Loki credentials to start ingestion. Local AI
+                inference becomes ready when the project has an active adapter.
               </p>
             </div>
           </div>
@@ -334,26 +351,56 @@ function Settings() {
             )}
           </div>
 
-          {/* Groq */}
+          {/* Local AI runtime */}
           <div className="border border-gray-800 rounded-xl px-5">
             <SectionHeader
-              title="Groq API"
-              description="LLM analysis for unknown incidents — required"
-              configured={setupStatus.llm}
-              open={openSections.llm}
-              onToggle={() => toggleSection("llm")}
+              title="AI Runtime"
+              description="Read-only local model and storage configuration"
+              configured={Boolean(runtime)}
+              open={openSections.runtime}
+              onToggle={() => toggleSection("runtime")}
             />
-            {openSections.llm && (
-              <div className="pb-5 space-y-4">
-                <SecretInput
-                  label="Groq API Key"
-                  name="groq_api_key"
-                  value={form.groq_api_key}
-                  onChange={handleChange}
-                  placeholder="gsk_..."
-                  disabled={disabled}
-                  hint="From console.groq.com — free tier is sufficient"
-                />
+            {openSections.runtime && (
+              <div className="pb-5">
+                <div className="flex items-center gap-2 mb-4 text-xs text-sky-400">
+                  <Cpu size={14} />
+                  Current Runtime: Local
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <RuntimeValue
+                    label="Base Model"
+                    value={runtime?.base_model}
+                  />
+                  <RuntimeValue
+                    label="Inference Device"
+                    value={runtime?.device?.toUpperCase()}
+                  />
+                  <RuntimeValue
+                    label="Model Path"
+                    value={runtime?.model_path}
+                    mono
+                  />
+                  <RuntimeValue
+                    label="Active Adapter"
+                    value={
+                      runtime?.active_artifact_version || "No active adapter"
+                    }
+                  />
+                  <RuntimeValue
+                    label="Artifact Storage"
+                    value={runtime?.artifact_storage}
+                    mono
+                  />
+                  <RuntimeValue
+                    label="Dataset Storage"
+                    value={runtime?.dataset_storage}
+                    mono
+                  />
+                </div>
+                <p className="text-xs text-gray-600 mt-3">
+                  Runtime values are configured by the backend deployment and
+                  cannot be changed per project.
+                </p>
               </div>
             )}
           </div>

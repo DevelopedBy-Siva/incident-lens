@@ -164,6 +164,56 @@ class ModelLifecycleTests(unittest.TestCase):
                 missing = client.get(f"{path}/missing")
                 self.assertEqual(missing.status_code, 404)
 
+    def test_runtime_status_and_ready_artifact_activation_api(self):
+        service = ModelManagementService(self.db)
+        dataset = service.create_dataset_metadata(
+            self.project.id, "dataset-v1", "datasets/alpha/dataset-v1.jsonl"
+        )
+        dataset = service.mark_dataset_ready(self.project.id, dataset.id, 1)
+        ready = service.register_model_artifact(
+            self.project.id,
+            "adapter-v1",
+            dataset.id,
+            adapter_path="artifacts/alpha/adapter-v1",
+            evaluation_score=0.93,
+        )
+        failed = service.register_model_artifact(
+            self.project.id,
+            "adapter-v2",
+            dataset.id,
+            status=ModelArtifactStatus.FAILED,
+        )
+
+        api = FastAPI()
+        api.include_router(routes_model_management.router, prefix="/api")
+        api.dependency_overrides[get_current_project] = lambda: self.project
+
+        def override_db():
+            yield self.db
+
+        api.dependency_overrides[routes_model_management.get_db] = override_db
+        client = TestClient(api)
+
+        before = client.get("/api/model-runtime")
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.json()["provider"], "local")
+        self.assertEqual(before.json()["base_model"], DEFAULT_BASE_MODEL)
+        self.assertIsNone(before.json()["active_artifact_id"])
+
+        activated = client.post(f"/api/model-artifacts/{ready.id}/activate")
+        self.assertEqual(activated.status_code, 200)
+        self.assertEqual(activated.json()["id"], ready.id)
+
+        current = client.get("/api/model-runtime")
+        self.assertEqual(current.json()["active_artifact_id"], ready.id)
+        self.assertEqual(current.json()["active_artifact_version"], "adapter-v1")
+        self.assertEqual(current.json()["adapter_path"], ready.adapter_path)
+
+        rejected = client.post(f"/api/model-artifacts/{failed.id}/activate")
+        self.assertEqual(rejected.status_code, 409)
+        missing = client.post("/api/model-artifacts/missing/activate")
+        self.assertEqual(missing.status_code, 404)
+
 
 class ModelLifecycleMigrationTests(unittest.TestCase):
     def test_remote_provider_credential_migration_removes_legacy_column(self):

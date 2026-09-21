@@ -87,6 +87,8 @@ def _project_to_dict(project: Project) -> dict:
     return {
         "id": project.id,
         "name": project.name,
+        "base_model": project.base_model,
+        "active_artifact_id": project.active_artifact_id,
         "created_at": project.created_at.isoformat(),
         "is_test": t,
         # Loki

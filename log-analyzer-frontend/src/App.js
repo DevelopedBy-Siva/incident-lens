@@ -13,6 +13,8 @@ import {
 import Login from "./components/Login";
 import Register from "./components/Register";
 import Dashboard from "./components/Dashboard";
+import Models from "./components/Models";
+import Training from "./components/Training";
 import Settings from "./components/Settings";
 import axios from "axios";
 import { MdError } from "react-icons/md";
@@ -98,6 +100,22 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/models"
+          element={
+            <ProtectedRoute>
+              <Models />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training"
+          element={
+            <ProtectedRoute>
+              <Training />
             </ProtectedRoute>
           }
         />

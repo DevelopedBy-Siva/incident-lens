@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { incidentsAPI, logServerAPI, authAPI } from "../services/api";
 import Navbar from "./Navbar";
 import IncidentCard from "./IncidentCard";
+import ModelStatusPanel from "./modelLifecycle/ModelStatusPanel";
+import { useModelLifecycle } from "../hooks/useModelLifecycle";
 import {
   RefreshCw,
   AlertTriangle,
@@ -89,6 +91,7 @@ function Dashboard() {
     severity: "",
     ticket_title: "",
   });
+  const modelLifecycle = useModelLifecycle({ pollWhileActive: true });
 
   const debouncedFilters = useDebounce(filters, 500);
 
@@ -225,6 +228,15 @@ function Dashboard() {
             </div>
           ))}
         </div>
+
+        <ModelStatusPanel
+          runtime={modelLifecycle.runtime}
+          datasets={modelLifecycle.datasets}
+          jobs={modelLifecycle.jobs}
+          artifacts={modelLifecycle.artifacts}
+          loading={modelLifecycle.loading}
+          error={modelLifecycle.error}
+        />
 
         {/* Controls */}
         <div className="rounded-lg border border-gray-800 p-5 mb-6 space-y-4">
@@ -368,6 +380,7 @@ function Dashboard() {
                 key={incident.id}
                 incident={incident}
                 analysis={incident.analysis}
+                modelInfo={modelLifecycle.runtime}
                 onClose={handleClose}
                 onIgnore={handleIgnore}
               />

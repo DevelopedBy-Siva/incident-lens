@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from app.control.dataset_management import DatasetBuildCommand, NoEligibleIncide
 from app.control.model_management import ModelManagementService
 from app.control.models import Project
 from app.shared.database import get_db
+from app.shared.model_config import configured_runtime_settings
 from app.training.dataset_storage import DatasetAlreadyExistsError
 from app.training.models import (
     DatasetStatus,
@@ -70,6 +72,24 @@ class ModelArtifactResponse(BaseModel):
     evaluation_score: float | None
     status: ModelArtifactStatus
     created_at: datetime
+
+
+class ModelRuntimeResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    project_id: str
+    project_name: str
+    provider: str
+    runtime_type: str
+    base_model: str
+    model_path: str
+    device: str
+    dtype: str
+    active_artifact_id: str | None
+    active_artifact_version: str | None
+    adapter_path: str | None
+    artifact_storage: str
+    dataset_storage: str
 
 
 @router.get("/datasets", response_model=list[DatasetResponse])
@@ -166,6 +186,35 @@ def list_model_artifacts(
     return ModelArtifactRepository(db).list_for_project(project.id)
 
 
+@router.get("/model-runtime", response_model=ModelRuntimeResponse)
+def get_model_runtime_status(
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    """Expose the existing local runtime configuration to the dashboard."""
+    settings = configured_runtime_settings()
+    artifact = None
+    if project.active_artifact_id:
+        artifact = ModelArtifactRepository(db).get_for_project(
+            project.active_artifact_id, project.id
+        )
+    return ModelRuntimeResponse(
+        project_id=project.id,
+        project_name=project.name,
+        provider=settings.provider,
+        runtime_type="local_peft",
+        base_model=settings.base_model,
+        model_path=settings.base_model,
+        device=settings.device,
+        dtype=settings.dtype,
+        active_artifact_id=artifact.id if artifact else None,
+        active_artifact_version=artifact.artifact_version if artifact else None,
+        adapter_path=artifact.adapter_path if artifact else None,
+        artifact_storage=os.getenv("ARTIFACT_STORAGE_PATH", "artifacts"),
+        dataset_storage=os.getenv("DATASET_STORAGE_PATH", "datasets"),
+    )
+
+
 @router.get("/model-artifacts/{artifact_id}", response_model=ModelArtifactResponse)
 def get_model_artifact(
     artifact_id: str,
@@ -175,4 +224,24 @@ def get_model_artifact(
     artifact = ModelArtifactRepository(db).get_for_project(artifact_id, project.id)
     if not artifact:
         raise HTTPException(status_code=404, detail="Model artifact not found")
+    return artifact
+
+
+@router.post(
+    "/model-artifacts/{artifact_id}/activate",
+    response_model=ModelArtifactResponse,
+)
+def activate_model_artifact(
+    artifact_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    artifact = ModelArtifactRepository(db).get_for_project(artifact_id, project.id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Model artifact not found")
+    if artifact.status != ModelArtifactStatus.READY:
+        raise HTTPException(
+            status_code=409, detail="Only READY artifacts can be activated"
+        )
+    ModelManagementService(db).update_active_artifact(project.id, artifact.id)
     return artifact

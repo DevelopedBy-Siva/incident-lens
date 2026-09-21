@@ -1,12 +1,17 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { logout } from "../services/api";
-import { LogOut, Settings, Activity, Home } from "lucide-react";
+import {
+  Activity,
+  BrainCircuit,
+  Home,
+  LogOut,
+  Settings,
+  Workflow,
+} from "lucide-react";
 
 function Navbar() {
   const navigate = useNavigate();
-  const project = JSON.parse(localStorage.getItem("project") || "{}");
-
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -20,26 +25,65 @@ function Navbar() {
             <Activity className="text-sky-500 mr-2" size={28} />
           </div>
 
-          <div className="flex items-center space-x-4">
-            <Link
+          <div className="flex items-center gap-1 sm:gap-2">
+            <NavLink
               to="/dashboard"
-              className="text-gray-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
+              className={({ isActive }) =>
+                `px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center ${
+                  isActive
+                    ? "text-white bg-gray-900"
+                    : "text-gray-500 hover:text-white"
+                }`
+              }
             >
-              <Home size={16} className="mr-1" /> Dashboard
-            </Link>
-            <Link
+              <Home size={16} className="sm:mr-1" />
+              <span className="hidden sm:inline">Dashboard</span>
+            </NavLink>
+            <NavLink
+              to="/models"
+              className={({ isActive }) =>
+                `px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center ${
+                  isActive
+                    ? "text-white bg-gray-900"
+                    : "text-gray-500 hover:text-white"
+                }`
+              }
+            >
+              <BrainCircuit size={16} className="sm:mr-1" />
+              <span className="hidden sm:inline">Models</span>
+            </NavLink>
+            <NavLink
+              to="/training"
+              className={({ isActive }) =>
+                `px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center ${
+                  isActive
+                    ? "text-white bg-gray-900"
+                    : "text-gray-500 hover:text-white"
+                }`
+              }
+            >
+              <Workflow size={16} className="sm:mr-1" />
+              <span className="hidden sm:inline">Training</span>
+            </NavLink>
+            <NavLink
               to="/settings"
-              className="text-gray-500 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
+              className={({ isActive }) =>
+                `px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center ${
+                  isActive
+                    ? "text-white bg-gray-900"
+                    : "text-gray-500 hover:text-white"
+                }`
+              }
             >
-              <Settings size={16} className="mr-1" />
-              Settings
-            </Link>
+              <Settings size={16} className="sm:mr-1" />
+              <span className="hidden sm:inline">Settings</span>
+            </NavLink>
             <button
               onClick={handleLogout}
-              className="text-gray-500 hover:text-red-600 px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
+              className="text-gray-500 hover:text-red-600 px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center"
             >
-              <LogOut size={16} className="mr-1" />
-              Logout
+              <LogOut size={16} className="sm:mr-1" />
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>
