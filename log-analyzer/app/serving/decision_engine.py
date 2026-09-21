@@ -2,10 +2,10 @@ import os
 import time
 from typing import Optional
 
-from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from langchain.output_parsers import PydanticOutputParser
+from langchain.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
 
 from app.serving.model_runtime import get_model_runtime
 
@@ -69,11 +69,6 @@ def _langfuse_usage_payload(response) -> Optional[dict]:
         "total": total_tokens,
         "unit": "TOKENS",
     }
-
-
-def _is_rate_limit_error(error: Exception) -> bool:
-    text = str(error).lower()
-    return "429" in text or "rate limit" in text or "rate_limit_exceeded" in text
 
 
 class IncidentAnalysis(BaseModel):
@@ -313,60 +308,49 @@ Was the new incident caused by one of the earlier incidents?
         runtime_session = get_model_runtime().resolve_project_model(
             getattr(project, "id", None), project=project
         )
-        if not runtime_session.provider_available:
-            print("[LLM] No Groq API key configured — LLM analysis disabled")
+        model_name = runtime_session.default_model
+
+        try:
+            gen = trace.generation(
+                name="llm-analysis",
+                model=model_name,
+                model_parameters={"temperature": 0.3},
+                input=evidence_context,
+            )
+
+            response = runtime_session.complete(
+                model=model_name,
+                messages=formatted,
+                temperature=0.3,
+            )
+            elapsed_ms = int((time.time() - t0) * 1000)
+
+            usage_payload = _langfuse_usage_payload(response)
+            if usage_payload is None:
+                gen.end(output=response.content)
+            else:
+                gen.end(output=response.content, usage=usage_payload)
+
+            analysis = self.parser.parse(response.content)
+            analysis = validate_analysis(analysis, incident)
+
+            trace.update(
+                metadata={
+                    "severity": analysis.severity,
+                    "disposition": analysis.disposition,
+                    "latency_ms": elapsed_ms,
+                    "analysis_source": "llm",
+                    "model": model_name,
+                    "evidence_related_count": (
+                        len(evidence.related_incidents) if evidence else 0
+                    ),
+                }
+            )
+            return analysis
+        except Exception as error:
+            trace.update(metadata={"error": str(error)})
+            print(f"[LLM] local analyze_incident failed: {error}")
             return None
-        models = runtime_session.model_candidates
-
-        last_error = None
-        for model_name in models:
-            try:
-                gen = trace.generation(
-                    name="llm-analysis",
-                    model=model_name,
-                    model_parameters={"temperature": 0.3},
-                    input=evidence_context,
-                )
-
-                response = runtime_session.complete(
-                    model=model_name,
-                    messages=formatted,
-                    temperature=0.3,
-                )
-                elapsed_ms = int((time.time() - t0) * 1000)
-
-                usage_payload = _langfuse_usage_payload(response)
-                if usage_payload is None:
-                    gen.end(output=response.content)
-                else:
-                    gen.end(output=response.content, usage=usage_payload)
-
-                analysis = self.parser.parse(response.content)
-                analysis = validate_analysis(analysis, incident)
-
-                trace.update(
-                    metadata={
-                        "severity": analysis.severity,
-                        "disposition": analysis.disposition,
-                        "latency_ms": elapsed_ms,
-                        "analysis_source": "llm",
-                        "model": model_name,
-                        "evidence_related_count": (
-                            len(evidence.related_incidents) if evidence else 0
-                        ),
-                    }
-                )
-                return analysis
-            except Exception as e:
-                last_error = e
-                if _is_rate_limit_error(e) and model_name != models[-1]:
-                    print(f"[LLM] Model {model_name} rate-limited — trying fallback")
-                    continue
-                break
-
-        trace.update(metadata={"error": str(last_error) if last_error else "unknown"})
-        print(f"[LLM] analyze_incident failed: {last_error}")
-        return None
 
     def chain_root_cause(
         self, new_incident, earlier_incidents, project=None
@@ -410,48 +394,35 @@ Was the new incident caused by one of the earlier incidents?
         runtime_session = get_model_runtime().resolve_project_model(
             getattr(project, "id", None), project=project
         )
-        if not runtime_session.provider_available:
-            print("[LLM] No Groq API key configured — LLM analysis disabled")
+        model_name = runtime_session.default_model
+
+        try:
+            gen = trace.generation(name="root-cause-llm", model=model_name)
+            response = runtime_session.complete(
+                model=model_name,
+                messages=formatted,
+                temperature=0.3,
+            )
+            gen.end(output=response.content)
+
+            result = self.root_cause_parser.parse(response.content)
+            valid_ids = {inc.id for inc in earlier_incidents}
+            if result.has_cause and result.cause_incident_id not in valid_ids:
+                print("[CHAIN] LLM returned invalid cause_incident_id — discarding")
+                return None
+
+            trace.update(
+                metadata={
+                    "has_cause": result.has_cause,
+                    "confidence": result.confidence,
+                    "model": model_name,
+                }
+            )
+            return result
+        except Exception as error:
+            trace.update(metadata={"error": str(error)})
+            print(f"[CHAIN] local chain_root_cause failed: {error}")
             return None
-        models = runtime_session.model_candidates
-
-        last_error = None
-        for model_name in models:
-            try:
-                gen = trace.generation(name="root-cause-llm", model=model_name)
-                response = runtime_session.complete(
-                    model=model_name,
-                    messages=formatted,
-                    temperature=0.3,
-                )
-                gen.end(output=response.content)
-
-                result = self.root_cause_parser.parse(response.content)
-                valid_ids = {inc.id for inc in earlier_incidents}
-                if result.has_cause and result.cause_incident_id not in valid_ids:
-                    print(
-                        f"[CHAIN] LLM returned invalid cause_incident_id — discarding"
-                    )
-                    return None
-
-                trace.update(
-                    metadata={
-                        "has_cause": result.has_cause,
-                        "confidence": result.confidence,
-                        "model": model_name,
-                    }
-                )
-                return result
-            except Exception as e:
-                last_error = e
-                if _is_rate_limit_error(e) and model_name != models[-1]:
-                    print(f"[CHAIN] Model {model_name} rate-limited — trying fallback")
-                    continue
-                break
-
-        trace.update(metadata={"error": str(last_error) if last_error else "unknown"})
-        print(f"[CHAIN] chain_root_cause failed: {last_error}")
-        return None
 
 
 _decision_engine: Optional[DecisionEngine] = None

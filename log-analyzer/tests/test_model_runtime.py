@@ -1,24 +1,23 @@
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.control.models import DEFAULT_BASE_MODEL, Project
+from app.serving.local_model import AdapterLoadError, LocalGeneration
 from app.serving.model_provider import (
-    DEFAULT_GROQ_MODEL,
-    GroqProvider,
+    LocalModelProvider,
     ModelProvider,
     ProviderResponse,
 )
 from app.serving.model_runtime import ModelRuntime
 from app.shared.database import Base
+from app.shared.model_config import RuntimeModelSettings
 from app.training.models import (
     Dataset,
     DatasetStatus,
@@ -145,7 +144,7 @@ class ModelRuntimeTests(unittest.TestCase):
         self.assertEqual(session.runtime_type, "test-runtime")
         self.assertFalse(session.capabilities["model_fallbacks"])
         self.assertTrue(session.capabilities["adapter_resolution"])
-        self.assertFalse(session.capabilities["adapter_loading"])
+        self.assertTrue(session.capabilities["adapter_loading"])
         self.assertFalse(session.capabilities["weights_loaded"])
         self.assertEqual(session.validation_warnings, ())
 
@@ -165,10 +164,10 @@ class ModelRuntimeTests(unittest.TestCase):
                 session.active_artifact.metadata["contains_base_model_weights"]
             )
             self.assertTrue(session.capabilities["adapter_metadata_available"])
-            self.assertFalse(session.capabilities["adapter_loading"])
+            self.assertTrue(session.capabilities["adapter_loading"])
             self.assertEqual(session.validation_warnings, ())
 
-    def test_missing_metadata_is_reported_without_disabling_remote_inference(self):
+    def test_missing_metadata_is_reported_to_the_runtime_session(self):
         with tempfile.TemporaryDirectory() as artifact_root:
             artifact = self._active_artifact(
                 artifact_root,
@@ -242,80 +241,75 @@ class ModelRuntimeTests(unittest.TestCase):
         )
 
 
-class GroqProviderTests(unittest.TestCase):
-    def setUp(self):
-        self.provider = GroqProvider()
-        self.session = SimpleNamespace(_provider_api_key="project-key")
+class FakeLocalCache:
+    initialized = True
+    loaded_artifact_ids = ()
 
-    def test_model_candidates_preserve_existing_order_and_remove_duplicates(self):
-        with patch.dict(
-            os.environ,
-            {
-                "GROQ_MODEL": "primary-model",
-                "GROQ_MODEL_FALLBACKS": (
-                    f"{DEFAULT_GROQ_MODEL},fallback-model,primary-model"
-                ),
-            },
-            clear=False,
-        ):
-            self.assertEqual(
-                self.provider.model_candidates(),
-                ("primary-model", DEFAULT_GROQ_MODEL, "fallback-model"),
-            )
+    def __init__(self, content="response text"):
+        self.content = content
+        self.initialized_with = 0
+        self.requests = []
 
-    @patch("langchain_groq.ChatGroq")
-    def test_text_completion_preserves_groq_request_and_normalizes_response(
-        self, chat_groq
-    ):
-        client = chat_groq.return_value
-        client.invoke.return_value = SimpleNamespace(
-            content="response text",
-            usage_metadata={"input_tokens": 5, "output_tokens": 3},
+    def initialize(self):
+        self.initialized_with += 1
+
+    def generate(self, **request):
+        self.requests.append(request)
+        return LocalGeneration(
+            content=self.content,
+            input_tokens=5,
+            output_tokens=3,
         )
 
+
+class LocalModelProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.settings = RuntimeModelSettings()
+        self.cache = FakeLocalCache()
+        self.provider = LocalModelProvider(self.settings, self.cache)
+        self.session = SimpleNamespace(
+            project_id="project-1",
+            active_artifact=SimpleNamespace(
+                id="artifact-1",
+                adapter_path="/tmp/project-1/adapter-v1",
+                metadata={"contains_adapter_weights": True},
+            ),
+            adapter_path="/tmp/project-1/adapter-v1",
+            validation_warnings=(),
+        )
+
+    def test_initialize_and_model_candidates_use_one_local_model(self):
+        self.provider.initialize(self.settings.base_model)
+
+        self.assertEqual(self.cache.initialized_with, 1)
+        self.assertEqual(self.provider.model_candidates(), (self.settings.base_model,))
+        self.assertEqual(self.provider.name, "local")
+
+    def test_text_completion_uses_project_adapter_and_reports_usage(self):
         response = self.provider.complete(
             self.session,
-            model="configured-model",
+            model=self.settings.base_model,
             messages="prompt",
             temperature=0.3,
         )
 
-        chat_groq.assert_called_once_with(
-            model="configured-model",
-            temperature=0.3,
-            api_key="project-key",
-        )
-        client.invoke.assert_called_once_with("prompt")
         self.assertEqual(response.content, "response text")
         self.assertEqual(response.usage_metadata["input_tokens"], 5)
+        self.assertEqual(self.cache.requests[0]["project_id"], "project-1")
+        self.assertEqual(self.cache.requests[0]["artifact_id"], "artifact-1")
+        self.assertEqual(
+            self.cache.requests[0]["messages"],
+            [{"role": "user", "content": "prompt"}],
+        )
 
-    @patch("groq.Groq")
-    def test_tool_completion_normalizes_groq_tool_calls(self, groq_client):
-        raw_tool_call = SimpleNamespace(
-            id="call-1",
-            function=SimpleNamespace(name="get_runbook", arguments='{"id":"rb"}'),
+    def test_tool_completion_parses_qwen_tool_call_envelope(self):
+        self.cache.content = (
+            '<tool_call>{"name":"get_runbook","arguments":{"id":"rb"}}</tool_call>'
         )
-        raw_response = SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content=None,
-                        tool_calls=[raw_tool_call],
-                    )
-                )
-            ],
-            usage=SimpleNamespace(
-                prompt_tokens=10,
-                completion_tokens=4,
-                total_tokens=14,
-            ),
-        )
-        client = groq_client.return_value
-        client.chat.completions.create.return_value = raw_response
 
         response = self.provider.complete_with_tools(
             self.session,
-            model="configured-model",
+            model=self.settings.base_model,
             messages=[{"role": "user", "content": "prompt"}],
             tools=[{"type": "function"}],
             tool_choice="auto",
@@ -323,12 +317,22 @@ class GroqProviderTests(unittest.TestCase):
             max_tokens=1500,
         )
 
-        groq_client.assert_called_once_with(api_key="project-key")
         self.assertEqual(response.content, "")
-        self.assertEqual(response.tool_calls[0].id, "call-1")
         self.assertEqual(response.tool_calls[0].name, "get_runbook")
         self.assertEqual(response.tool_calls[0].arguments, '{"id":"rb"}')
-        self.assertEqual(response.usage_metadata["total_tokens"], 14)
+        self.assertEqual(response.usage_metadata["total_tokens"], 8)
+
+    def test_missing_active_artifact_is_a_clear_runtime_error(self):
+        self.session.active_artifact = None
+        self.session.adapter_path = None
+
+        with self.assertRaisesRegex(AdapterLoadError, "no READY active"):
+            self.provider.complete(
+                self.session,
+                model=self.settings.base_model,
+                messages="prompt",
+                temperature=0,
+            )
 
 
 if __name__ == "__main__":

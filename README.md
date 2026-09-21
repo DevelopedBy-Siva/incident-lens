@@ -62,7 +62,7 @@ FastAPI Backend        -> Render
 Log Simulator          -> Render
 Incident State         -> Neon PostgreSQL
 Raw Logs               -> Grafana Loki
-LLM Provider           -> Groq / GPT-OSS
+Model Inference        -> Local Qwen + project LoRA adapter
 LLM Tracing            -> Langfuse
 Notifications          -> Discord / SMTP
 ```
@@ -212,8 +212,8 @@ and is never activated.
 Artifact registration, project activation, and the final PASSED job transition
 are coordinated by the Training Worker. If training, evaluation, or metadata
 writing fails, the job becomes FAILED and the project's existing active
-artifact remains unchanged. Successful artifacts are activated for future use,
-but the current Groq inference path does not load adapter weights.
+artifact remains unchanged. Successful artifacts are activated and become the
+project's local inference adapter.
 
 The production backend uses portable Transformers + PEFT rather than Unsloth.
 Unsloth is not enabled because the current deployment contract does not
@@ -229,37 +229,42 @@ All Serving Plane inference now enters through the Model Runtime:
 Incident evidence
       |
       v
+Project -> active_artifact_id -> READY ModelArtifact
+      |
+      v
 Model Runtime
-      |-- Project base model
+      |-- Shared base model (loaded once)
       |-- READY active artifact
       |-- Adapter path and metadata
-      |-- Provider and capabilities
+      |-- Project adapter cache
       v
-Groq Provider
+Local Qwen + active LoRA adapter
       |
       v
 Existing decision output
 ```
 
-`resolve_project_model(project_id)` returns a runtime session that
-describes the project, base model, validated active artifact, adapter path,
-provider, runtime type, configured model candidates, and runtime capabilities.
+`resolve_project_model(project_id)` returns a runtime session that describes the
+project, shared base model, validated active artifact, adapter path, local
+runtime type, and runtime capabilities.
 An active artifact is accepted only when it belongs to the project, is READY,
 and was trained for the project's base model. Its `metadata.json` is loaded and
 checked against the database record; validation problems are exposed as session
-warnings rather than silently loading incompatible state.
+warnings and become explicit adapter-loading errors during inference.
 
-The runtime is metadata-only in this phase. It explicitly reports
-`adapter_loading=false` and `weights_loaded=false`, and the Groq provider keeps
-the same API keys, model ordering, fallback behavior, prompts, temperatures,
-tool calls, parsing, and outputs used by the previous inference path. Dataset
-building and training remain separate and are never invoked by the runtime.
+At application startup, the runtime loads the configured shared base model. A
+base-model loading failure prevents startup. On the first inference request for
+a project artifact, PEFT loads that adapter into the shared model under a unique
+name. Later requests reuse it. Adapter selection and generation share one lock,
+so concurrent project requests cannot generate with another project's adapter.
+When `Project.active_artifact_id` changes, the next request resolves and selects
+the new artifact automatically.
 
-Future local LoRA support plugs in at the provider boundary. A local provider
-can use the already-resolved base model and adapter metadata to load weights and
-advertise adapter capabilities; decision analysis, investigation, runbook
-tie-breaking, evidence creation, policy evaluation, and notification callers
-continue using the same runtime-session interface.
+The local provider uses the model's chat template for existing prompts and tool
+schemas. Generated text continues through the existing Pydantic parsing,
+validation, policy, action, notification, and audit paths. A missing, failed,
+incompatible, or unreadable adapter produces a local runtime error; there is no
+remote inference or base-model-only fallback.
 
 ---
 
@@ -320,10 +325,6 @@ python log-analyzer/scripts/metrics_report.py triage-eval --dataset log-analyzer
 python log-analyzer/scripts/check_runbook_coverage.py
 ```
 
-The local Groq-backed eval was run with `openai/gpt-oss-20b`.
-
----
-
 ## Screenshots
 
 ### Dashboard
@@ -356,7 +357,7 @@ The local Groq-backed eval was run with `openai/gpt-oss-20b`.
 
 **Logs:** Grafana Loki
 
-**LLM:** Groq, GPT-OSS, LangChain
+**LLM:** Local Qwen 2.5 Instruct, Transformers, PEFT, LoRA, LangChain
 
 **Notifications:** Discord, SMTP
 
@@ -381,6 +382,10 @@ npm install
 npm start
 ```
 
+The first backend startup downloads and loads the configured shared base model;
+startup fails if that model cannot be loaded. Local LLM inference also requires
+the project to have a READY active artifact produced by the training lifecycle.
+
 ---
 
 ## Environment Variables
@@ -392,13 +397,11 @@ LOKI_URL=https://logs-prod-xxx.grafana.net
 LOKI_USERNAME=your_username
 LOKI_API_KEY=your_token
 
-GROQ_API_KEY=your_key
-GROQ_API_KEY_2=your_second_key
-GROQ_API_KEY_3=your_third_key
-GROQ_MODEL=openai/gpt-oss-20b
-GROQ_MODEL_FALLBACKS=openai/gpt-oss-20b,openai/gpt-oss-120b
+MODEL_PROVIDER=local
+BASE_MODEL=Qwen/Qwen2.5-0.5B-Instruct
+DEVICE=cpu
+DTYPE=auto
 
-LORA_BASE_MODEL_ID=Qwen/Qwen2.5-0.5B-Instruct
 LORA_RANK=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.05

@@ -1,9 +1,14 @@
 import json
+import logging
 import os
 import time
-import logging
 from typing import Optional
 
+from app.serving.local_model import (
+    AdapterLoadError,
+    BaseModelLoadError,
+    LocalInferenceError,
+)
 from app.serving.model_runtime import get_model_runtime
 
 logger = logging.getLogger(__name__)
@@ -137,6 +142,7 @@ class ToolExecutor:
 
     def _get_related_incidents(self, minutes: int) -> str:
         from datetime import datetime, timedelta
+
         from app.data.models import Incident
         from app.serving.models import Analysis
         from app.shared.database import SessionLocal
@@ -202,6 +208,7 @@ class ToolExecutor:
 
     def _get_incident_timeline(self, minutes: int) -> str:
         from datetime import datetime, timedelta
+
         from app.data.models import Incident
         from app.shared.database import SessionLocal
 
@@ -285,15 +292,10 @@ Initial evidence:
 Investigate using the available tools, then output your final JSON analysis."""
 
 
-def _is_rate_limit_error(error: Exception) -> bool:
-    text = str(error).lower()
-    return "429" in text or "rate limit" in text or "rate_limit_exceeded" in text
-
-
 class InvestigationLoop:
     """
     Runs the multi-turn tool-calling investigation loop.
-    Falls back to single-shot analysis if Groq tool-calling fails.
+    Falls back to single-shot local analysis if tool-calling output is unusable.
     """
 
     def investigate(self, incident, project, evidence=None) -> Optional[object]:
@@ -303,11 +305,6 @@ class InvestigationLoop:
         Returns an IncidentAnalysis-compatible object, or None on failure.
         Always falls back to the standard decision_engine if the loop fails.
         """
-        from app.serving.decision_engine import (
-            get_decision_engine,
-            validate_analysis,
-            IncidentAnalysis,
-        )
 
         t0 = time.time()
         self._last_tool_calls = []
@@ -319,13 +316,6 @@ class InvestigationLoop:
         runtime_session = get_model_runtime().resolve_project_model(
             getattr(project, "id", None), project=project
         )
-        if not runtime_session.provider_available:
-            logger.info(
-                "[INVESTIGATOR] Model provider unavailable — falling back to decision_engine"
-            )
-            self._last_fallback = True
-            return self._fallback(incident, project, evidence)
-        models = runtime_session.model_candidates
 
         executor = ToolExecutor(incident, project)
 
@@ -361,31 +351,14 @@ class InvestigationLoop:
                 self._last_iterations = iteration
                 span = self._start_span(trace, f"iteration-{iteration}", messages)
 
-                response = None
-                last_error = None
-                for model_name in models:
-                    try:
-                        response = runtime_session.complete_with_tools(
-                            model=model_name,
-                            messages=messages,
-                            tools=TOOLS if iteration < MAX_ITERATIONS else None,
-                            tool_choice="auto" if iteration < MAX_ITERATIONS else None,
-                            temperature=0.2,
-                            max_tokens=1500,
-                        )
-                        break
-                    except Exception as e:
-                        last_error = e
-                        if _is_rate_limit_error(e) and model_name != models[-1]:
-                            logger.warning(
-                                "[INVESTIGATOR] Model %s rate-limited — trying fallback",
-                                model_name,
-                            )
-                            continue
-                        raise
-
-                if response is None and last_error:
-                    raise last_error
+                response = runtime_session.complete_with_tools(
+                    model=runtime_session.default_model,
+                    messages=messages,
+                    tools=TOOLS if iteration < MAX_ITERATIONS else None,
+                    tool_choice="auto" if iteration < MAX_ITERATIONS else None,
+                    temperature=0.2,
+                    max_tokens=1500,
+                )
 
                 msg = response
                 self._end_span(span, msg)
@@ -470,6 +443,11 @@ class InvestigationLoop:
             )
             return analysis
 
+        except (AdapterLoadError, BaseModelLoadError, LocalInferenceError) as e:
+            logger.error("[INVESTIGATOR] Local model failure: %s", e)
+            self._update_trace(trace, None, tool_calls_made, 0, error=str(e))
+            self._last_tool_calls = list(tool_calls_made)
+            return None
         except Exception as e:
             logger.error("[INVESTIGATOR] Loop failed: %s — falling back", e)
             self._update_trace(trace, None, tool_calls_made, 0, error=str(e))
@@ -487,8 +465,9 @@ class InvestigationLoop:
         )
 
     def _parse_final(self, text: str, incident) -> Optional[object]:
-        from app.serving.decision_engine import validate_analysis, IncidentAnalysis
         import re
+
+        from app.serving.decision_engine import IncidentAnalysis, validate_analysis
 
         clean = re.sub(r"```(?:json)?", "", text).strip()
 

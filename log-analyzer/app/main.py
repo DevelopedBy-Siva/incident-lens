@@ -18,6 +18,7 @@ from app.api import (
     routes_model_management,
 )
 from app.control.maintenance import cleanup_all_data
+from app.serving.model_runtime import get_model_runtime
 from app.shared.database import init_db
 
 load_dotenv()
@@ -56,6 +57,8 @@ def start_verifier():
 async def lifespan(app: FastAPI):
     print("Starting IncidentLens...")
     init_db()
+    get_model_runtime().initialize()
+    print("[MODEL] Shared local base model loaded")
     if _should_reset_data_on_startup():
         cleanup_all_data()
         print("[MAIN] RESET_DATA_ON_STARTUP enabled — cleared incident-processing data")

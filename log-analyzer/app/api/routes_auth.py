@@ -1,18 +1,19 @@
 import re
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, validator
 from sqlalchemy.orm import Session
 
-from app.control.models import Project
-from app.shared.database import get_db
 from app.control.auth import (
-    hash_password,
-    verify_password,
     create_access_token,
     decode_access_token,
+    hash_password,
+    verify_password,
 )
+from app.control.models import Project
+from app.shared.database import get_db
 
 router = APIRouter()
 security = HTTPBearer()
@@ -54,8 +55,6 @@ class ProjectSettings(BaseModel):
     loki_username: Optional[str] = None
     loki_api_key: Optional[str] = None
     loki_service: Optional[str] = None
-    # LLM
-    groq_api_key: Optional[str] = None
     # Observability
     langfuse_public_key: Optional[str] = None
     langfuse_secret_key: Optional[str] = None
@@ -95,8 +94,6 @@ def _project_to_dict(project: Project) -> dict:
         "loki_username": HIDDEN if t else project.loki_username,
         "loki_api_key": _mask(project.loki_api_key, t),
         "loki_service": HIDDEN if t else project.loki_service,
-        # LLM
-        "groq_api_key": _mask(project.groq_api_key, t),
         # Observability
         "langfuse_public_key": _mask(project.langfuse_public_key, t),
         "langfuse_secret_key": _mask(project.langfuse_secret_key, t),
@@ -111,14 +108,14 @@ def _project_to_dict(project: Project) -> dict:
                 project.loki_url,
                 project.loki_username,
                 project.loki_api_key,
-                project.groq_api_key,
+                project.active_artifact_id,
             ]
         ),
         "setup_status": {
             "loki": all(
                 [project.loki_url, project.loki_username, project.loki_api_key]
             ),
-            "llm": bool(project.groq_api_key),
+            "llm": bool(project.active_artifact_id),
             "observability": all(
                 [project.langfuse_public_key, project.langfuse_secret_key]
             ),
@@ -214,7 +211,6 @@ def update_settings(
         "loki_username",
         "loki_api_key",
         "loki_service",
-        "groq_api_key",
         "langfuse_public_key",
         "langfuse_secret_key",
         "langfuse_host",
@@ -250,7 +246,7 @@ def settings_status(project: Project = Depends(get_current_project)):
                 [project.loki_url, project.loki_username, project.loki_api_key]
             )
         },
-        "llm": {"configured": bool(project.groq_api_key)},
+        "llm": {"configured": bool(project.active_artifact_id)},
         "observability": {
             "configured": all(
                 [project.langfuse_public_key, project.langfuse_secret_key]
@@ -270,7 +266,7 @@ def settings_status(project: Project = Depends(get_current_project)):
                 project.loki_url,
                 project.loki_username,
                 project.loki_api_key,
-                project.groq_api_key,
+                project.active_artifact_id,
             ]
         ),
     }

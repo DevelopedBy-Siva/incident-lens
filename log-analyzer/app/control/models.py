@@ -27,7 +27,6 @@ class Project(Base):
     loki_username = Column(String, nullable=True)
     loki_api_key = Column(String, nullable=True)
     loki_service = Column(String, nullable=True)
-    groq_api_key = Column(String, nullable=True)
     langfuse_public_key = Column(String, nullable=True)
     langfuse_secret_key = Column(String, nullable=True)
     langfuse_host = Column(String, nullable=True, default="https://cloud.langfuse.com")

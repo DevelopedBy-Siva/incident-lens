@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "metrics_report.py"
 spec = importlib.util.spec_from_file_location("metrics_report", SCRIPT_PATH)
 metrics_report = importlib.util.module_from_spec(spec)
@@ -16,6 +15,7 @@ class EvalMetricTests(unittest.TestCase):
     def test_llm_eval_uses_model_runtime_provider(self):
         class RuntimeSession:
             provider_available = True
+            default_model = "local-qwen-model"
 
             def __init__(self):
                 self.calls = []

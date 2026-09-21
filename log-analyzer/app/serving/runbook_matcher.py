@@ -1,8 +1,12 @@
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
+
 from app.serving.runbook_loader import Runbook, get_runbooks
+
+logger = logging.getLogger(__name__)
 
 HIGH_CONFIDENCE_THRESHOLD = 0.75
 BORDERLINE_THRESHOLD = 0.40
@@ -213,8 +217,6 @@ def _call_llm_tiebreaker(
         runtime_session = get_model_runtime().resolve_project_model(
             getattr(project, "id", None), project=project
         )
-        if not runtime_session.provider_available:
-            return None
 
         candidate_payload = [
             {
@@ -253,7 +255,8 @@ Return strict JSON only:
         )
         parsed = json.loads(response.content)
         return parsed if isinstance(parsed, dict) else None
-    except Exception:
+    except Exception as error:
+        logger.warning("Local runbook tie-breaker inference failed: %s", error)
         return None
 
 

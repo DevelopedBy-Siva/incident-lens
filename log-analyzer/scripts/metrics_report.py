@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass
@@ -33,8 +32,6 @@ DISPOSITION_RANK = {
 
 RUNBOOK_FAST_PATH_THRESHOLD = 0.5
 AUTO_SUPPRESS_MIN_CONFIDENCE = 0.80
-DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
-
 AGENT_TOOLS = [
     {
         "type": "function",
@@ -194,10 +191,7 @@ def _llm_analysis(incident, project):
     runtime_session = get_model_runtime().resolve_project_model(
         getattr(project, "id", None), project=project
     )
-    if not runtime_session.provider_available:
-        return None, "No Groq API keys are visible to this shell or .env"
-
-    model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+    model = runtime_session.default_model
     messages = _agent_messages(incident)
     tool_calls = []
     final_text = ""
@@ -277,7 +271,7 @@ def _llm_analysis(incident, project):
     except Exception as exc:
         if _is_invented_json_tool_error(exc):
             return _llm_plain_json_analysis(runtime_session, model, incident)
-        return None, f"Groq request failed: {_short_error(exc)}"
+        return None, f"Local inference failed: {_short_error(exc)}"
 
     return _analysis_from_final_text(final_text, incident, tool_calls)
 
@@ -317,7 +311,7 @@ def _llm_plain_json_analysis(runtime_session, model: str, incident):
             max_tokens=1200,
         )
     except Exception as exc:
-        return None, f"Groq no-tool retry failed: {_short_error(exc)}"
+        return None, f"Local no-tool retry failed: {_short_error(exc)}"
 
     final_text = response.content or ""
     return _analysis_from_final_text(final_text, incident, ["no_tool_retry"])
@@ -326,7 +320,7 @@ def _llm_plain_json_analysis(runtime_session, model: str, incident):
 def _analysis_from_final_text(final_text: str, incident, tool_calls: list[str]):
     data = _json_object_from_text(final_text)
     if not data:
-        return None, "Groq response did not contain parseable JSON"
+        return None, "Local model response did not contain parseable JSON"
 
     severity = str(data.get("severity", "medium")).lower().strip()
     disposition = str(data.get("disposition", "OBSERVE")).upper().strip()
@@ -395,8 +389,8 @@ def _agent_tool_result(incident, tool_name: str, args: dict) -> str:
         return json.dumps({"incident_id": incident.id, "logs": incident.sample_lines})
 
     if tool_name == "get_runbook_candidates":
-        from app.serving.runbook_matcher import score_runbook
         from app.serving.runbook_loader import get_runbooks
+        from app.serving.runbook_matcher import score_runbook
 
         text = " ".join(incident.sample_lines or [])
         candidates = []
@@ -1085,7 +1079,7 @@ def main():
     triage_eval.add_argument(
         "--project",
         default=None,
-        help="Project name to load Groq credentials from for LLM-only cases",
+        help="Project name whose active adapter should serve LLM-only cases",
     )
 
     args = parser.parse_args()

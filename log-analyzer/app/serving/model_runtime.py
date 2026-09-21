@@ -6,12 +6,16 @@ from typing import Any
 from app.control.models import Project
 from app.control.repositories import ProjectRepository
 from app.serving.model_provider import (
-    GroqProvider,
+    LocalModelProvider,
     ModelProvider,
     ProviderResponse,
 )
 from app.shared.database import SessionLocal
-from app.shared.model_config import configured_base_model
+from app.shared.model_config import (
+    RuntimeModelSettings,
+    configured_base_model,
+    configured_runtime_settings,
+)
 from app.training.models import ModelArtifact, ModelArtifactStatus
 from app.training.repositories import ModelArtifactRepository
 
@@ -34,8 +38,11 @@ class ArtifactResolution:
 
 
 class BaseModelResolver:
+    def __init__(self, base_model: str | None = None):
+        self.base_model = base_model or configured_base_model()
+
     def resolve(self, project: Project) -> str:
-        return configured_base_model()
+        return self.base_model
 
 
 class ArtifactResolver:
@@ -130,7 +137,6 @@ class ModelRuntimeSession:
     model_candidates: tuple[str, ...]
     default_model: str
     _provider_impl: ModelProvider = field(repr=False, compare=False)
-    _provider_api_key: str | None = field(repr=False, compare=False, default=None)
     validation_warnings: tuple[str, ...] = ()
 
     @property
@@ -173,12 +179,22 @@ class ModelRuntimeSession:
 
 
 class ModelRuntime:
-    """Resolve project model metadata and expose provider-neutral inference."""
+    """Resolve project adapters and expose the single local inference path."""
 
-    def __init__(self, session_factory=SessionLocal, provider=None):
+    def __init__(
+        self,
+        session_factory=SessionLocal,
+        provider=None,
+        settings: RuntimeModelSettings | None = None,
+    ):
         self.session_factory = session_factory
-        self.provider = provider or GroqProvider()
-        self.base_models = BaseModelResolver()
+        self.settings = settings or configured_runtime_settings()
+        self.provider = provider or LocalModelProvider(self.settings)
+        self.base_models = BaseModelResolver(self.settings.base_model)
+
+    def initialize(self) -> None:
+        """Eagerly load the shared base model so startup fails clearly."""
+        self.provider.initialize(self.settings.base_model)
 
     def resolve_project_model(
         self,
@@ -216,8 +232,12 @@ class ModelRuntime:
                 "adapter_metadata_available": bool(
                     artifact and artifact.metadata is not None
                 ),
-                "adapter_loading": False,
-                "weights_loaded": False,
+                "adapter_loading": True,
+                "weights_loaded": bool(
+                    artifact
+                    and hasattr(self.provider, "cache")
+                    and artifact.id in self.provider.cache.loaded_artifact_ids
+                ),
             }
             return ModelRuntimeSession(
                 project_id=project.id,
@@ -232,7 +252,6 @@ class ModelRuntime:
                 default_model=self.provider.default_model,
                 validation_warnings=warnings,
                 _provider_impl=self.provider,
-                _provider_api_key=project.groq_api_key,
             )
         finally:
             if db is not None:
@@ -248,7 +267,6 @@ class ModelRuntime:
                 "name": "system",
                 "base_model": configured_base_model(),
                 "active_artifact_id": None,
-                "groq_api_key": None,
             },
         )()
 

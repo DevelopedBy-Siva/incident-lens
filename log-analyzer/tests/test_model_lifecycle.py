@@ -18,6 +18,9 @@ from app.shared.migrations.versions.v0003_dataset_record_count import (
 from app.shared.migrations.versions.v0004_shared_base_model import (
     upgrade as upgrade_v4,
 )
+from app.shared.migrations.versions.v0005_remove_remote_model_config import (
+    upgrade as upgrade_v5,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -163,6 +166,23 @@ class ModelLifecycleTests(unittest.TestCase):
 
 
 class ModelLifecycleMigrationTests(unittest.TestCase):
+    def test_remote_provider_credential_migration_removes_legacy_column(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE projects ("
+                    "id VARCHAR PRIMARY KEY, "
+                    "groq_api_key VARCHAR"
+                    ")"
+                )
+            )
+            upgrade_v5(connection)
+
+        columns = {column["name"] for column in inspect(engine).get_columns("projects")}
+        self.assertNotIn("groq_api_key", columns)
+        engine.dispose()
+
     def test_shared_base_model_migration_replaces_legacy_alias(self):
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as connection:

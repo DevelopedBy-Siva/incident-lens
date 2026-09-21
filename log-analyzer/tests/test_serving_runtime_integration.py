@@ -29,7 +29,6 @@ def project():
     return SimpleNamespace(
         id="project-1",
         name="project",
-        groq_api_key="project-key",
         langfuse_public_key=None,
         langfuse_secret_key=None,
         langfuse_host=None,
@@ -38,8 +37,8 @@ def project():
 
 class RecordingRuntimeSession:
     provider_available = True
-    model_candidates = ("current-groq-model",)
-    default_model = "current-groq-model"
+    model_candidates = ("local-qwen-model",)
+    default_model = "local-qwen-model"
 
     def __init__(self, content):
         self.content = content
@@ -96,7 +95,7 @@ class ServingRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(runtime.resolutions, [(active_project.id, active_project)])
         method, request = session.calls[0]
         self.assertEqual(method, "complete")
-        self.assertEqual(request["model"], "current-groq-model")
+        self.assertEqual(request["model"], "local-qwen-model")
         self.assertEqual(request["temperature"], 0.3)
 
     def test_investigator_uses_runtime_tool_interface_and_preserves_output(self):
@@ -128,12 +127,12 @@ class ServingRuntimeIntegrationTests(unittest.TestCase):
         self.assertFalse(loop._last_fallback)
         method, request = session.calls[0]
         self.assertEqual(method, "complete_with_tools")
-        self.assertEqual(request["model"], "current-groq-model")
+        self.assertEqual(request["model"], "local-qwen-model")
         self.assertEqual(request["tool_choice"], "auto")
         self.assertEqual(request["temperature"], 0.2)
         self.assertEqual(request["max_tokens"], 1500)
 
-    def test_runbook_tiebreaker_uses_runtime_without_groq_dependency(self):
+    def test_runbook_tiebreaker_uses_local_runtime(self):
         content = json.dumps(
             {
                 "selected_runbook_id": "checkout_failure",
