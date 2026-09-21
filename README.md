@@ -169,7 +169,47 @@ Artifact registration, project activation, and the final PASSED job transition
 are coordinated by the Training Worker. If training, evaluation, or metadata
 writing fails, the job becomes FAILED and the project's existing active
 artifact remains unchanged. Successful artifacts are activated for future use,
-but the current Groq inference path does not read or load them.
+but the current Groq inference path does not load adapter weights.
+
+### Model runtime
+
+All Serving Plane inference now enters through the Model Runtime:
+
+```text
+Incident evidence
+      |
+      v
+Model Runtime
+      |-- Project base model
+      |-- READY active artifact
+      |-- Adapter path and metadata
+      |-- Provider and capabilities
+      v
+Groq Provider
+      |
+      v
+Existing decision output
+```
+
+`resolve_project_model(project_id)` returns a runtime session that
+describes the project, base model, validated active artifact, adapter path,
+provider, runtime type, configured model candidates, and runtime capabilities.
+An active artifact is accepted only when it belongs to the project, is READY,
+and was trained for the project's base model. Its `metadata.json` is loaded and
+checked against the database record; validation problems are exposed as session
+warnings rather than silently loading incompatible state.
+
+The runtime is metadata-only in this phase. It explicitly reports
+`adapter_loading=false` and `weights_loaded=false`, and the Groq provider keeps
+the same API keys, model ordering, fallback behavior, prompts, temperatures,
+tool calls, parsing, and outputs used by the previous inference path. Dataset
+building and training remain separate and are never invoked by the runtime.
+
+Future local LoRA support plugs in at the provider boundary. A local provider
+can use the already-resolved base model and adapter metadata to load weights and
+advertise adapter capabilities; decision analysis, investigation, runbook
+tie-breaking, evidence creation, policy evaluation, and notification callers
+continue using the same runtime-session interface.
 
 ---
 

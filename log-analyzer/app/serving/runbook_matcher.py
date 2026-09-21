@@ -181,7 +181,10 @@ def select_runbook_for_incident(
 
     selected_id = llm_choice.get("selected_runbook_id")
     confidence = llm_choice.get("confidence", 0.0)
-    if selected_id not in candidate_ids or confidence < LLM_TIEBREAKER_CONFIDENCE_THRESHOLD:
+    if (
+        selected_id not in candidate_ids
+        or confidence < LLM_TIEBREAKER_CONFIDENCE_THRESHOLD
+    ):
         return RunbookSelection(
             None,
             best_score,
@@ -201,12 +204,16 @@ def select_runbook_for_incident(
     )
 
 
-def _call_llm_tiebreaker(incident, evidence, candidates, project=None) -> Optional[dict]:
+def _call_llm_tiebreaker(
+    incident, evidence, candidates, project=None
+) -> Optional[dict]:
     try:
-        from app.serving.decision_engine import _make_llm
+        from app.serving.model_runtime import get_model_runtime
 
-        llm = _make_llm(project=project)
-        if llm is None:
+        runtime_session = get_model_runtime().resolve_project_model(
+            getattr(project, "id", None), project=project
+        )
+        if not runtime_session.provider_available:
             return None
 
         candidate_payload = [
@@ -239,9 +246,12 @@ Return strict JSON only:
   "confidence": 0.0,
   "reason": "short reason"
 }}"""
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", response)
-        parsed = json.loads(str(content))
+        response = runtime_session.complete(
+            model=runtime_session.default_model,
+            messages=prompt,
+            temperature=0.3,
+        )
+        parsed = json.loads(response.content)
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None

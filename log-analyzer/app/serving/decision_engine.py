@@ -1,17 +1,15 @@
 import os
-import random
 import time
 from typing import Optional
 
-from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-load_dotenv()
+from app.serving.model_runtime import get_model_runtime
 
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+load_dotenv()
 
 
 def _make_langfuse(project=None):
@@ -71,26 +69,6 @@ def _langfuse_usage_payload(response) -> Optional[dict]:
         "total": total_tokens,
         "unit": "TOKENS",
     }
-
-
-def _configured_groq_models() -> list[str]:
-    primary = os.getenv("GROQ_MODEL", "").strip()
-    fallbacks_raw = os.getenv("GROQ_MODEL_FALLBACKS", "").strip()
-    fallbacks = [m.strip() for m in fallbacks_raw.split(",") if m.strip()]
-
-    models = []
-    if primary:
-        models.append(primary)
-    models.append(DEFAULT_GROQ_MODEL)
-    models.extend(fallbacks)
-
-    deduped = []
-    seen = set()
-    for model in models:
-        if model not in seen:
-            deduped.append(model)
-            seen.add(model)
-    return deduped
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
@@ -185,24 +163,7 @@ def validate_analysis(analysis: IncidentAnalysis, incident) -> IncidentAnalysis:
     return analysis
 
 
-def _make_llm(project=None, model_name: Optional[str] = None) -> Optional[ChatGroq]:
-    key = (project.groq_api_key if project else None) or ""
-    if not key:
-        keys = [
-            os.getenv(v, "").strip()
-            for v in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
-            if os.getenv(v, "").strip()
-        ]
-        key = random.choice(keys) if keys else ""
-    if not key:
-        print("[LLM] No Groq API key configured — LLM analysis disabled")
-        return None
-    return ChatGroq(
-        model=model_name or DEFAULT_GROQ_MODEL, temperature=0.3, api_key=key
-    )
-
 class DecisionEngine:
-
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=IncidentAnalysis)
 
@@ -349,15 +310,16 @@ Was the new incident caused by one of the earlier incidents?
             evidence_context=evidence_context,
         )
 
-        models = _configured_groq_models()
-        if not models:
+        runtime_session = get_model_runtime().resolve_project_model(
+            getattr(project, "id", None), project=project
+        )
+        if not runtime_session.provider_available:
+            print("[LLM] No Groq API key configured — LLM analysis disabled")
             return None
+        models = runtime_session.model_candidates
 
         last_error = None
         for model_name in models:
-            llm = _make_llm(project, model_name=model_name)
-            if not llm:
-                return None
             try:
                 gen = trace.generation(
                     name="llm-analysis",
@@ -366,7 +328,11 @@ Was the new incident caused by one of the earlier incidents?
                     input=evidence_context,
                 )
 
-                response = llm.invoke(formatted)
+                response = runtime_session.complete(
+                    model=model_name,
+                    messages=formatted,
+                    temperature=0.3,
+                )
                 elapsed_ms = int((time.time() - t0) * 1000)
 
                 usage_payload = _langfuse_usage_payload(response)
@@ -441,24 +407,31 @@ Was the new incident caused by one of the earlier incidents?
             earlier_incidents="\n\n".join(earlier_blocks),
         )
 
-        models = _configured_groq_models()
-        if not models:
+        runtime_session = get_model_runtime().resolve_project_model(
+            getattr(project, "id", None), project=project
+        )
+        if not runtime_session.provider_available:
+            print("[LLM] No Groq API key configured — LLM analysis disabled")
             return None
+        models = runtime_session.model_candidates
 
         last_error = None
         for model_name in models:
-            llm = _make_llm(project, model_name=model_name)
-            if not llm:
-                return None
             try:
                 gen = trace.generation(name="root-cause-llm", model=model_name)
-                response = llm.invoke(formatted)
+                response = runtime_session.complete(
+                    model=model_name,
+                    messages=formatted,
+                    temperature=0.3,
+                )
                 gen.end(output=response.content)
 
                 result = self.root_cause_parser.parse(response.content)
                 valid_ids = {inc.id for inc in earlier_incidents}
                 if result.has_cause and result.cause_incident_id not in valid_ids:
-                    print(f"[CHAIN] LLM returned invalid cause_incident_id — discarding")
+                    print(
+                        f"[CHAIN] LLM returned invalid cause_incident_id — discarding"
+                    )
                     return None
 
                 trace.update(
@@ -479,6 +452,7 @@ Was the new incident caused by one of the earlier incidents?
         trace.update(metadata={"error": str(last_error) if last_error else "unknown"})
         print(f"[CHAIN] chain_root_cause failed: {last_error}")
         return None
+
 
 _decision_engine: Optional[DecisionEngine] = None
 

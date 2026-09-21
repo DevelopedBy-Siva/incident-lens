@@ -1,18 +1,16 @@
 import json
 import os
 import time
-import random
 import logging
 from typing import Optional
+
+from app.serving.model_runtime import get_model_runtime
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 4
 TOOL_LOG_LINES = 20
 TOOL_INCIDENT_LIMIT = 8
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
-
-
 TOOLS = [
     {
         "type": "function",
@@ -287,49 +285,6 @@ Initial evidence:
 Investigate using the available tools, then output your final JSON analysis."""
 
 
-def _make_llm_client(project=None):
-    """Return a raw Groq client (not LangChain) for tool-calling support."""
-    try:
-        from groq import Groq
-    except ImportError:
-        logger.error("[INVESTIGATOR] groq package not installed")
-        return None, None
-
-    key = (project.groq_api_key if project else None) or ""
-    if not key:
-        keys = [
-            os.getenv(v, "").strip()
-            for v in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]
-            if os.getenv(v, "").strip()
-        ]
-        key = random.choice(keys) if keys else ""
-
-    if not key:
-        return None, None
-
-    return Groq(api_key=key), _configured_groq_models()
-
-
-def _configured_groq_models() -> list[str]:
-    primary = os.getenv("GROQ_MODEL", "").strip()
-    fallbacks_raw = os.getenv("GROQ_MODEL_FALLBACKS", "").strip()
-    fallbacks = [m.strip() for m in fallbacks_raw.split(",") if m.strip()]
-
-    models = []
-    if primary:
-        models.append(primary)
-    models.append(DEFAULT_GROQ_MODEL)
-    models.extend(fallbacks)
-
-    deduped = []
-    seen = set()
-    for model in models:
-        if model not in seen:
-            deduped.append(model)
-            seen.add(model)
-    return deduped
-
-
 def _is_rate_limit_error(error: Exception) -> bool:
     text = str(error).lower()
     return "429" in text or "rate limit" in text or "rate_limit_exceeded" in text
@@ -361,13 +316,16 @@ class InvestigationLoop:
         lf = self._make_langfuse(project)
         trace = self._start_trace(lf, incident)
 
-        client, models = _make_llm_client(project)
-        if not client:
+        runtime_session = get_model_runtime().resolve_project_model(
+            getattr(project, "id", None), project=project
+        )
+        if not runtime_session.provider_available:
             logger.info(
-                "[INVESTIGATOR] No Groq client — falling back to decision_engine"
+                "[INVESTIGATOR] Model provider unavailable — falling back to decision_engine"
             )
             self._last_fallback = True
             return self._fallback(incident, project, evidence)
+        models = runtime_session.model_candidates
 
         executor = ToolExecutor(incident, project)
 
@@ -407,7 +365,7 @@ class InvestigationLoop:
                 last_error = None
                 for model_name in models:
                     try:
-                        response = client.chat.completions.create(
+                        response = runtime_session.complete_with_tools(
                             model=model_name,
                             messages=messages,
                             tools=TOOLS if iteration < MAX_ITERATIONS else None,
@@ -429,7 +387,7 @@ class InvestigationLoop:
                 if response is None and last_error:
                     raise last_error
 
-                msg = response.choices[0].message
+                msg = response
                 self._end_span(span, msg)
 
                 if not msg.tool_calls:
@@ -450,8 +408,8 @@ class InvestigationLoop:
                                 "id": tc.id,
                                 "type": "function",
                                 "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
+                                    "name": tc.name,
+                                    "arguments": tc.arguments,
                                 },
                             }
                             for tc in msg.tool_calls
@@ -462,21 +420,21 @@ class InvestigationLoop:
                 for tc in msg.tool_calls:
                     args = {}
                     try:
-                        args = json.loads(tc.function.arguments or "{}")
+                        args = json.loads(tc.arguments or "{}")
                     except json.JSONDecodeError:
                         pass
 
-                    tool_result = executor.execute(tc.function.name, args)
+                    tool_result = executor.execute(tc.name, args)
                     tool_calls_made.append(
                         {
-                            "tool": tc.function.name,
+                            "tool": tc.name,
                             "args": args,
                         }
                     )
 
                     logger.info(
                         "[INVESTIGATOR] Tool called: %s(%s)",
-                        tc.function.name,
+                        tc.name,
                         args,
                     )
 
