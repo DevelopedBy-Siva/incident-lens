@@ -137,6 +137,40 @@ Datasets are immutable because future training jobs must be reproducible. A
 later training job will reference one dataset row and read its registered
 storage key; building a dataset does not create a training job or model artifact.
 
+### Training lifecycle
+
+A READY dataset can be queued and run synchronously through the Training Plane:
+
+```text
+POST /api/training-jobs
+POST /api/training-jobs/{id}/run
+```
+
+The authenticated project is the job owner; the create request supplies the
+`dataset_id`. Jobs follow explicit transitions:
+
+```text
+success:            QUEUED -> RUNNING -> EVALUATING -> PASSED
+training failure:   QUEUED -> RUNNING -> FAILED
+evaluation failure: QUEUED -> RUNNING -> EVALUATING -> FAILED
+```
+
+The current training engine is deliberately a placeholder. It exercises the
+complete lifecycle and reports realistic execution metadata, but it does not
+run LoRA, create an adapter, use a GPU, or produce model weights. Evaluation
+checks dataset availability, record count, and successful engine execution.
+
+After evaluation passes, IncidentLens registers an `adapter-vN` ModelArtifact
+and writes only an `artifacts/<project>/<version>/metadata.json` file. The file
+explicitly records that training was simulated and that it contains no model
+weights. Set `ARTIFACT_STORAGE_PATH` to change the local artifact root.
+
+Artifact registration, project activation, and the final PASSED job transition
+are coordinated by the Training Worker. If training, evaluation, or metadata
+writing fails, the job becomes FAILED and the project's existing active
+artifact remains unchanged. Successful artifacts are activated for future use,
+but the current Groq inference path does not read or load them.
+
 ---
 
 ## Example Decisions

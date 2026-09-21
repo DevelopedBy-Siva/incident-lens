@@ -59,6 +59,7 @@ class ModelLifecycleTests(unittest.TestCase):
         dataset = service.create_dataset_metadata(
             self.project.id, "v1", "datasets/alpha/v1.jsonl"
         )
+        dataset = service.mark_dataset_ready(self.project.id, dataset.id, 1)
         job = service.create_training_job(self.project.id, dataset.id)
         artifact = service.register_model_artifact(
             self.project.id,
@@ -69,7 +70,7 @@ class ModelLifecycleTests(unittest.TestCase):
         )
         activated_project = service.update_active_artifact(self.project.id, artifact.id)
 
-        self.assertEqual(dataset.status, DatasetStatus.VALIDATING)
+        self.assertEqual(dataset.status, DatasetStatus.READY)
         self.assertEqual(job.status, TrainingJobStatus.QUEUED)
         self.assertEqual(artifact.status, ModelArtifactStatus.READY)
         self.assertEqual(artifact.base_model, DEFAULT_BASE_MODEL)
@@ -80,6 +81,7 @@ class ModelLifecycleTests(unittest.TestCase):
         dataset = service.create_dataset_metadata(
             self.project.id, "v1", "datasets/alpha/v1.jsonl"
         )
+        dataset = service.mark_dataset_ready(self.project.id, dataset.id, 1)
         job = service.create_training_job(self.project.id, dataset.id)
         artifact = service.register_model_artifact(
             self.project.id, "v1", dataset.id, adapter_path="artifacts/alpha/v1"
@@ -106,6 +108,7 @@ class ModelLifecycleTests(unittest.TestCase):
         dataset = service.create_dataset_metadata(
             self.project.id, "v1", "datasets/alpha/v1.jsonl"
         )
+        dataset = service.mark_dataset_ready(self.project.id, dataset.id, 1)
         artifact = service.register_model_artifact(
             self.project.id,
             "v1",
@@ -121,6 +124,7 @@ class ModelLifecycleTests(unittest.TestCase):
         dataset = service.create_dataset_metadata(
             self.project.id, "v1", "datasets/alpha/v1.jsonl"
         )
+        dataset = service.mark_dataset_ready(self.project.id, dataset.id, 1)
         job = service.create_training_job(self.project.id, dataset.id)
         artifact = service.register_model_artifact(
             self.project.id, "v1", dataset.id, adapter_path="artifacts/alpha/v1"

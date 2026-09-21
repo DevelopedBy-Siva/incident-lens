@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_project
 from app.control.dataset_management import DatasetBuildCommand, NoEligibleIncidentsError
+from app.control.model_management import ModelManagementService
 from app.control.models import Project
 from app.shared.database import get_db
 from app.training.dataset_storage import DatasetAlreadyExistsError
@@ -18,6 +19,11 @@ from app.training.repositories import (
     DatasetRepository,
     ModelArtifactRepository,
     TrainingJobRepository,
+)
+from app.training.worker import (
+    TrainingJobNotFoundError,
+    TrainingJobStateError,
+    TrainingWorker,
 )
 
 router = APIRouter()
@@ -46,6 +52,10 @@ class TrainingJobResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+
+
+class TrainingJobCreate(BaseModel):
+    dataset_id: str
 
 
 class ModelArtifactResponse(BaseModel):
@@ -103,6 +113,22 @@ def list_training_jobs(
     return TrainingJobRepository(db).list_for_project(project.id)
 
 
+@router.post("/training-jobs", response_model=TrainingJobResponse, status_code=201)
+def create_training_job(
+    request: TrainingJobCreate,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetRepository(db).get_for_project(request.dataset_id, project.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.status != DatasetStatus.READY:
+        raise HTTPException(status_code=409, detail="Dataset is not READY")
+    return ModelManagementService(db).create_training_job(
+        project.id, request.dataset_id
+    )
+
+
 @router.get("/training-jobs/{job_id}", response_model=TrainingJobResponse)
 def get_training_job(
     job_id: str,
@@ -113,6 +139,23 @@ def get_training_job(
     if not job:
         raise HTTPException(status_code=404, detail="Training job not found")
     return job
+
+
+@router.post(
+    "/training-jobs/{job_id}/run",
+    response_model=TrainingJobResponse,
+)
+def run_training_job(
+    job_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    try:
+        return TrainingWorker(db).run(job_id, project.id)
+    except TrainingJobNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TrainingJobStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/model-artifacts", response_model=list[ModelArtifactResponse])

@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -9,10 +10,27 @@ from app.training.models import (
     Dataset,
     DatasetStatus,
     ModelArtifact,
+    ModelArtifactStatus,
     TrainingJob,
+    TrainingJobStatus,
 )
 
 DATASET_VERSION_PATTERN = re.compile(r"^dataset-v(\d+)$")
+ARTIFACT_VERSION_PATTERN = re.compile(r"^adapter-v(\d+)$")
+
+TRAINING_JOB_TRANSITIONS = {
+    TrainingJobStatus.QUEUED: {TrainingJobStatus.RUNNING},
+    TrainingJobStatus.RUNNING: {
+        TrainingJobStatus.EVALUATING,
+        TrainingJobStatus.FAILED,
+    },
+    TrainingJobStatus.EVALUATING: {
+        TrainingJobStatus.PASSED,
+        TrainingJobStatus.FAILED,
+    },
+    TrainingJobStatus.PASSED: set(),
+    TrainingJobStatus.FAILED: set(),
+}
 
 
 @dataclass(frozen=True)
@@ -148,6 +166,59 @@ class TrainingJobRepository:
             .all()
         )
 
+    def next_queued(self, project_id: str | None = None) -> TrainingJob | None:
+        query = self.db.query(TrainingJob).filter(
+            TrainingJob.status == TrainingJobStatus.QUEUED
+        )
+        if project_id is not None:
+            query = query.filter(TrainingJob.project_id == project_id)
+        return query.order_by(
+            TrainingJob.created_at.asc(), TrainingJob.id.asc()
+        ).first()
+
+    def reserve(
+        self, job_id: str, project_id: str, started_at: datetime
+    ) -> TrainingJob | None:
+        updated = (
+            self.db.query(TrainingJob)
+            .filter(
+                TrainingJob.id == job_id,
+                TrainingJob.project_id == project_id,
+                TrainingJob.status == TrainingJobStatus.QUEUED,
+            )
+            .update(
+                {
+                    TrainingJob.status: TrainingJobStatus.RUNNING,
+                    TrainingJob.started_at: started_at,
+                },
+                synchronize_session="fetch",
+            )
+        )
+        if updated != 1:
+            return None
+        self.db.flush()
+        return self.get_for_project(job_id, project_id)
+
+    def transition(
+        self,
+        job: TrainingJob,
+        status: TrainingJobStatus,
+        *,
+        artifact_id: str | None = None,
+        finished_at: datetime | None = None,
+    ) -> TrainingJob:
+        allowed = TRAINING_JOB_TRANSITIONS[job.status]
+        if status not in allowed:
+            raise ValueError(
+                f"Invalid training job transition: {job.status.value} -> {status.value}"
+            )
+        job.status = status
+        if artifact_id is not None:
+            job.artifact_id = artifact_id
+        if finished_at is not None:
+            job.finished_at = finished_at
+        return job
+
 
 class ModelArtifactRepository:
     """Persistence operations for model artifact metadata."""
@@ -178,3 +249,22 @@ class ModelArtifactRepository:
             .order_by(ModelArtifact.created_at.desc())
             .all()
         )
+
+    def next_version(self, project_id: str) -> str:
+        versions = (
+            self.db.query(ModelArtifact.artifact_version)
+            .filter(ModelArtifact.project_id == project_id)
+            .all()
+        )
+        version_numbers = [
+            int(match.group(1))
+            for (version,) in versions
+            if (match := ARTIFACT_VERSION_PATTERN.fullmatch(version))
+        ]
+        return f"adapter-v{max(version_numbers, default=0) + 1}"
+
+    def set_status(
+        self, artifact: ModelArtifact, status: ModelArtifactStatus
+    ) -> ModelArtifact:
+        artifact.status = status
+        return artifact

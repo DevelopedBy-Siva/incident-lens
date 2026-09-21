@@ -20,6 +20,10 @@ class DatasetStorage(ABC):
     def save(self, storage_key: str, content: bytes) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def load(self, storage_key: str) -> bytes:
+        raise NotImplementedError
+
 
 class LocalDatasetStorage(DatasetStorage):
     def __init__(self, root: str | Path):
@@ -35,9 +39,7 @@ class LocalDatasetStorage(DatasetStorage):
         )
 
     def save(self, storage_key: str, content: bytes) -> None:
-        target = (self.root / PurePosixPath(storage_key)).resolve()
-        if self.root != target and self.root not in target.parents:
-            raise ValueError("Dataset storage key escapes configured root")
+        target = self._resolve(storage_key)
 
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -53,6 +55,15 @@ class LocalDatasetStorage(DatasetStorage):
             if target.exists():
                 target.unlink()
             raise
+
+    def load(self, storage_key: str) -> bytes:
+        return self._resolve(storage_key).read_bytes()
+
+    def _resolve(self, storage_key: str) -> Path:
+        target = (self.root / PurePosixPath(storage_key)).resolve()
+        if self.root != target and self.root not in target.parents:
+            raise ValueError("Dataset storage key escapes configured root")
+        return target
 
 
 def configured_dataset_storage() -> DatasetStorage:
