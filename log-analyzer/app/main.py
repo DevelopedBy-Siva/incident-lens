@@ -6,14 +6,19 @@ import os
 import threading
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
-from app.shared.database import init_db
+from app.api import (
+    routes_auth,
+    routes_incidents,
+    routes_ingest,
+    routes_investigation,
+    routes_model_management,
+)
 from app.control.maintenance import cleanup_all_data
-from app.api import routes_ingest, routes_incidents, routes_auth
-from app.api import routes_investigation
+from app.shared.database import init_db
 
 load_dotenv()
 
@@ -80,6 +85,9 @@ app.include_router(routes_auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(routes_ingest.router, prefix="/api", tags=["ingest"])
 app.include_router(routes_incidents.router, prefix="/api", tags=["incidents"])
 app.include_router(routes_investigation.router, prefix="/api", tags=["investigation"])
+app.include_router(
+    routes_model_management.router, prefix="/api", tags=["model-management"]
+)
 
 
 @app.get("/")

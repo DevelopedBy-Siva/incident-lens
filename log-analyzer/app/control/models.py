@@ -1,9 +1,11 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, String
 
 from app.shared.database import Base
+
+DEFAULT_BASE_MODEL = "qwen-v2"
 
 
 class Project(Base):
@@ -12,6 +14,13 @@ class Project(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
+    base_model = Column(
+        String,
+        nullable=False,
+        default=DEFAULT_BASE_MODEL,
+        server_default=DEFAULT_BASE_MODEL,
+    )
+    active_artifact_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)

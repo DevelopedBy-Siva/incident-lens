@@ -1,8 +1,9 @@
+import os
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -19,7 +20,10 @@ def init_db():
     from app.control import models as control_models  # noqa: F401
     from app.data import models as data_models  # noqa: F401
     from app.serving import models as serving_models  # noqa: F401
+    from app.shared.migrations.runner import run_migrations
+    from app.training import models as training_models  # noqa: F401
 
+    run_migrations(engine)
     Base.metadata.create_all(bind=engine)
     _ensure_action_log_columns()
     print("[DB] Tables initialised")
