@@ -1,10 +1,7 @@
 import asyncio
-import base64
-import json
 import logging
 import os
 import random
-import time
 from collections import deque
 from datetime import datetime, timezone
 
@@ -15,9 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-LOKI_URL = os.getenv("LOKI_URL", "")
-LOKI_USERNAME = os.getenv("LOKI_USERNAME", "")
-LOKI_API_KEY = os.getenv("LOKI_API_KEY", "")
+DATADOG_API_KEY = os.getenv("DATADOG_API_KEY", "")
+DATADOG_SITE = os.getenv("DATADOG_SITE", "datadoghq.com")
+DATADOG_ENVIRONMENT = os.getenv("DATADOG_ENVIRONMENT", "prod")
 SERVICE_NAME = os.getenv("LOG_SERVICE_NAME", "log-server")
 
 cors_origins = os.getenv("CORS_ORIGINS", "")
@@ -34,57 +31,78 @@ app.add_middleware(
 )
 
 
-def _loki_auth_header() -> str:
-    """Basic auth header for Grafana Cloud Loki."""
-    token = base64.b64encode(f"{LOKI_USERNAME}:{LOKI_API_KEY}".encode()).decode()
-    return f"Basic {token}"
+def _datadog_intake_url() -> str:
+    site = DATADOG_SITE.strip().lower().removeprefix("https://").rstrip("/")
+    return f"https://http-intake.logs.{site}/api/v2/logs"
 
 
-async def push_to_loki(lines: list[str], extra_labels: dict | None = None) -> bool:
-    """
-    Push a list of log lines to Loki in a single HTTP request
-    """
-    if not LOKI_URL or not LOKI_USERNAME or not LOKI_API_KEY:
-        print("[LOKI] Credentials not set — dropping logs")
+def _datadog_status(line: str) -> str:
+    upper = line.upper()
+    if "CRITICAL" in upper or "ERROR" in upper:
+        return "error"
+    if "WARN" in upper:
+        return "warn"
+    return "info"
+
+
+async def push_to_datadog(
+    lines: list[str],
+    extra_tags: dict | None = None,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> bool:
+    """Send log events to the Datadog HTTP intake API."""
+    if not DATADOG_API_KEY:
+        print("[DATADOG] API key not set — dropping logs")
         return False
 
-    labels = {"service": SERVICE_NAME, "env": "prod"}
-    if extra_labels:
-        labels.update(extra_labels)
-
-    now_ns = str(int(time.time() * 1_000_000_000))
-    values = [[now_ns, line] for line in lines]
-
-    payload = {
-        "streams": [
-            {
-                "stream": labels,
-                "values": values,
-            }
-        ]
+    tags = {
+        "env": DATADOG_ENVIRONMENT,
+        "service": SERVICE_NAME,
+        **(extra_tags or {}),
     }
+    service = str(tags.pop("service", SERVICE_NAME))
+    environment = str(tags.pop("env", DATADOG_ENVIRONMENT))
+    tag_string = ",".join(
+        [f"env:{environment}", *(f"{key}:{value}" for key, value in tags.items())]
+    )
+    payload = [
+        {
+            "ddsource": "incidentlens",
+            "ddtags": tag_string,
+            "hostname": "incidentlens-log-server",
+            "message": line,
+            "service": service,
+            "status": _datadog_status(line),
+        }
+        for line in lines
+    ]
 
+    owns_client = client is None
+    request_client = client or httpx.AsyncClient(timeout=10)
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(
-                f"{LOKI_URL}/loki/api/v1/push",
-                headers={
-                    "Authorization": _loki_auth_header(),
-                    "Content-Type": "application/json",
-                },
-                content=json.dumps(payload),
-            )
-            if response.status_code == 204:
-                return True
-            print(f"[LOKI] Push failed: {response.status_code} — {response.text}")
-            return False
-    except Exception as e:
-        print(f"[LOKI] Push exception: {e}")
+        response = await request_client.post(
+            _datadog_intake_url(),
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "DD-API-KEY": DATADOG_API_KEY,
+            },
+            json=payload,
+        )
+        if response.status_code == 202:
+            return True
+        print(f"[DATADOG] Send failed: {response.status_code} — {response.text}")
         return False
+    except httpx.HTTPError as exc:
+        print(f"[DATADOG] Send exception: {exc}")
+        return False
+    finally:
+        if owns_client:
+            await request_client.aclose()
 
 
 class ErrorPatterns:
-
     @staticmethod
     def db_connection_timeout():
         host = random.choice(["db-primary-1", "db-replica-2", "db-analytics-3"])
@@ -402,7 +420,9 @@ def _scenario_step(
     }
 
 
-def format_scenario_log(step: dict, scenario_name: str, run_idx: int, step_idx: int) -> str:
+def format_scenario_log(
+    step: dict, scenario_name: str, run_idx: int, step_idx: int
+) -> str:
     ts = datetime.now(timezone.utc).isoformat()
     fields = {
         "timestamp": ts,
@@ -438,9 +458,45 @@ SCENARIOS = {
         "expected_allowed_actions": ["auto_suppress"],
         "expected_blocked_actions": [],
         "steps": [
-            _scenario_step("synthetic health check timeout from us-east probe no customer impact", level="WARN", service="synthetic-monitor", endpoint="/health", operation="healthcheck", status_code=504, latency_ms=2100, error_type="HealthCheckTimeout", host="monitor-01", pod="synthetic-monitor-6c4d", delay_seconds=0),
-            _scenario_step("health probe failed readiness probe timeout no customer impact", level="WARN", service="checkout-api", endpoint="/ready", operation="readiness_probe", status_code=503, latency_ms=1800, error_type="ReadinessProbeTimeout", host="worker-02", pod="checkout-api-54fd", delay_seconds=1),
-            _scenario_step("readiness probe timeout recovered traffic healthy no customer impact", level="INFO", service="checkout-api", endpoint="/ready", operation="readiness_probe", status_code=200, latency_ms=42, error_type="None", host="worker-02", pod="checkout-api-54fd", delay_seconds=1),
+            _scenario_step(
+                "synthetic health check timeout from us-east probe no customer impact",
+                level="WARN",
+                service="synthetic-monitor",
+                endpoint="/health",
+                operation="healthcheck",
+                status_code=504,
+                latency_ms=2100,
+                error_type="HealthCheckTimeout",
+                host="monitor-01",
+                pod="synthetic-monitor-6c4d",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "health probe failed readiness probe timeout no customer impact",
+                level="WARN",
+                service="checkout-api",
+                endpoint="/ready",
+                operation="readiness_probe",
+                status_code=503,
+                latency_ms=1800,
+                error_type="ReadinessProbeTimeout",
+                host="worker-02",
+                pod="checkout-api-54fd",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "readiness probe timeout recovered traffic healthy no customer impact",
+                level="INFO",
+                service="checkout-api",
+                endpoint="/ready",
+                operation="readiness_probe",
+                status_code=200,
+                latency_ms=42,
+                error_type="None",
+                host="worker-02",
+                pod="checkout-api-54fd",
+                delay_seconds=1,
+            ),
         ],
     },
     "db_pool_exhaustion": {
@@ -449,13 +505,61 @@ SCENARIOS = {
         "expected_runbook": "db_connection_pool_exhausted",
         "expected_severity": "critical",
         "expected_disposition": "ESCALATE",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["restart_service", "modify_database_config"],
         "steps": [
-            _scenario_step("database connection pool exhausted all connections in use request queued", service="postgres", endpoint="/db/orders", operation="checkout_query", status_code=500, latency_ms=30000, error_type="ConnectionPoolExhaustedError", host="db-primary-1", pod="postgres-primary-0", delay_seconds=0),
-            _scenario_step("too many connections from checkout-api checkout database timeout", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=12000, error_type="DatabaseConnectionTimeout", host="app-01", pod="checkout-api-6f8d", delay_seconds=1),
-            _scenario_step("payment-worker transaction retries exceeded after checkout database timeout", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=15000, error_type="RetryLimitExceeded", host="worker-03", pod="payment-worker-7b2a", delay_seconds=1),
-            _scenario_step("api-gateway 5xx rising checkout returned 500 from upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=4100, error_type="UpstreamServiceError", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+            _scenario_step(
+                "database connection pool exhausted all connections in use request queued",
+                service="postgres",
+                endpoint="/db/orders",
+                operation="checkout_query",
+                status_code=500,
+                latency_ms=30000,
+                error_type="ConnectionPoolExhaustedError",
+                host="db-primary-1",
+                pod="postgres-primary-0",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "too many connections from checkout-api checkout database timeout",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=500,
+                latency_ms=12000,
+                error_type="DatabaseConnectionTimeout",
+                host="app-01",
+                pod="checkout-api-6f8d",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "payment-worker transaction retries exceeded after checkout database timeout",
+                service="payment-worker",
+                endpoint="/jobs/payment-authorize",
+                operation="authorize_payment",
+                status_code=500,
+                latency_ms=15000,
+                error_type="RetryLimitExceeded",
+                host="worker-03",
+                pod="payment-worker-7b2a",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "api-gateway 5xx rising checkout returned 500 from upstream service error",
+                service="api-gateway",
+                endpoint="/api/checkout",
+                operation="route_request",
+                status_code=502,
+                latency_ms=4100,
+                error_type="UpstreamServiceError",
+                host="edge-01",
+                pod="api-gateway-9a11",
+                delay_seconds=1,
+            ),
         ],
     },
     "payment_gateway_degraded": {
@@ -467,9 +571,42 @@ SCENARIOS = {
         "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
         "expected_blocked_actions": ["restart_service"],
         "steps": [
-            _scenario_step("PaymentGatewayTimeout: Stripe did not respond payment gateway timeout transaction aborted", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=504, latency_ms=10000, error_type="PaymentGatewayTimeout", host="worker-01", pod="payment-worker-22ca", delay_seconds=0),
-            _scenario_step("PayPal did not respond transaction authorization failed payment retry limit exceeded", service="payment-worker", endpoint="/jobs/payment-authorize", operation="retry_authorization", status_code=504, latency_ms=9800, error_type="PaymentGatewayTimeout", host="worker-02", pod="payment-worker-54de", delay_seconds=1),
-            _scenario_step("Braintree unavailable transaction authorization failed transaction aborted", service="checkout-api", endpoint="/api/checkout", operation="submit_payment", status_code=502, latency_ms=6200, error_type="ProviderUnavailable", host="app-03", pod="checkout-api-3bd4", delay_seconds=1),
+            _scenario_step(
+                "PaymentGatewayTimeout: Stripe did not respond payment gateway timeout transaction aborted",
+                service="payment-worker",
+                endpoint="/jobs/payment-authorize",
+                operation="authorize_payment",
+                status_code=504,
+                latency_ms=10000,
+                error_type="PaymentGatewayTimeout",
+                host="worker-01",
+                pod="payment-worker-22ca",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "PayPal did not respond transaction authorization failed payment retry limit exceeded",
+                service="payment-worker",
+                endpoint="/jobs/payment-authorize",
+                operation="retry_authorization",
+                status_code=504,
+                latency_ms=9800,
+                error_type="PaymentGatewayTimeout",
+                host="worker-02",
+                pod="payment-worker-54de",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "Braintree unavailable transaction authorization failed transaction aborted",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="submit_payment",
+                status_code=502,
+                latency_ms=6200,
+                error_type="ProviderUnavailable",
+                host="app-03",
+                pod="checkout-api-3bd4",
+                delay_seconds=1,
+            ),
         ],
     },
     "api_gateway_5xx_spike": {
@@ -481,9 +618,42 @@ SCENARIOS = {
         "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
         "expected_blocked_actions": ["restart_service"],
         "steps": [
-            _scenario_step("api gateway 5xx spike gateway returned 502 upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=2500, error_type="UpstreamServiceError", host="edge-02", pod="api-gateway-11ab", delay_seconds=0),
-            _scenario_step("gateway returned 503 service unavailable edge 5xx rate elevated", service="api-gateway", endpoint="/api/cart", operation="route_request", status_code=503, latency_ms=3100, error_type="ServiceUnavailableError", host="edge-02", pod="api-gateway-11ab", delay_seconds=1),
-            _scenario_step("gateway returned 504 gateway timeout upstream service error 5xx rate above threshold", service="api-gateway", endpoint="/api/orders", operation="route_request", status_code=504, latency_ms=8000, error_type="GatewayTimeout", host="edge-03", pod="api-gateway-27fe", delay_seconds=1),
+            _scenario_step(
+                "api gateway 5xx spike gateway returned 502 upstream service error",
+                service="api-gateway",
+                endpoint="/api/checkout",
+                operation="route_request",
+                status_code=502,
+                latency_ms=2500,
+                error_type="UpstreamServiceError",
+                host="edge-02",
+                pod="api-gateway-11ab",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "gateway returned 503 service unavailable edge 5xx rate elevated",
+                service="api-gateway",
+                endpoint="/api/cart",
+                operation="route_request",
+                status_code=503,
+                latency_ms=3100,
+                error_type="ServiceUnavailableError",
+                host="edge-02",
+                pod="api-gateway-11ab",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "gateway returned 504 gateway timeout upstream service error 5xx rate above threshold",
+                service="api-gateway",
+                endpoint="/api/orders",
+                operation="route_request",
+                status_code=504,
+                latency_ms=8000,
+                error_type="GatewayTimeout",
+                host="edge-03",
+                pod="api-gateway-27fe",
+                delay_seconds=1,
+            ),
         ],
     },
     "memory_pressure_or_oom": {
@@ -492,12 +662,51 @@ SCENARIOS = {
         "expected_runbook": "kubernetes_oom_kill",
         "expected_severity": "critical",
         "expected_disposition": "ESCALATE",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["restart_service", "change_infrastructure"],
         "steps": [
-            _scenario_step("MemoryPressureWarning: Heap at 91% gc overhead critical Java heap space", level="WARN", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=200, latency_ms=1900, error_type="MemoryPressureWarning", host="app-04", pod="checkout-api-7d9f", delay_seconds=0),
-            _scenario_step("OutOfMemoryError Java heap space container memory limit exceeded", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=4200, error_type="OutOfMemoryError", host="app-04", pod="checkout-api-7d9f", delay_seconds=1),
-            _scenario_step("OOMKilled pod checkout-api-7d9f exceeded memory limit killed by the kernel", level="CRITICAL", service="checkout-api", endpoint="/api/checkout", operation="pod_restart", status_code=500, latency_ms=0, error_type="OOMKilled", host="app-04", pod="checkout-api-7d9f", delay_seconds=1),
+            _scenario_step(
+                "MemoryPressureWarning: Heap at 91% gc overhead critical Java heap space",
+                level="WARN",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=200,
+                latency_ms=1900,
+                error_type="MemoryPressureWarning",
+                host="app-04",
+                pod="checkout-api-7d9f",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "OutOfMemoryError Java heap space container memory limit exceeded",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=500,
+                latency_ms=4200,
+                error_type="OutOfMemoryError",
+                host="app-04",
+                pod="checkout-api-7d9f",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "OOMKilled pod checkout-api-7d9f exceeded memory limit killed by the kernel",
+                level="CRITICAL",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="pod_restart",
+                status_code=500,
+                latency_ms=0,
+                error_type="OOMKilled",
+                host="app-04",
+                pod="checkout-api-7d9f",
+                delay_seconds=1,
+            ),
         ],
     },
     "auth_failure_cascade": {
@@ -509,9 +718,42 @@ SCENARIOS = {
         "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
         "expected_blocked_actions": ["rotate_secrets", "restart_service"],
         "steps": [
-            _scenario_step("authentication failure cascade auth token validation failed JWKS fetch failed", service="auth-service", endpoint="/oauth/token", operation="validate_token", status_code=401, latency_ms=3400, error_type="TokenValidationFailed", host="auth-01", pod="auth-service-33df", delay_seconds=0),
-            _scenario_step("session verification failed jwt validation failed across services 401 increase", service="session-api", endpoint="/api/session", operation="verify_session", status_code=401, latency_ms=2200, error_type="SessionVerificationFailed", host="auth-02", pod="session-api-21ac", delay_seconds=1),
-            _scenario_step("login failure spike token introspection timeout 403 increase", service="api-gateway", endpoint="/api/login", operation="route_request", status_code=403, latency_ms=5100, error_type="TokenIntrospectionTimeout", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+            _scenario_step(
+                "authentication failure cascade auth token validation failed JWKS fetch failed",
+                service="auth-service",
+                endpoint="/oauth/token",
+                operation="validate_token",
+                status_code=401,
+                latency_ms=3400,
+                error_type="TokenValidationFailed",
+                host="auth-01",
+                pod="auth-service-33df",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "session verification failed jwt validation failed across services 401 increase",
+                service="session-api",
+                endpoint="/api/session",
+                operation="verify_session",
+                status_code=401,
+                latency_ms=2200,
+                error_type="SessionVerificationFailed",
+                host="auth-02",
+                pod="session-api-21ac",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "login failure spike token introspection timeout 403 increase",
+                service="api-gateway",
+                endpoint="/api/login",
+                operation="route_request",
+                status_code=403,
+                latency_ms=5100,
+                error_type="TokenIntrospectionTimeout",
+                host="edge-01",
+                pod="api-gateway-9a11",
+                delay_seconds=1,
+            ),
         ],
     },
     "deployment_regression": {
@@ -520,12 +762,50 @@ SCENARIOS = {
         "expected_runbook": "deployment_regression",
         "expected_severity": "high",
         "expected_disposition": "NEEDS_ONCALL",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["rollback_release", "deploy_code"],
         "steps": [
-            _scenario_step("new deployment version checkout-api v2.3.1 feature flag enabled checkout-v2", level="INFO", service="checkout-api", endpoint="/deployments/checkout-api", operation="deploy", status_code=200, latency_ms=300, error_type="None", host="deploy-01", pod="checkout-api-5ac1", delay_seconds=0),
-            _scenario_step("deployment regression error rate increased after deploy post deploy 5xx spike", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=3800, error_type="DeploymentRegression", host="app-02", pod="checkout-api-5ac1", delay_seconds=1),
-            _scenario_step("canary health degraded new release causing failures rollback candidate requires human approval", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=2700, error_type="CanaryHealthDegraded", host="edge-03", pod="api-gateway-27fe", delay_seconds=1),
+            _scenario_step(
+                "new deployment version checkout-api v2.3.1 feature flag enabled checkout-v2",
+                level="INFO",
+                service="checkout-api",
+                endpoint="/deployments/checkout-api",
+                operation="deploy",
+                status_code=200,
+                latency_ms=300,
+                error_type="None",
+                host="deploy-01",
+                pod="checkout-api-5ac1",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "deployment regression error rate increased after deploy post deploy 5xx spike",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=500,
+                latency_ms=3800,
+                error_type="DeploymentRegression",
+                host="app-02",
+                pod="checkout-api-5ac1",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "canary health degraded new release causing failures rollback candidate requires human approval",
+                service="api-gateway",
+                endpoint="/api/checkout",
+                operation="route_request",
+                status_code=502,
+                latency_ms=2700,
+                error_type="CanaryHealthDegraded",
+                host="edge-03",
+                pod="api-gateway-27fe",
+                delay_seconds=1,
+            ),
         ],
     },
     "queue_backlog": {
@@ -537,9 +817,42 @@ SCENARIOS = {
         "expected_allowed_actions": ["notify_oncall", "create_incident_summary"],
         "expected_blocked_actions": ["scale_cluster"],
         "steps": [
-            _scenario_step("QueueDepthCritical: email-queue has 42991 pending messages consumer lag growing queue backlog increasing", service="message-queue", endpoint="/queues/email-queue", operation="poll_depth", status_code=200, latency_ms=600, error_type="QueueDepthCritical", host="mq-01", pod="message-queue-0", delay_seconds=0),
-            _scenario_step("message queue full consumer lag growing message retry exhausted", service="order-worker", endpoint="/jobs/order-created", operation="consume_message", status_code=500, latency_ms=7500, error_type="MessageRetryExhausted", host="worker-04", pod="order-worker-41cd", delay_seconds=1),
-            _scenario_step("dead letter queue receiving checkout events pending messages continue rising", service="message-queue", endpoint="/queues/dead-letter", operation="dead_letter", status_code=500, latency_ms=500, error_type="DeadLetterQueueGrowth", host="mq-01", pod="message-queue-0", delay_seconds=1),
+            _scenario_step(
+                "QueueDepthCritical: email-queue has 42991 pending messages consumer lag growing queue backlog increasing",
+                service="message-queue",
+                endpoint="/queues/email-queue",
+                operation="poll_depth",
+                status_code=200,
+                latency_ms=600,
+                error_type="QueueDepthCritical",
+                host="mq-01",
+                pod="message-queue-0",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "message queue full consumer lag growing message retry exhausted",
+                service="order-worker",
+                endpoint="/jobs/order-created",
+                operation="consume_message",
+                status_code=500,
+                latency_ms=7500,
+                error_type="MessageRetryExhausted",
+                host="worker-04",
+                pod="order-worker-41cd",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "dead letter queue receiving checkout events pending messages continue rising",
+                service="message-queue",
+                endpoint="/queues/dead-letter",
+                operation="dead_letter",
+                status_code=500,
+                latency_ms=500,
+                error_type="DeadLetterQueueGrowth",
+                host="mq-01",
+                pod="message-queue-0",
+                delay_seconds=1,
+            ),
         ],
     },
     "vendor_api_timeout": {
@@ -548,12 +861,48 @@ SCENARIOS = {
         "expected_runbook": "vendor_api_timeout",
         "expected_severity": "medium",
         "expected_disposition": "NEEDS_DEV",
-        "expected_allowed_actions": ["create_incident_summary", "send_discord_notification"],
+        "expected_allowed_actions": [
+            "create_incident_summary",
+            "send_discord_notification",
+        ],
         "expected_blocked_actions": ["deploy_code"],
         "steps": [
-            _scenario_step("vendor API timeout Salesforce external vendor timed out partner api did not respond", service="integration-worker", endpoint="/jobs/sync-crm", operation="sync_contact", status_code=504, latency_ms=10000, error_type="VendorApiTimeout", host="worker-05", pod="integration-worker-63ae", delay_seconds=0),
-            _scenario_step("HubSpot unavailable third-party rate limited vendor gateway timeout", service="integration-worker", endpoint="/jobs/sync-crm", operation="sync_company", status_code=429, latency_ms=8500, error_type="ThirdPartyRateLimited", host="worker-05", pod="integration-worker-63ae", delay_seconds=1),
-            _scenario_step("Shopify unavailable third party api timeout fallback queue preserved", service="integration-worker", endpoint="/jobs/sync-orders", operation="sync_order", status_code=504, latency_ms=9300, error_type="VendorApiTimeout", host="worker-06", pod="integration-worker-18bf", delay_seconds=1),
+            _scenario_step(
+                "vendor API timeout Salesforce external vendor timed out partner api did not respond",
+                service="integration-worker",
+                endpoint="/jobs/sync-crm",
+                operation="sync_contact",
+                status_code=504,
+                latency_ms=10000,
+                error_type="VendorApiTimeout",
+                host="worker-05",
+                pod="integration-worker-63ae",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "HubSpot unavailable third-party rate limited vendor gateway timeout",
+                service="integration-worker",
+                endpoint="/jobs/sync-crm",
+                operation="sync_company",
+                status_code=429,
+                latency_ms=8500,
+                error_type="ThirdPartyRateLimited",
+                host="worker-05",
+                pod="integration-worker-63ae",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "Shopify unavailable third party api timeout fallback queue preserved",
+                service="integration-worker",
+                endpoint="/jobs/sync-orders",
+                operation="sync_order",
+                status_code=504,
+                latency_ms=9300,
+                error_type="VendorApiTimeout",
+                host="worker-06",
+                pod="integration-worker-18bf",
+                delay_seconds=1,
+            ),
         ],
     },
     "false_suppression_trap": {
@@ -562,12 +911,49 @@ SCENARIOS = {
         "expected_runbook": "api_gateway_5xx_spike",
         "expected_severity": "high",
         "expected_disposition": "NEEDS_ONCALL",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["auto_suppress"],
         "steps": [
-            _scenario_step("checkout returned 500 customer request failed api gateway 5xx spike", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=3600, error_type="CustomerRequestFailed", host="app-01", pod="checkout-api-6f8d", delay_seconds=0),
-            _scenario_step("payment authorization failed customer request failed repeated timeout", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=7800, error_type="PaymentAuthorizationFailed", host="worker-01", pod="payment-worker-22ca", delay_seconds=1),
-            _scenario_step("db-health degraded checkout returned 500 5xx rate above threshold", service="api-gateway", endpoint="/db-health", operation="db_health", status_code=503, latency_ms=2900, error_type="DbHealthDegraded", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+            _scenario_step(
+                "checkout returned 500 customer request failed api gateway 5xx spike",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=500,
+                latency_ms=3600,
+                error_type="CustomerRequestFailed",
+                host="app-01",
+                pod="checkout-api-6f8d",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "payment authorization failed customer request failed repeated timeout",
+                service="payment-worker",
+                endpoint="/jobs/payment-authorize",
+                operation="authorize_payment",
+                status_code=500,
+                latency_ms=7800,
+                error_type="PaymentAuthorizationFailed",
+                host="worker-01",
+                pod="payment-worker-22ca",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "db-health degraded checkout returned 500 5xx rate above threshold",
+                service="api-gateway",
+                endpoint="/db-health",
+                operation="db_health",
+                status_code=503,
+                latency_ms=2900,
+                error_type="DbHealthDegraded",
+                host="edge-01",
+                pod="api-gateway-9a11",
+                delay_seconds=1,
+            ),
         ],
     },
     "low_frequency_high_impact": {
@@ -576,11 +962,39 @@ SCENARIOS = {
         "expected_runbook": "kubernetes_oom_kill",
         "expected_severity": "critical",
         "expected_disposition": "ESCALATE",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["auto_suppress", "delete_data"],
         "steps": [
-            _scenario_step("OutOfMemoryError Java heap space fatal error data loss detected", level="CRITICAL", service="ledger-api", endpoint="/api/ledger/post", operation="post_transaction", status_code=500, latency_ms=0, error_type="OutOfMemoryError", host="app-09", pod="ledger-api-81ba", delay_seconds=0),
-            _scenario_step("segmentation fault fatal error pod OOMKilled exceeded memory limit killed by the kernel", level="CRITICAL", service="ledger-api", endpoint="/api/ledger/post", operation="recover_transaction", status_code=500, latency_ms=0, error_type="SegmentationFault", host="app-09", pod="ledger-api-81ba", delay_seconds=1),
+            _scenario_step(
+                "OutOfMemoryError Java heap space fatal error data loss detected",
+                level="CRITICAL",
+                service="ledger-api",
+                endpoint="/api/ledger/post",
+                operation="post_transaction",
+                status_code=500,
+                latency_ms=0,
+                error_type="OutOfMemoryError",
+                host="app-09",
+                pod="ledger-api-81ba",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "segmentation fault fatal error pod OOMKilled exceeded memory limit killed by the kernel",
+                level="CRITICAL",
+                service="ledger-api",
+                endpoint="/api/ledger/post",
+                operation="recover_transaction",
+                status_code=500,
+                latency_ms=0,
+                error_type="SegmentationFault",
+                host="app-09",
+                pod="ledger-api-81ba",
+                delay_seconds=1,
+            ),
         ],
     },
     "ambiguous_cascade": {
@@ -589,13 +1003,61 @@ SCENARIOS = {
         "expected_runbook": "db_connection_pool_exhausted",
         "expected_severity": "critical",
         "expected_disposition": "ESCALATE",
-        "expected_allowed_actions": ["notify_oncall", "create_incident_summary", "attach_evidence_bundle"],
+        "expected_allowed_actions": [
+            "notify_oncall",
+            "create_incident_summary",
+            "attach_evidence_bundle",
+        ],
         "expected_blocked_actions": ["restart_service", "modify_database_config"],
         "steps": [
-            _scenario_step("db-primary connection pool exhausted all connections in use request queued", service="postgres", endpoint="/db/orders", operation="checkout_query", status_code=500, latency_ms=30000, error_type="ConnectionPoolExhaustedError", host="db-primary-1", pod="postgres-primary-0", delay_seconds=0),
-            _scenario_step("checkout-api timeout checkout database timeout customer request failed", service="checkout-api", endpoint="/api/checkout", operation="create_order", status_code=500, latency_ms=14000, error_type="CheckoutDatabaseTimeout", host="app-01", pod="checkout-api-6f8d", delay_seconds=1),
-            _scenario_step("payment-worker retry limit exceeded payment-worker transaction retries exceeded", service="payment-worker", endpoint="/jobs/payment-authorize", operation="authorize_payment", status_code=500, latency_ms=15000, error_type="RetryLimitExceeded", host="worker-02", pod="payment-worker-54de", delay_seconds=1),
-            _scenario_step("api-gateway 502 spike gateway returned 502 upstream service error", service="api-gateway", endpoint="/api/checkout", operation="route_request", status_code=502, latency_ms=4300, error_type="UpstreamServiceError", host="edge-01", pod="api-gateway-9a11", delay_seconds=1),
+            _scenario_step(
+                "db-primary connection pool exhausted all connections in use request queued",
+                service="postgres",
+                endpoint="/db/orders",
+                operation="checkout_query",
+                status_code=500,
+                latency_ms=30000,
+                error_type="ConnectionPoolExhaustedError",
+                host="db-primary-1",
+                pod="postgres-primary-0",
+                delay_seconds=0,
+            ),
+            _scenario_step(
+                "checkout-api timeout checkout database timeout customer request failed",
+                service="checkout-api",
+                endpoint="/api/checkout",
+                operation="create_order",
+                status_code=500,
+                latency_ms=14000,
+                error_type="CheckoutDatabaseTimeout",
+                host="app-01",
+                pod="checkout-api-6f8d",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "payment-worker retry limit exceeded payment-worker transaction retries exceeded",
+                service="payment-worker",
+                endpoint="/jobs/payment-authorize",
+                operation="authorize_payment",
+                status_code=500,
+                latency_ms=15000,
+                error_type="RetryLimitExceeded",
+                host="worker-02",
+                pod="payment-worker-54de",
+                delay_seconds=1,
+            ),
+            _scenario_step(
+                "api-gateway 502 spike gateway returned 502 upstream service error",
+                service="api-gateway",
+                endpoint="/api/checkout",
+                operation="route_request",
+                status_code=502,
+                latency_ms=4300,
+                error_type="UpstreamServiceError",
+                host="edge-01",
+                pod="api-gateway-9a11",
+                delay_seconds=1,
+            ),
         ],
     },
 }
@@ -609,7 +1071,7 @@ SCENARIO_ALIASES = {
 
 
 async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
-    """Execute a scenario — push each step to Loki with controlled timing."""
+    """Execute a scenario and send each step with controlled timing."""
     scenario_name = SCENARIO_ALIASES.get(scenario_name, scenario_name)
     scenario = SCENARIOS[scenario_name]
     steps = scenario["steps"]
@@ -623,15 +1085,15 @@ async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0)
             delay = step["delay_seconds"] / speed
             if delay > 0:
                 print(
-                    f"[SCENARIO] Run {run_idx+1}/{repeat} step {i+1}/{len(steps)} — waiting {delay:.2f}s"
+                    f"[SCENARIO] Run {run_idx + 1}/{repeat} step {i + 1}/{len(steps)} — waiting {delay:.2f}s"
                 )
                 await asyncio.sleep(delay)
 
             log_line = format_scenario_log(step, scenario_name, run_idx + 1, i + 1)
 
-            success = await push_to_loki(
+            success = await push_to_datadog(
                 [log_line],
-                extra_labels={
+                extra_tags={
                     "scenario": scenario_name,
                     "service": step.get("service", SERVICE_NAME),
                     "env": step.get("environment", "prod"),
@@ -641,7 +1103,7 @@ async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0)
             )
             status = "pushed" if success else "FAILED"
             print(
-                f"[SCENARIO] Run {run_idx+1}/{repeat} step {i+1}/{len(steps)} {status}: {log_line[:80]}…"
+                f"[SCENARIO] Run {run_idx + 1}/{repeat} step {i + 1}/{len(steps)} {status}: {log_line[:80]}…"
             )
 
     print(f"[SCENARIO] '{scenario_name}' complete")
@@ -663,7 +1125,6 @@ class InMemoryHandler(logging.Handler):
 
 
 class LogGenerator:
-
     def __init__(self):
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
@@ -752,7 +1213,7 @@ class LogGenerator:
                     break
                 self._generate_logs(batch_size, error_rate, slow_rate)
                 if self.log_buffer:
-                    await self._flush_to_loki()
+                    await self._flush_to_datadog()
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(), timeout=interval_seconds
@@ -761,7 +1222,7 @@ class LogGenerator:
                     pass
 
             if self.log_buffer:
-                await self._flush_to_loki()
+                await self._flush_to_datadog()
 
             print(f"[LOG-SERVER] Finished. Stats: {self.stats}")
         except asyncio.CancelledError:
@@ -796,22 +1257,22 @@ class LogGenerator:
                     random.choice(endpoints).format(random.randint(1000, 9999))
                 )
 
-    async def _flush_to_loki(self):
+    async def _flush_to_datadog(self):
         if not self.log_buffer:
             return
 
         logs = list(self.log_buffer)
         self.log_buffer.clear()
 
-        success = await push_to_loki(logs)
+        success = await push_to_datadog(logs)
         if success:
             self.stats["logs_shipped"] += len(logs)
             self.stats["batches_pushed"] += 1
             self.last_push_at = datetime.now(timezone.utc).isoformat()
-            print(f"[LOG-SERVER] Pushed {len(logs)} logs to Loki")
+            print(f"[LOG-SERVER] Sent {len(logs)} logs to Datadog")
         else:
             self.stats["push_errors"] += 1
-            self.last_error = "Loki push failed"
+            self.last_error = "Datadog send failed"
             self.log_buffer.extendleft(reversed(logs))
 
 
@@ -823,18 +1284,14 @@ async def startup_event():
     global log_generator
     log_generator = LogGenerator()
 
-    if not all([LOKI_URL, LOKI_USERNAME, LOKI_API_KEY]):
-        print(
-            "[LOG-SERVER] WARNING: LOKI_URL / LOKI_USERNAME / LOKI_API_KEY not fully set"
-        )
+    if not DATADOG_API_KEY:
+        print("[LOG-SERVER] WARNING: DATADOG_API_KEY is not set")
     else:
-        ok = await push_to_loki(["[startup] Log server connected to Loki"])
+        ok = await push_to_datadog(["[startup] Log server connected to Datadog"])
         if ok:
-            print(f"[LOG-SERVER] Loki connected at {LOKI_URL}")
+            print(f"[LOG-SERVER] Datadog intake connected for {DATADOG_SITE}")
         else:
-            print(
-                "[LOG-SERVER] WARNING: Loki connection test failed — check credentials"
-            )
+            print("[LOG-SERVER] WARNING: Datadog send test failed — check credentials")
 
 
 @app.post("/api/start")
@@ -855,7 +1312,7 @@ async def start_generation(
     return {
         "message": msg,
         "status": "running" if log_generator.running else "idle",
-        "transport": "loki",
+        "transport": "datadog",
         "duration_seconds": duration,
         "interval_seconds": interval_seconds,
         "batch_size": batch_size,
@@ -881,15 +1338,15 @@ async def get_status():
         "stats": log_generator.stats,
         "last_push_at": log_generator.last_push_at,
         "last_error": log_generator.last_error,
-        "transport": "loki",
-        "loki_url": LOKI_URL,
+        "transport": "datadog",
+        "datadog_site": DATADOG_SITE,
     }
 
 
 @app.post("/api/scenario/{scenario_name}")
 async def run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
     """
-    Fire a correlated error scenario against Loki.
+    Fire a correlated error scenario through Datadog Logs.
     """
     requested_name = scenario_name
     scenario_name = SCENARIO_ALIASES.get(scenario_name, scenario_name)
@@ -919,7 +1376,7 @@ async def run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
         "estimated_duration_seconds": total_delay,
         "message": (
             f"Scenario '{scenario_name}' is running in the background. "
-            f"{len(steps) * repeat} log entries will be pushed to Loki over ~{total_delay:.1f}s."
+            f"{len(steps) * repeat} log entries will be sent to Datadog over ~{total_delay:.1f}s."
         ),
     }
 
@@ -943,7 +1400,7 @@ async def generate_burst(
         )
 
     log_generator._generate_logs(count, error_rate=error_rate, slow_rate=slow_rate)
-    await log_generator._flush_to_loki()
+    await log_generator._flush_to_datadog()
     return {
         "message": "burst_generated",
         "count": count,
@@ -964,8 +1421,12 @@ async def list_scenarios():
                 "expected_runbook": scenario.get("expected_runbook"),
                 "expected_severity": scenario.get("expected_severity"),
                 "expected_disposition": scenario.get("expected_disposition"),
-                "expected_allowed_actions": scenario.get("expected_allowed_actions", []),
-                "expected_blocked_actions": scenario.get("expected_blocked_actions", []),
+                "expected_allowed_actions": scenario.get(
+                    "expected_allowed_actions", []
+                ),
+                "expected_blocked_actions": scenario.get(
+                    "expected_blocked_actions", []
+                ),
                 "steps": len(scenario["steps"]),
                 "estimated_duration_seconds": sum(
                     s["delay_seconds"] for s in scenario["steps"]
@@ -979,10 +1440,10 @@ async def list_scenarios():
 
 @app.get("/health")
 async def health():
-    loki_ok = await push_to_loki(["[healthcheck] ping"])
+    datadog_ok = await push_to_datadog(["[healthcheck] ping"])
     return {
         "status": "healthy",
-        "loki": "connected" if loki_ok else "unreachable",
+        "datadog": "connected" if datadog_ok else "unreachable",
     }
 
 
@@ -991,14 +1452,14 @@ async def ready():
     return {
         "status": "ready",
         "generator": "running" if log_generator and log_generator.running else "idle",
-        "transport": "loki",
+        "transport": "datadog",
     }
 
 
 @app.get("/db-health")
 async def db_health():
     return {
-        "status": "degraded" if not LOKI_URL else "healthy",
+        "status": "degraded" if not DATADOG_API_KEY else "healthy",
         "database": "simulated",
         "message": "db-health endpoint is synthetic; no real database dependency is checked",
     }
@@ -1030,7 +1491,7 @@ async def recover():
         1,
         1,
     )
-    pushed = await push_to_loki([recovery_line], extra_labels={"scenario": "recovery"})
+    pushed = await push_to_datadog([recovery_line], extra_tags={"scenario": "recovery"})
     return {
         "status": "recovered",
         "generator": "idle",
@@ -1043,8 +1504,8 @@ async def root():
     return {
         "service": "log-server",
         "status": "running",
-        "transport": "loki",
-        "loki_url": LOKI_URL or "not configured",
+        "transport": "datadog",
+        "datadog_site": DATADOG_SITE,
         "scenarios": list(SCENARIOS.keys()),
     }
 

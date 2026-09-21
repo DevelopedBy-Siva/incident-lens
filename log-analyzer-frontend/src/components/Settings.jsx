@@ -135,7 +135,7 @@ function Settings() {
   const [isTest, setIsTest] = useState(false);
   const [runtime, setRuntime] = useState(null);
   const [openSections, setOpenSections] = useState({
-    loki: true,
+    datadog: true,
     runtime: true,
     observability: false,
     notifications: false,
@@ -144,10 +144,12 @@ function Settings() {
   const [setupStatus, setSetupStatus] = useState({});
 
   const [form, setForm] = useState({
-    loki_url: "",
-    loki_username: "",
-    loki_api_key: "",
-    loki_service: "",
+    datadog_api_key: "",
+    datadog_app_key: "",
+    datadog_site: "datadoghq.com",
+    datadog_query: "status:(error OR warn OR critical)",
+    datadog_environment: "prod",
+    datadog_service: "",
     langfuse_public_key: "",
     langfuse_secret_key: "",
     langfuse_host: "",
@@ -169,10 +171,13 @@ function Settings() {
         setIsTest(p.is_test);
         setSetupStatus(p.setup_status || {});
         setForm({
-          loki_url: p.loki_url || "",
-          loki_username: p.loki_username || "",
-          loki_api_key: p.loki_api_key || "",
-          loki_service: p.loki_service || "",
+          datadog_api_key: p.datadog_api_key || "",
+          datadog_app_key: p.datadog_app_key || "",
+          datadog_site: p.datadog_site || "datadoghq.com",
+          datadog_query:
+            p.datadog_query || "status:(error OR warn OR critical)",
+          datadog_environment: p.datadog_environment || "prod",
+          datadog_service: p.datadog_service || "",
           langfuse_public_key: p.langfuse_public_key || "",
           langfuse_secret_key: p.langfuse_secret_key || "",
           langfuse_host: p.langfuse_host || "https://cloud.langfuse.com",
@@ -207,7 +212,8 @@ function Settings() {
     // Only send non-empty, non-masked values
     const payload = {};
     Object.entries(form).forEach(([k, v]) => {
-      if (v && v !== "••••••" && v !== HIDDEN_MARKER) {
+      const isVisibleValue = v !== "••••••" && v !== HIDDEN_MARKER;
+      if (isVisibleValue && (v || k === "datadog_service")) {
         payload[k] = v;
       }
     });
@@ -265,7 +271,7 @@ function Settings() {
           </div>
         )}
 
-        {!isTest && !setupStatus.loki && (
+        {!isTest && !setupStatus.datadog && (
           <div className="mb-6 p-4 bg-sky-500/10 border border-sky-500/30 rounded-lg flex items-start">
             <AlertCircle
               className="text-sky-400 mr-3 shrink-0 mt-0.5"
@@ -276,7 +282,7 @@ function Settings() {
                 Setup incomplete
               </p>
               <p className="text-sky-400/70 text-xs mt-0.5">
-                Configure Loki credentials to start ingestion. Local AI
+                Configure Datadog credentials to start ingestion. Local AI
                 inference becomes ready when the project has an active adapter.
               </p>
             </div>
@@ -300,52 +306,70 @@ function Settings() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-2">
-          {/* Loki */}
+          {/* Datadog Configuration */}
           <div className="border border-gray-800 rounded-xl px-5">
             <SectionHeader
-              title="Loki / Grafana Cloud"
+              title="Datadog Configuration"
               description="Log ingestion source — required to start monitoring"
-              configured={setupStatus.loki}
-              open={openSections.loki}
-              onToggle={() => toggleSection("loki")}
+              configured={setupStatus.datadog}
+              open={openSections.datadog}
+              onToggle={() => toggleSection("datadog")}
             />
-            {openSections.loki && (
+            {openSections.datadog && (
               <div className="pb-5 space-y-4">
-                <PlainInput
-                  label="Loki URL"
-                  name="loki_url"
-                  value={form.loki_url}
+                <SecretInput
+                  label="Datadog API Key"
+                  name="datadog_api_key"
+                  value={form.datadog_api_key}
                   onChange={handleChange}
-                  placeholder="https://logs-prod-021.grafana.net"
+                  placeholder="API key"
                   disabled={disabled}
-                  hint="From Grafana Cloud → your stack → Loki details"
-                />
-                <PlainInput
-                  label="Loki Username"
-                  name="loki_username"
-                  value={form.loki_username}
-                  onChange={handleChange}
-                  placeholder="123456"
-                  disabled={disabled}
-                  hint="Numeric user ID from Grafana Cloud"
+                  hint="Organization Settings → API Keys"
                 />
                 <SecretInput
-                  label="Loki API Key"
-                  name="loki_api_key"
-                  value={form.loki_api_key}
+                  label="Datadog Application Key"
+                  name="datadog_app_key"
+                  value={form.datadog_app_key}
                   onChange={handleChange}
-                  placeholder="glc_ey..."
+                  placeholder="Application key"
                   disabled={disabled}
-                  hint="Access Policy token with logs:read and logs:write scopes"
+                  hint="Must have the logs_read_data permission"
                 />
                 <PlainInput
-                  label="Service Label"
-                  name="loki_service"
-                  value={form.loki_service}
+                  label="Datadog Site"
+                  name="datadog_site"
+                  value={form.datadog_site}
+                  onChange={handleChange}
+                  placeholder="datadoghq.com"
+                  disabled={disabled}
+                  hint="For example: datadoghq.com, datadoghq.eu, or us5.datadoghq.com"
+                />
+                <PlainInput
+                  label="Log Query"
+                  name="datadog_query"
+                  value={form.datadog_query}
+                  onChange={handleChange}
+                  placeholder="status:(error OR warn OR critical)"
+                  disabled={disabled}
+                  hint="Datadog Logs search syntax. Environment and service filters are added automatically."
+                />
+                <PlainInput
+                  label="Environment"
+                  name="datadog_environment"
+                  value={form.datadog_environment}
+                  onChange={handleChange}
+                  placeholder="prod"
+                  disabled={disabled}
+                  hint="Matches the env tag and becomes the incident environment"
+                />
+                <PlainInput
+                  label="Service Filter (optional)"
+                  name="datadog_service"
+                  value={form.datadog_service}
                   onChange={handleChange}
                   placeholder="log-server"
                   disabled={disabled}
-                  hint='Must match the {service="..."} label your log server uses'
+                  hint="Leave blank to ingest matching logs from every service"
                 />
               </div>
             )}

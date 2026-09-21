@@ -1,13 +1,7 @@
 import unittest
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.api import routes_model_management
-from app.api.routes_auth import get_current_project
+from app.api.routes_auth import ProjectSettings, _project_to_dict, get_current_project
 from app.control.model_management import ModelManagementService
 from app.control.models import DEFAULT_BASE_MODEL, Project
 from app.shared.database import Base
@@ -21,6 +15,9 @@ from app.shared.migrations.versions.v0004_shared_base_model import (
 from app.shared.migrations.versions.v0005_remove_remote_model_config import (
     upgrade as upgrade_v5,
 )
+from app.shared.migrations.versions.v0006_datadog_log_source import (
+    upgrade as upgrade_v6,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -31,6 +28,11 @@ from app.training.repositories import (
     ModelArtifactRepository,
     TrainingJobRepository,
 )
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class ModelLifecycleTests(unittest.TestCase):
@@ -58,6 +60,29 @@ class ModelLifecycleTests(unittest.TestCase):
     def test_project_defaults_to_shared_base_model(self):
         self.assertEqual(self.project.base_model, DEFAULT_BASE_MODEL)
         self.assertIsNone(self.project.active_artifact_id)
+
+    def test_project_settings_expose_masked_datadog_configuration(self):
+        self.project.datadog_api_key = "api-secret"
+        self.project.datadog_app_key = "app-secret"
+        self.project.datadog_site = "datadoghq.eu"
+        self.project.datadog_query = "service:checkout"
+        self.project.datadog_environment = "staging"
+        self.project.datadog_service = "checkout"
+
+        payload = _project_to_dict(self.project)
+
+        self.assertEqual(payload["datadog_api_key"], "••••••")
+        self.assertEqual(payload["datadog_app_key"], "••••••")
+        self.assertEqual(payload["datadog_site"], "datadoghq.eu")
+        self.assertEqual(payload["datadog_environment"], "staging")
+        self.assertTrue(payload["setup_status"]["datadog"])
+
+    def test_project_settings_validate_and_normalize_datadog_site(self):
+        settings = ProjectSettings(datadog_site="HTTPS://US5.DATADOGHQ.COM/")
+        self.assertEqual(settings.datadog_site, "us5.datadoghq.com")
+
+        with self.assertRaisesRegex(ValueError, "Unsupported Datadog site"):
+            ProjectSettings(datadog_site="logs.example.com")
 
     def test_service_creates_metadata_lifecycle_and_activates_ready_artifact(self):
         service = ModelManagementService(self.db)
@@ -216,6 +241,38 @@ class ModelLifecycleTests(unittest.TestCase):
 
 
 class ModelLifecycleMigrationTests(unittest.TestCase):
+    def test_log_source_migration_replaces_provider_configuration(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE projects ("
+                    "id VARCHAR PRIMARY KEY, "
+                    "loki_url VARCHAR, "
+                    "loki_username VARCHAR, "
+                    "loki_api_key VARCHAR, "
+                    "loki_service VARCHAR"
+                    ")"
+                )
+            )
+            upgrade_v6(connection)
+
+        columns = {column["name"] for column in inspect(engine).get_columns("projects")}
+        self.assertTrue(
+            {
+                "datadog_api_key",
+                "datadog_app_key",
+                "datadog_site",
+                "datadog_query",
+                "datadog_environment",
+                "datadog_service",
+            }.issubset(columns)
+        )
+        self.assertFalse(
+            {"loki_url", "loki_username", "loki_api_key", "loki_service"} & columns
+        )
+        engine.dispose()
+
     def test_remote_provider_credential_migration_removes_legacy_column(self):
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as connection:

@@ -5,6 +5,7 @@ from app.shared.migrations.versions import (
     v0003_dataset_record_count,
     v0004_shared_base_model,
     v0005_remove_remote_model_config,
+    v0006_datadog_log_source,
 )
 
 MIGRATIONS = (
@@ -12,6 +13,7 @@ MIGRATIONS = (
     v0003_dataset_record_count,
     v0004_shared_base_model,
     v0005_remove_remote_model_config,
+    v0006_datadog_log_source,
 )
 
 

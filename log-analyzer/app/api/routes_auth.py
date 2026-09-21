@@ -1,3 +1,4 @@
+import os
 import re
 from typing import Optional
 
@@ -13,6 +14,7 @@ from app.control.auth import (
     verify_password,
 )
 from app.control.models import Project
+from app.data.ingestion.datadog_connector import SUPPORTED_DATADOG_SITES
 from app.shared.database import get_db
 
 router = APIRouter()
@@ -50,11 +52,13 @@ class ProjectLogin(BaseModel):
 
 
 class ProjectSettings(BaseModel):
-    # Loki
-    loki_url: Optional[str] = None
-    loki_username: Optional[str] = None
-    loki_api_key: Optional[str] = None
-    loki_service: Optional[str] = None
+    # Datadog Logs
+    datadog_api_key: Optional[str] = None
+    datadog_app_key: Optional[str] = None
+    datadog_site: Optional[str] = None
+    datadog_query: Optional[str] = None
+    datadog_environment: Optional[str] = None
+    datadog_service: Optional[str] = None
     # Observability
     langfuse_public_key: Optional[str] = None
     langfuse_secret_key: Optional[str] = None
@@ -65,6 +69,15 @@ class ProjectSettings(BaseModel):
     discord_webhook_dev: Optional[str] = None
     # Password change
     password: Optional[str] = None
+
+    @validator("datadog_site")
+    def validate_datadog_site(cls, v):
+        if v is None:
+            return v
+        site = v.strip().lower().removeprefix("https://").rstrip("/")
+        if site not in SUPPORTED_DATADOG_SITES:
+            raise ValueError("Unsupported Datadog site")
+        return site
 
     @validator("password")
     def validate_password(cls, v):
@@ -84,6 +97,9 @@ def _mask(value: Optional[str], is_test: bool = False) -> Optional[str]:
 
 def _project_to_dict(project: Project) -> dict:
     t = project.is_test
+    datadog_api_key = project.datadog_api_key or os.getenv("DATADOG_API_KEY")
+    datadog_app_key = project.datadog_app_key or os.getenv("DATADOG_APP_KEY")
+    datadog_configured = bool(datadog_api_key and datadog_app_key)
     return {
         "id": project.id,
         "name": project.name,
@@ -91,11 +107,16 @@ def _project_to_dict(project: Project) -> dict:
         "active_artifact_id": project.active_artifact_id,
         "created_at": project.created_at.isoformat(),
         "is_test": t,
-        # Loki
-        "loki_url": HIDDEN if t else project.loki_url,
-        "loki_username": HIDDEN if t else project.loki_username,
-        "loki_api_key": _mask(project.loki_api_key, t),
-        "loki_service": HIDDEN if t else project.loki_service,
+        # Datadog Logs
+        "datadog_api_key": _mask(datadog_api_key, t),
+        "datadog_app_key": _mask(datadog_app_key, t),
+        "datadog_site": project.datadog_site
+        or os.getenv("DATADOG_SITE", "datadoghq.com"),
+        "datadog_query": project.datadog_query
+        or os.getenv("DATADOG_QUERY", "status:(error OR warn OR critical)"),
+        "datadog_environment": project.datadog_environment
+        or os.getenv("DATADOG_ENVIRONMENT", "prod"),
+        "datadog_service": project.datadog_service or os.getenv("DATADOG_SERVICE"),
         # Observability
         "langfuse_public_key": _mask(project.langfuse_public_key, t),
         "langfuse_secret_key": _mask(project.langfuse_secret_key, t),
@@ -107,16 +128,12 @@ def _project_to_dict(project: Project) -> dict:
         # Setup status
         "setup_complete": all(
             [
-                project.loki_url,
-                project.loki_username,
-                project.loki_api_key,
+                datadog_configured,
                 project.active_artifact_id,
             ]
         ),
         "setup_status": {
-            "loki": all(
-                [project.loki_url, project.loki_username, project.loki_api_key]
-            ),
+            "datadog": datadog_configured,
             "llm": bool(project.active_artifact_id),
             "observability": all(
                 [project.langfuse_public_key, project.langfuse_secret_key]
@@ -209,10 +226,12 @@ def update_settings(
         )
 
     fields = [
-        "loki_url",
-        "loki_username",
-        "loki_api_key",
-        "loki_service",
+        "datadog_api_key",
+        "datadog_app_key",
+        "datadog_site",
+        "datadog_query",
+        "datadog_environment",
+        "datadog_service",
         "langfuse_public_key",
         "langfuse_secret_key",
         "langfuse_host",
@@ -242,12 +261,12 @@ def update_settings(
 
 @router.get("/settings/status")
 def settings_status(project: Project = Depends(get_current_project)):
+    datadog_configured = bool(
+        (project.datadog_api_key or os.getenv("DATADOG_API_KEY"))
+        and (project.datadog_app_key or os.getenv("DATADOG_APP_KEY"))
+    )
     return {
-        "loki": {
-            "configured": all(
-                [project.loki_url, project.loki_username, project.loki_api_key]
-            )
-        },
+        "datadog": {"configured": datadog_configured},
         "llm": {"configured": bool(project.active_artifact_id)},
         "observability": {
             "configured": all(
@@ -265,9 +284,7 @@ def settings_status(project: Project = Depends(get_current_project)):
         },
         "setup_complete": all(
             [
-                project.loki_url,
-                project.loki_username,
-                project.loki_api_key,
+                datadog_configured,
                 project.active_artifact_id,
             ]
         ),

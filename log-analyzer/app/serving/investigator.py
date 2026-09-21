@@ -136,7 +136,7 @@ class ToolExecutor:
                 "signature": self.incident.signature,
                 "sample_count": len(lines),
                 "lines": lines,
-                "note": f"Showing up to {TOOL_LOG_LINES} stored sample lines (live Loki fetch available in Phase 5)",
+                "note": f"Showing up to {TOOL_LOG_LINES} stored sample lines",
             }
         )
 

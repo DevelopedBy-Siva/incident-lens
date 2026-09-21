@@ -1,42 +1,45 @@
 # Log Server
 
-A simple FastAPI service that generates realistic application logs and sends them directly to Grafana Loki.
-
----
+A small FastAPI service that generates realistic application logs and sends
+them to Datadog Logs.
 
 ## What it does
 
-- Generates logs (info, warnings, errors) in memory
-- Simulates real production issues (DB timeouts, OOM, auth failures, etc.)
-- Ships logs directly to **Grafana Loki** (no Redis)
-- Lets you trigger **scenarios** for demo/debugging
-- Exposes a small API to control everything
+- Generates info, warning, and error logs in memory
+- Simulates production issues such as database timeouts, OOM failures, and
+  authentication cascades
+- Sends logs directly to the Datadog HTTP intake API
+- Exposes controllable scenarios for demos and pipeline testing
+- Preserves the structured text format consumed by the IncidentLens parser
 
----
+## Data flow
 
-## How it works
-
-1. Logs are generated in memory
-2. Buffered briefly
-3. Sent to Loki using HTTP (`/loki/api/v1/push`)
-4. Viewed in Grafana (Explore or dashboards)
-
----
+```text
+Log generator
+      |
+      v
+Datadog HTTP intake
+      |
+      v
+Datadog Logs
+      |
+      v
+IncidentLens Log Source Connector
+```
 
 ## Environment variables
 
 ```env
-LOGSHIPPER_API_KEY=your_api_key
-
-LOKI_URL=https://logs-prod-XXX.grafana.net
-LOKI_USERNAME=your_numeric_id
-LOKI_API_KEY=your_loki_token
-
+DATADOG_API_KEY=your_api_key
+DATADOG_SITE=datadoghq.com
+DATADOG_ENVIRONMENT=prod
 LOG_SERVICE_NAME=log-server
 CORS_ORIGINS=http://localhost:3000
 ```
 
----
+The simulator only writes logs, so it requires a Datadog API key but not an
+application key. The analyzer separately requires an application key with
+`logs_read_data` permission to search those events.
 
 ## Run locally
 
@@ -47,64 +50,46 @@ uvicorn server:app --host 0.0.0.0 --port 5001 --reload
 - API: [http://localhost:5001](http://localhost:5001)
 - Docs: [http://localhost:5001/docs](http://localhost:5001/docs)
 
----
-
 ## API
 
-| Method | Endpoint               | Description           |
-| ------ | ---------------------- | --------------------- |
-| GET    | `/health`              | Check Loki connection |
-| GET    | `/ready`               | Readiness/status probe |
-| GET    | `/db-health`           | Synthetic DB health endpoint |
-| POST   | `/api/start`           | Start log generation  |
-| POST   | `/api/stop`            | Stop generation       |
-| GET    | `/api/status`          | Current stats         |
-| POST   | `/api/scenario/{name}` | Run a scenario        |
-| GET    | `/api/scenario`        | List scenarios        |
-| POST   | `/api/recover`         | Stop generation and emit recovery log |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/health` | Send a Datadog connectivity event |
+| GET | `/ready` | Readiness/status probe |
+| GET | `/db-health` | Synthetic DB health endpoint |
+| POST | `/api/start` | Start log generation |
+| POST | `/api/stop` | Stop generation |
+| GET | `/api/status` | Current generator and transport stats |
+| POST | `/api/scenario/{name}` | Run a correlated scenario |
+| GET | `/api/scenario` | List scenarios |
+| POST | `/api/recover` | Stop generation and emit a recovery event |
 
-All `/api/*` endpoints require:
-
-```
-X-Api-Key: dev
-```
-
----
-
-## Quick test
-
-Start generator:
+Start the generator:
 
 ```bash
-curl -X POST "http://localhost:5001/api/start?duration=60" \
-  -H "X-Api-Key: dev"
+curl -X POST "http://localhost:5001/api/start?duration=60"
 ```
 
-Or run a scenario:
+Run a scenario:
 
 ```bash
-curl -X POST http://localhost:5001/api/scenario/db_pool_exhaustion \
-  -H "X-Api-Key: dev"
+curl -X POST http://localhost:5001/api/scenario/db_pool_exhaustion
 ```
 
----
+## View logs
 
-## View logs (Grafana)
+In Datadog Log Explorer, query:
 
-Go to **Explore → Loki** and run:
-
-```logql
-{service="log-server"}
+```text
+service:log-server
 ```
 
-Useful filters:
+Useful refinements:
 
-```logql
-{service="log-server"} |= "ERROR"
-{scenario="db_pool_exhaustion"}
+```text
+service:log-server status:error
+scenario:db_pool_exhaustion
 ```
-
----
 
 ## Scenarios
 
@@ -121,39 +106,13 @@ Useful filters:
 - `low_frequency_high_impact`
 - `ambiguous_cascade`
 
-Legacy aliases still work:
-
-- `db_cascade` -> `ambiguous_cascade`
-- `auth_cascade` -> `auth_failure_cascade`
-- `deployment_gone_wrong` -> `deployment_regression`
-- `memory_leak` -> `memory_pressure_or_oom`
-
-Each scenario emits a sequence of related production-like logs over time. Scenario
-logs keep the parser-compatible prefix:
+Legacy scenario aliases remain available for compatibility. Each scenario
+emits parser-compatible plain text with structured key-value fields:
 
 ```text
 [timestamp] LEVEL: timestamp=... level=... service=... source=... environment=prod message="..." request_id=req_... trace_id=trace_... endpoint=... operation=... status_code=... latency_ms=... error_type=... host=... pod=...
 ```
 
-Scenario metadata includes expected runbook, severity, disposition, allowed
-actions, and blocked actions so evaluation tests can reuse the registry.
-
----
-
-## Notes
-
-- Logs are plain text with structured key-value fields for parser compatibility
-- Loki is the only transport (Redis removed)
-- Most logs are INFO by default (~70%)
-
----
-
-## Use case
-
-- Demoing observability setups
-- Testing log pipelines
-- Simulating production incidents
-
----
-
-That’s it — start the server, generate logs, and watch them in Grafana.
+Scenario metadata includes the expected runbook, severity, disposition,
+allowed actions, and blocked actions so the evaluation tests can reuse the
+registry.

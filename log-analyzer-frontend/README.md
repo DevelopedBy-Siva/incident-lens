@@ -12,9 +12,10 @@ project model lifecycle without duplicating backend workflow logic.
   evaluation scores, and activation controls for READY artifacts.
 - **Training** — immutable dataset history, synchronous dataset builds, training
   job creation/execution, status progress, and produced artifacts.
-- **Settings** — Loki, Langfuse, notification, and security settings plus a
-  read-only view of the local AI runtime and storage configuration. There is no
-  remote inference provider configuration.
+- **Settings** — Datadog API/application credentials, site, query, environment,
+  optional service filter, Langfuse, notification, and security settings plus
+  a read-only view of the local AI runtime and storage configuration. There is
+  no remote inference provider configuration.
 
 ## Model lifecycle
 

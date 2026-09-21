@@ -33,11 +33,11 @@ def start_worker():
     import traceback
 
     try:
-        from app.data.ingestion.loki_watcher import run as run_worker
+        from app.data.ingestion.log_source_watcher import run as run_worker
 
         run_worker()
     except Exception as e:
-        print(f"[MAIN] Loki watcher failed: {e}")
+        print(f"[MAIN] Log source watcher failed: {e}")
         traceback.print_exc()
 
 

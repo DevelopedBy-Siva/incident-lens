@@ -1,11 +1,12 @@
-import asyncio
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_PATH = ROOT / "log-server" / "server.py"
@@ -17,7 +18,6 @@ server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
 from app.serving.runbook_matcher import get_runbook_candidates  # noqa: E402
-
 
 REQUIRED_SCENARIOS = {
     "healthcheck_timeout_noise",
@@ -77,17 +77,24 @@ class ScenarioRegistryTests(unittest.TestCase):
 
 
 class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_run_scenario_pushes_to_loki_without_live_loki(self):
+    async def test_run_scenario_sends_to_datadog_without_live_datadog(self):
         pushed = []
 
-        async def fake_push(lines, extra_labels=None):
-            pushed.append((lines, extra_labels))
+        async def fake_push(lines, extra_tags=None):
+            pushed.append((lines, extra_tags))
             return True
 
-        with patch.object(server, "push_to_loki", new=AsyncMock(side_effect=fake_push)):
-            await server._run_scenario("healthcheck_timeout_noise", repeat=1, speed=1000)
+        with patch.object(
+            server, "push_to_datadog", new=AsyncMock(side_effect=fake_push)
+        ):
+            await server._run_scenario(
+                "healthcheck_timeout_noise", repeat=1, speed=1000
+            )
 
-        self.assertEqual(len(pushed), len(server.SCENARIOS["healthcheck_timeout_noise"]["steps"]))
+        self.assertEqual(
+            len(pushed),
+            len(server.SCENARIOS["healthcheck_timeout_noise"]["steps"]),
+        )
         for lines, labels in pushed:
             self.assertEqual(len(lines), 1)
             self.assertEqual(labels["scenario"], "healthcheck_timeout_noise")
@@ -95,10 +102,48 @@ class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("message=", lines[0])
 
     async def test_legacy_scenario_aliases_still_execute(self):
-        with patch.object(server, "push_to_loki", new=AsyncMock(return_value=True)) as push:
+        with patch.object(
+            server, "push_to_datadog", new=AsyncMock(return_value=True)
+        ) as push:
             await server._run_scenario("db_cascade", repeat=1, speed=1000)
 
-        self.assertEqual(push.await_count, len(server.SCENARIOS["ambiguous_cascade"]["steps"]))
+        self.assertEqual(
+            push.await_count,
+            len(server.SCENARIOS["ambiguous_cascade"]["steps"]),
+        )
+
+    async def test_datadog_intake_uses_api_key_and_provider_fields(self):
+        captured = {}
+
+        def handler(request):
+            captured["request"] = request
+            return httpx.Response(202, request=request)
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            with (
+                patch.object(server, "DATADOG_API_KEY", "api-secret"),
+                patch.object(server, "DATADOG_SITE", "datadoghq.eu"),
+                patch.object(server, "DATADOG_ENVIRONMENT", "staging"),
+            ):
+                result = await server.push_to_datadog(
+                    ["ERROR checkout failed"],
+                    extra_tags={"service": "checkout", "scenario": "payment"},
+                    client=client,
+                )
+
+        self.assertTrue(result)
+        request = captured["request"]
+        self.assertEqual(
+            str(request.url),
+            "https://http-intake.logs.datadoghq.eu/api/v2/logs",
+        )
+        self.assertEqual(request.headers["DD-API-KEY"], "api-secret")
+        event = json.loads(request.content)[0]
+        self.assertEqual(event["service"], "checkout")
+        self.assertEqual(event["status"], "error")
+        self.assertIn("env:staging", event["ddtags"])
+        self.assertIn("scenario:payment", event["ddtags"])
 
 
 if __name__ == "__main__":

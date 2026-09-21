@@ -2,7 +2,10 @@
 
 A policy-bound AIOps agent that turns noisy application logs into auditable incidents.
 
-IncidentLens clusters logs from Grafana Loki, routes known failures through YAML runbooks, uses LLM-assisted investigation for ambiguous incidents, and gates every requested action through a backend policy engine.
+IncidentLens queries application logs from Datadog, clusters them into incidents,
+routes known failures through YAML runbooks, uses LLM-assisted investigation for
+ambiguous incidents, and gates every requested action through a backend policy
+engine.
 
 ---
 
@@ -27,7 +30,10 @@ IncidentLens clusters logs from Grafana Loki, routes known failures through YAML
 Log Server / App Logs
         |
         v
-Grafana Loki
+Datadog Logs
+        |
+        v
+Log Source Connector
         |
         v
 Parser + Signature Normalization
@@ -61,7 +67,7 @@ React Dashboard        -> Vercel
 FastAPI Backend        -> Render
 Log Simulator          -> Render
 Incident State         -> Neon PostgreSQL
-Raw Logs               -> Grafana Loki
+Raw Logs               -> Datadog Logs
 Model Inference        -> Local Qwen + project LoRA adapter
 LLM Tracing            -> Langfuse
 Notifications          -> Discord / SMTP
@@ -335,10 +341,6 @@ python log-analyzer/scripts/check_runbook_coverage.py
 
 ![Incidents view](./imgs/incident.png)
 
-### Settings
-
-![Settings](./imgs/settings.png)
-
 ### AI platform dashboard
 
 The existing incident dashboard now includes the project's local model status.
@@ -366,7 +368,7 @@ mapping.
 
 **Frontend:** React, Tailwind CSS, Vercel
 
-**Logs:** Grafana Loki
+**Logs:** Datadog Logs API
 
 **LLM:** Local Qwen 2.5 Instruct, Transformers, PEFT, LoRA, LangChain
 
@@ -404,9 +406,14 @@ the project to have a READY active artifact produced by the training lifecycle.
 ```env
 DATABASE_URL=postgresql://user:pass@localhost:5432/log_analyzer
 
-LOKI_URL=https://logs-prod-xxx.grafana.net
-LOKI_USERNAME=your_username
-LOKI_API_KEY=your_token
+DATADOG_API_KEY=your_api_key
+DATADOG_APP_KEY=your_application_key
+DATADOG_SITE=datadoghq.com
+DATADOG_QUERY=status:(error OR warn OR critical)
+DATADOG_LOOKBACK_SECONDS=30
+DATADOG_ENVIRONMENT=prod
+DATADOG_SERVICE=
+POLL_INTERVAL=30
 
 MODEL_PROVIDER=local
 BASE_MODEL=Qwen/Qwen2.5-0.5B-Instruct
@@ -441,3 +448,21 @@ SMTP_PASSWORD=your_password
 LOG_SERVER_URL=http://localhost:5001
 CORS_ORIGINS=http://localhost:3000
 ```
+
+The application key used by the analyzer must have Datadog's
+`logs_read_data` permission. `DATADOG_SITE` is the Datadog site domain for the
+organization, such as `datadoghq.com`, `datadoghq.eu`, or
+`us5.datadoghq.com`. Credentials may be configured per project on the Settings
+page; environment values are deployment-level fallbacks.
+
+The Data Plane depends on the provider-neutral `LogSourceConnector` contract.
+Its Datadog implementation performs cursor-paginated searches over contiguous
+polling windows, converts each result to an internal log envelope, and only
+then hands plain log batches to the existing parser and incident pipeline.
+Project credentials, queries, environment tags, and optional service filters
+remain isolated during polling.
+
+The log simulator submits logs to Datadog's HTTP intake with
+`DATADOG_API_KEY`, `DATADOG_SITE`, `DATADOG_ENVIRONMENT`, and
+`LOG_SERVICE_NAME`. It does not require the application key, which is used only
+by the analyzer to search logs.

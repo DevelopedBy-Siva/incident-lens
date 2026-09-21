@@ -1,4 +1,4 @@
-"""Synchronous log-processing pipeline used by Loki and evaluation ingestion."""
+"""Provider-independent log processing for connector and evaluation ingestion."""
 
 from app.control.models import Project
 from app.data.clustering import cluster_log_db
