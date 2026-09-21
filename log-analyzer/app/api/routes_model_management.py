@@ -5,8 +5,10 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_project
+from app.control.dataset_management import DatasetBuildCommand, NoEligibleIncidentsError
 from app.control.models import Project
 from app.shared.database import get_db
+from app.training.dataset_storage import DatasetAlreadyExistsError
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -28,6 +30,7 @@ class DatasetResponse(BaseModel):
     project_id: str
     dataset_version: str
     storage_key: str
+    record_count: int
     status: DatasetStatus
     created_at: datetime
 
@@ -65,6 +68,19 @@ def list_datasets(
     db: Session = Depends(get_db),
 ):
     return DatasetRepository(db).list_for_project(project.id)
+
+
+@router.post("/datasets/build", response_model=DatasetResponse, status_code=201)
+def build_dataset(
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    try:
+        return DatasetBuildCommand(db).execute(project.id)
+    except NoEligibleIncidentsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatasetAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/datasets/{dataset_id}", response_model=DatasetResponse)

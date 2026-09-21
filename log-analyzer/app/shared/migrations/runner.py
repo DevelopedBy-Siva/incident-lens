@@ -1,8 +1,11 @@
 from sqlalchemy import text
 
-from app.shared.migrations.versions import v0002_model_lifecycle
+from app.shared.migrations.versions import (
+    v0002_model_lifecycle,
+    v0003_dataset_record_count,
+)
 
-MIGRATIONS = (v0002_model_lifecycle,)
+MIGRATIONS = (v0002_model_lifecycle, v0003_dataset_record_count)
 
 
 def run_migrations(engine) -> None:

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
 )
@@ -47,6 +48,7 @@ class Dataset(Base):
     project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
     dataset_version = Column(String, nullable=False)
     storage_key = Column(String, nullable=False)
+    record_count = Column(Integer, nullable=False, default=0, server_default="0")
     status = Column(
         SQLAlchemyEnum(
             DatasetStatus,

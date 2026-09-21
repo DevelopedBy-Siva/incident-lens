@@ -32,6 +32,7 @@ class ModelManagementService:
         dataset_version: str,
         storage_key: str,
         status: DatasetStatus = DatasetStatus.VALIDATING,
+        record_count: int = 0,
     ) -> Dataset:
         self._require_project(project_id)
         dataset = Dataset(
@@ -39,8 +40,29 @@ class ModelManagementService:
             dataset_version=dataset_version,
             storage_key=storage_key,
             status=status,
+            record_count=record_count,
         )
         return self._commit(self.datasets.add(dataset))
+
+    def mark_dataset_ready(
+        self, project_id: str, dataset_id: str, record_count: int
+    ) -> Dataset:
+        if record_count < 0:
+            raise ValueError("Dataset record count cannot be negative")
+        dataset = self._require_dataset(project_id, dataset_id)
+        self._require_validating_dataset(dataset)
+        return self._commit(
+            self.datasets.set_status(
+                dataset, DatasetStatus.READY, record_count=record_count
+            )
+        )
+
+    def mark_dataset_failed(self, project_id: str, dataset_id: str) -> Dataset:
+        dataset = self._require_dataset(project_id, dataset_id)
+        self._require_validating_dataset(dataset)
+        return self._commit(
+            self.datasets.set_status(dataset, DatasetStatus.FAILED, record_count=0)
+        )
 
     def create_training_job(self, project_id: str, dataset_id: str) -> TrainingJob:
         self._require_project(project_id)
@@ -89,6 +111,17 @@ class ModelManagementService:
         if not project:
             raise ValueError("Project not found")
         return project
+
+    def _require_dataset(self, project_id: str, dataset_id: str) -> Dataset:
+        dataset = self.datasets.get_for_project(dataset_id, project_id)
+        if not dataset:
+            raise ValueError("Dataset not found")
+        return dataset
+
+    @staticmethod
+    def _require_validating_dataset(dataset: Dataset) -> None:
+        if dataset.status != DatasetStatus.VALIDATING:
+            raise ValueError("Only VALIDATING datasets can change lifecycle status")
 
     def _commit(self, entity):
         try:

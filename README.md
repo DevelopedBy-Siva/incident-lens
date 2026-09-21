@@ -101,6 +101,44 @@ The LLM cannot directly execute remediation.
 
 ---
 
+## Versioned Training Datasets
+
+IncidentLens can export confirmed incident history as immutable, project-scoped
+JSON Lines datasets. An incident is initially eligible when it has a complete
+persisted analysis, is structurally valid, and has either stored log samples or
+a persisted investigation evidence snapshot.
+
+Each example contains:
+
+- Incident metadata and stored log samples
+- The latest persisted analysis
+- The latest investigation and evidence snapshot, when available
+- The latest policy/action outcome, when available
+- Expected severity, disposition, root cause, summary, and recorded recommended
+  actions
+
+The builder never asks an LLM for labels. Missing optional facts remain `null`,
+and malformed or incomplete incidents are excluded. Records are sorted and
+serialized deterministically using the `incident-training-example-v1` schema.
+
+Build a dataset synchronously with:
+
+```text
+POST /api/datasets/build
+```
+
+Each successful build reserves a new version such as `dataset-v1` or
+`dataset-v2`, stores it without overwriting earlier files, and registers its
+storage key and record count in PostgreSQL. Local files default to `datasets/`;
+set `DATASET_STORAGE_PATH` to change the root. Storage is behind a dedicated
+interface so a future S3 backend does not require changes to the builder.
+
+Datasets are immutable because future training jobs must be reproducible. A
+later training job will reference one dataset row and read its registered
+storage key; building a dataset does not create a training job or model artifact.
+
+---
+
 ## Example Decisions
 
 ### Allowed: Health-Check Noise

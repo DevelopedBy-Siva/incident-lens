@@ -11,7 +11,10 @@ from app.api.routes_auth import get_current_project
 from app.control.model_management import ModelManagementService
 from app.control.models import DEFAULT_BASE_MODEL, Project
 from app.shared.database import Base
-from app.shared.migrations.versions.v0002_model_lifecycle import upgrade
+from app.shared.migrations.versions.v0002_model_lifecycle import upgrade as upgrade_v2
+from app.shared.migrations.versions.v0003_dataset_record_count import (
+    upgrade as upgrade_v3,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -171,7 +174,7 @@ class ModelLifecycleMigrationTests(unittest.TestCase):
                     "VALUES ('project-1', 'legacy', 'hash')"
                 )
             )
-            upgrade(connection)
+            upgrade_v2(connection)
 
         inspector = inspect(engine)
         project_columns = {
@@ -188,6 +191,42 @@ class ModelLifecycleMigrationTests(unittest.TestCase):
                 text("SELECT base_model FROM projects WHERE id = 'project-1'")
             ).scalar_one()
         self.assertEqual(base_model, DEFAULT_BASE_MODEL)
+        engine.dispose()
+
+    def test_record_count_migration_upgrades_existing_dataset_table(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE datasets ("
+                    "id VARCHAR PRIMARY KEY, "
+                    "project_id VARCHAR NOT NULL, "
+                    "dataset_version VARCHAR NOT NULL, "
+                    "storage_key VARCHAR NOT NULL, "
+                    "status VARCHAR NOT NULL, "
+                    "created_at DATETIME NOT NULL"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO datasets "
+                    "(id, project_id, dataset_version, storage_key, status, created_at) "
+                    "VALUES ('dataset-1', 'project-1', 'dataset-v1', "
+                    "'projects/project-1/dataset-v1.jsonl', 'READY', CURRENT_TIMESTAMP)"
+                )
+            )
+            upgrade_v3(connection)
+
+        self.assertIn(
+            "record_count",
+            {column["name"] for column in inspect(engine).get_columns("datasets")},
+        )
+        with engine.connect() as connection:
+            count = connection.execute(
+                text("SELECT record_count FROM datasets WHERE id = 'dataset-1'")
+            ).scalar_one()
+        self.assertEqual(count, 0)
         engine.dispose()
 
 
