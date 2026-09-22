@@ -66,11 +66,13 @@ class DatadogLogSourceConfig:
     def from_project(cls, project) -> "DatadogLogSourceConfig":
         return cls(
             api_key=getattr(project, "datadog_api_key", None)
-            or os.getenv("DATADOG_API_KEY", ""),
+            or os.getenv("DATADOG_API_KEY")
+            or os.getenv("DD_API_KEY", ""),
             app_key=getattr(project, "datadog_app_key", None)
             or os.getenv("DATADOG_APP_KEY", ""),
             site=getattr(project, "datadog_site", None)
-            or os.getenv("DATADOG_SITE", DEFAULT_DATADOG_SITE),
+            or os.getenv("DATADOG_SITE")
+            or os.getenv("DD_SITE", DEFAULT_DATADOG_SITE),
             query=getattr(project, "datadog_query", None)
             or os.getenv("DATADOG_QUERY", DEFAULT_DATADOG_QUERY),
             environment=getattr(project, "datadog_environment", None)

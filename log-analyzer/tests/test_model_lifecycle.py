@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from app.api import routes_model_management
 from app.api.routes_auth import ProjectSettings, _project_to_dict, get_current_project
@@ -69,13 +70,21 @@ class ModelLifecycleTests(unittest.TestCase):
         self.project.datadog_environment = "staging"
         self.project.datadog_service = "checkout"
 
-        payload = _project_to_dict(self.project)
+        with patch.dict(
+            "os.environ",
+            {"DD_LLMOBS_ENABLED": "1", "DD_TRACE_ENABLED": "1"},
+        ):
+            payload = _project_to_dict(self.project)
 
         self.assertEqual(payload["datadog_api_key"], "••••••")
         self.assertEqual(payload["datadog_app_key"], "••••••")
         self.assertEqual(payload["datadog_site"], "datadoghq.eu")
         self.assertEqual(payload["datadog_environment"], "staging")
         self.assertTrue(payload["setup_status"]["datadog"])
+        self.assertEqual(payload["observability"]["platform"], "Datadog")
+        self.assertTrue(payload["observability"]["llm_observability"])
+        self.assertTrue(payload["observability"]["logs"])
+        self.assertTrue(payload["observability"]["tracing"])
 
     def test_project_settings_validate_and_normalize_datadog_site(self):
         settings = ProjectSettings(datadog_site="HTTPS://US5.DATADOGHQ.COM/")

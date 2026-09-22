@@ -44,12 +44,15 @@ export default function ModelStatusPanel({
   ];
 
   return (
-    <section className="rounded-xl border border-gray-800 bg-gray-950/40 p-5 mb-8">
+    <section className="soft-card p-5 mb-8">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-sm font-medium text-white">AI Model Status</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Current project training and local inference state
+          <h2 className="text-xl font-semibold tracking-tight text-google-text">
+            AI Model Status
+          </h2>
+          <p className="text-xs text-google-muted mt-0.5">
+            See which model is analyzing incidents and review recent training
+            activity.
           </p>
         </div>
         {activeArtifact ? (
@@ -60,7 +63,7 @@ export default function ModelStatusPanel({
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">
+        <div className="rounded-lg border border-google-red/20 bg-red-50 p-3 text-xs text-google-red">
           {error}
         </div>
       ) : loading ? (
@@ -70,16 +73,24 @@ export default function ModelStatusPanel({
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {items.map(({ label, value, icon: Icon, status }) => (
-            <div key={label} className="rounded-lg border border-gray-800 p-3">
-              <Icon size={13} className="text-sky-500 mb-2" />
+            <div
+              key={label}
+              className="rounded-lg border border-google-border bg-google-subtle p-3"
+            >
+              <Icon size={13} className="text-google-blue mb-2" />
               {status ? (
                 <StatusBadge status={status} />
               ) : (
-                <div className="text-sm text-gray-200 truncate" title={value}>
+                <div
+                  className="text-sm font-semibold text-google-text truncate"
+                  title={value}
+                >
                   {value}
                 </div>
               )}
-              <div className="text-xs text-gray-600 mt-1">{label}</div>
+              <div className="text-xs font-medium text-google-muted mt-1">
+                {label}
+              </div>
             </div>
           ))}
         </div>

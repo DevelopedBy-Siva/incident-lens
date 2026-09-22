@@ -10,6 +10,7 @@ from app.data.ingestion.datadog_connector import (
     DatadogLogSourceConfig,
 )
 from app.data.ingestion.log_source import LogEnvelope, LogSourceError
+from app.shared.observability import trace_operation
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ def _load_active_projects():
 
     db = SessionLocal()
     try:
-        global_api_key = os.getenv("DATADOG_API_KEY")
+        global_api_key = os.getenv("DATADOG_API_KEY") or os.getenv("DD_API_KEY")
         global_app_key = os.getenv("DATADOG_APP_KEY")
         active_projects = db.query(Project).filter(Project.is_active.is_(True)).all()
         projects = [
@@ -46,9 +47,21 @@ def fetch_logs_for_project(
     *,
     connector_factory=DatadogLogConnector,
 ) -> list[LogEnvelope]:
-    config = DatadogLogSourceConfig.from_project(project)
-    with connector_factory(config) as connector:
-        return connector.fetch(start, end)
+    with trace_operation(
+        "log_ingestion",
+        plane="data",
+        metadata={
+            "project_id": str(project.id),
+            "source": "datadog",
+            "environment": getattr(project, "datadog_environment", None),
+        },
+    ) as span:
+        config = DatadogLogSourceConfig.from_project(project)
+        with connector_factory(config) as connector:
+            envelopes = connector.fetch(start, end)
+        span.metrics({"log_count": len(envelopes)})
+        span.tag("result", "completed")
+        return envelopes
 
 
 def poll_project(
@@ -75,8 +88,17 @@ def process_envelopes(project, envelopes: list[LogEnvelope]) -> dict[str, int]:
 
     totals = {"incidents_created": 0, "incidents_updated": 0, "failed": 0}
     groups: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for envelope in envelopes:
-        groups[(envelope.source, envelope.environment)].append(envelope.message)
+    with trace_operation(
+        "normalization",
+        plane="data",
+        metadata={
+            "project_id": str(project.id),
+            "source": "datadog",
+            "log_count": len(envelopes),
+        },
+    ):
+        for envelope in envelopes:
+            groups[(envelope.source, envelope.environment)].append(envelope.message)
 
     for (source, environment), messages in groups.items():
         result = process_log_batch(

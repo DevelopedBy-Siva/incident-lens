@@ -2,10 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { incidentsAPI, logServerAPI, authAPI } from "../services/api";
 import Navbar from "./Navbar";
 import IncidentCard from "./IncidentCard";
-import ModelStatusPanel from "./modelLifecycle/ModelStatusPanel";
 import { useModelLifecycle } from "../hooks/useModelLifecycle";
 import {
-  RefreshCw,
   AlertTriangle,
   Play,
   Square,
@@ -26,26 +24,26 @@ function useDebounce(value, delay) {
 const SCENARIOS = [
   {
     id: "db_cascade",
-    label: "DB Cascade",
-    description: "Pool exhaustion → payment timeout → NPE",
+    label: "Database Failure",
+    description: "Simulates database pressure that disrupts payments",
     duration: "~105s",
   },
   {
     id: "memory_leak",
     label: "Memory Leak",
-    description: "Heap grows to OOM kill, pod restarts",
+    description: "Simulates rising memory use until a service restarts",
     duration: "~185s",
   },
   {
     id: "deployment_gone_wrong",
     label: "Bad Deploy",
-    description: "Config change → pool halved → OOM",
+    description: "Simulates a deployment that reduces capacity and fails",
     duration: "~85s",
   },
   {
     id: "auth_cascade",
-    label: "Auth Cascade",
-    description: "Redis down → JWT invalid → rate limit",
+    label: "Authentication Failure",
+    description: "Simulates an authentication outage and rate limiting",
     duration: "~75s",
   },
 ];
@@ -55,23 +53,23 @@ function ScenarioButton({ scenario, onRun, running }) {
     <button
       onClick={() => onRun(scenario.id)}
       disabled={running === scenario.id}
-      className="flex flex-col items-start px-3 py-2.5 rounded-lg border border-gray-700 hover:border-sky-500/40 hover:bg-sky-500/5 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed group"
+      className="flex flex-col items-start px-3 py-2.5 rounded-lg border border-google-border hover:border-google-blue/40 hover:bg-google-blue/5 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed group"
     >
       <div className="flex items-center gap-1.5 mb-0.5">
         {running === scenario.id ? (
-          <Activity size={11} className="text-sky-400 animate-pulse" />
+          <Activity size={11} className="text-google-blue animate-pulse" />
         ) : (
           <Zap
             size={11}
-            className="text-gray-500 group-hover:text-sky-400 transition-colors"
+            className="text-google-muted group-hover:text-google-blue transition-colors"
           />
         )}
-        <span className="text-xs font-medium text-gray-300">
+        <span className="text-xs font-medium text-google-text">
           {scenario.label}
         </span>
-        <span className="text-xs text-gray-600">{scenario.duration}</span>
+        <span className="text-xs text-google-muted">{scenario.duration}</span>
       </div>
-      <p className="text-xs text-gray-600 leading-tight">
+      <p className="text-xs text-google-muted leading-tight">
         {scenario.description}
       </p>
     </button>
@@ -198,16 +196,18 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="app-shell">
+      <div className="app-canvas">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-16">
+      <div className="max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-16">
         {/* Title */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-medium text-white">
+        <div className="mb-12">
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.04em] text-google-text">
             Incident Dashboard
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            IncidentLens — policy-bound autonomous observability agent
+          <p className="text-sm text-google-muted mt-2">
+            Monitor active incidents, investigate their causes, and track the
+            response.
           </p>
         </div>
 
@@ -221,28 +221,23 @@ function Dashboard() {
           ].map(({ label, value }) => (
             <div
               key={label}
-              className="rounded-lg border border-gray-800 py-5 px-5"
+              className="soft-card py-6 px-6"
             >
-              <div className="text-3xl font-semibold text-white">{value}</div>
-              <div className="text-xs text-gray-500 mt-1">{label}</div>
+              <div className="text-4xl sm:text-5xl font-semibold tracking-[-0.04em] text-google-text">
+                {value}
+              </div>
+              <div className="text-xs font-medium text-google-muted mt-3">
+                {label}
+              </div>
             </div>
           ))}
         </div>
 
-        <ModelStatusPanel
-          runtime={modelLifecycle.runtime}
-          datasets={modelLifecycle.datasets}
-          jobs={modelLifecycle.jobs}
-          artifacts={modelLifecycle.artifacts}
-          loading={modelLifecycle.loading}
-          error={modelLifecycle.error}
-        />
-
         {/* Controls */}
-        <div className="rounded-lg border border-gray-800 p-5 mb-6 space-y-4">
+        <div className="soft-card p-5 mb-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-1.5">
+              <label className="block text-xs text-google-muted mb-1.5">
                 Status
               </label>
               <select
@@ -250,24 +245,24 @@ function Dashboard() {
                 onChange={(e) =>
                   setFilters({ ...filters, status: e.target.value })
                 }
-                className="text-sm bg-transparent w-full px-3 py-2 border border-gray-700 rounded-lg text-gray-400 focus:ring-1 focus:ring-sky-500"
+                className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted focus:ring-1 focus:ring-google-blue"
               >
-                <option value="" className="bg-black">
+                <option value="" className="bg-google-bg">
                   All
                 </option>
-                <option value="open" className="bg-black">
+                <option value="open" className="bg-google-bg">
                   Open
                 </option>
-                <option value="closed" className="bg-black">
+                <option value="closed" className="bg-google-bg">
                   Closed
                 </option>
-                <option value="ignored" className="bg-black">
+                <option value="ignored" className="bg-google-bg">
                   Ignored
                 </option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1.5">
+              <label className="block text-xs text-google-muted mb-1.5">
                 Severity
               </label>
               <select
@@ -275,27 +270,27 @@ function Dashboard() {
                 onChange={(e) =>
                   setFilters({ ...filters, severity: e.target.value })
                 }
-                className="text-sm bg-transparent w-full px-3 py-2 border border-gray-700 rounded-lg text-gray-400 focus:ring-1 focus:ring-sky-500"
+                className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted focus:ring-1 focus:ring-google-blue"
               >
-                <option value="" className="bg-black">
+                <option value="" className="bg-google-bg">
                   All
                 </option>
-                <option value="critical" className="bg-black">
+                <option value="critical" className="bg-google-bg">
                   Critical
                 </option>
-                <option value="high" className="bg-black">
+                <option value="high" className="bg-google-bg">
                   High
                 </option>
-                <option value="medium" className="bg-black">
+                <option value="medium" className="bg-google-bg">
                   Medium
                 </option>
-                <option value="low" className="bg-black">
+                <option value="low" className="bg-google-bg">
                   Low
                 </option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1.5">
+              <label className="block text-xs text-google-muted mb-1.5">
                 Search
               </label>
               <input
@@ -304,8 +299,8 @@ function Dashboard() {
                 onChange={(e) =>
                   setFilters({ ...filters, ticket_title: e.target.value })
                 }
-                placeholder="Ticket title..."
-                className="text-sm bg-transparent w-full px-3 py-2 border border-gray-700 rounded-lg text-gray-400 placeholder:text-gray-600 focus:ring-1 focus:ring-sky-500"
+                placeholder="Search incident titles"
+                className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted placeholder:text-google-muted focus:ring-1 focus:ring-google-blue"
               />
             </div>
             {isTest && (
@@ -313,14 +308,14 @@ function Dashboard() {
                 <button
                   onClick={handleStart}
                   disabled={logStatus === "running"}
-                  className="flex-1 px-3 py-2 text-sm bg-sky-500 text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-sky-600 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 px-3 py-2 text-sm bg-google-blue text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-google-blue-dark disabled:bg-google-border disabled:cursor-not-allowed transition-colors"
                 >
                   <Play size={13} /> Start
                 </button>
                 <button
                   onClick={handleStop}
                   disabled={logStatus !== "running"}
-                  className="flex-1 px-3 py-2 text-sm bg-red-500 text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-red-600 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 px-3 py-2 text-sm bg-google-red text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-red-700 disabled:bg-google-border disabled:cursor-not-allowed transition-colors"
                 >
                   <Square size={13} /> Stop
                 </button>
@@ -331,7 +326,9 @@ function Dashboard() {
           {/* Scenario buttons */}
           {isTest && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Demo scenarios</p>
+              <p className="text-xs text-google-muted mb-2">
+                Test with a simulated incident
+              </p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {SCENARIOS.map((s) => (
                   <ScenarioButton
@@ -343,7 +340,7 @@ function Dashboard() {
                 ))}
               </div>
               {scenarioMsg && (
-                <div className="mt-3 p-2.5 bg-sky-500/10 border border-sky-500/20 rounded-lg text-xs text-sky-300">
+                <div className="mt-3 p-2.5 bg-google-blue/10 border border-google-blue/20 rounded-lg text-xs text-google-blue">
                   {scenarioMsg}
                 </div>
               )}
@@ -351,9 +348,9 @@ function Dashboard() {
           )}
 
           {logServerError && (
-            <div className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <AlertCircle className="text-red-400 shrink-0 mt-0.5" size={15} />
-              <p className="text-red-300 text-xs">{logServerError}</p>
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-google-red/30 rounded-lg">
+              <AlertCircle className="text-google-red shrink-0 mt-0.5" size={15} />
+              <p className="text-google-red text-xs">{logServerError}</p>
             </div>
           )}
         </div>
@@ -362,12 +359,12 @@ function Dashboard() {
         {loading ? (
           <div className="text-center py-12">
             <span className="loader" />
-            <p className="text-gray-500 text-sm mt-4">Loading incidents...</p>
+            <p className="text-google-muted text-sm mt-4">Loading incidents...</p>
           </div>
         ) : incidents.length === 0 ? (
-          <div className="text-center py-16 rounded-lg border border-gray-800">
-            <AlertTriangle className="text-gray-600 mx-auto mb-3" size={32} />
-            <p className="text-gray-500 text-sm">
+          <div className="text-center py-16 rounded-lg border border-google-border">
+            <AlertTriangle className="text-google-muted mx-auto mb-3" size={32} />
+            <p className="text-google-muted text-sm">
               {filters.status || filters.severity || filters.ticket_title
                 ? "No incidents match your filters"
                 : "No incidents yet — start the log server or run a scenario"}
@@ -388,10 +385,7 @@ function Dashboard() {
           </div>
         )}
 
-        <div className="fixed bottom-0 left-0 right-0 border-t border-white/5 bg-black/80 backdrop-blur px-4 py-3 text-center text-xs text-gray-600">
-          <RefreshCw size={12} className="inline mr-1.5" />
-          Auto-refreshing every 5 seconds
-        </div>
+      </div>
       </div>
     </div>
   );

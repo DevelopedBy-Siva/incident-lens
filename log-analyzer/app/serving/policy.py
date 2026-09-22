@@ -1,8 +1,10 @@
+import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
-import logging
-import re
+
+from app.shared.observability import trace_operation
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +246,32 @@ def evaluate(incident, analysis) -> PolicyDecision:
     Returns:
         PolicyDecision — always returned, never raises.
     """
+    with trace_operation(
+        "policy_evaluation",
+        plane="serving",
+        metadata={
+            "project_id": getattr(incident, "project_id", None),
+            "incident_id": str(incident.id),
+            "decision_source": getattr(analysis, "analysis_source", "local_llm"),
+        },
+    ) as span:
+        decision = _evaluate(incident, analysis)
+        span.tags(
+            {
+                "policy_result": "allowed" if decision.allow else "blocked",
+                "result": decision.effective_disposition,
+            }
+        )
+        span.metrics(
+            {
+                "allowed_action_count": len(decision.allowed_actions),
+                "blocked_action_count": len(decision.blocked_actions),
+            }
+        )
+        return decision
+
+
+def _evaluate(incident, analysis) -> PolicyDecision:
     tags: list[str] = []
 
     severity = (analysis.severity or "low").lower().strip()

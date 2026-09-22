@@ -20,7 +20,7 @@ engine.
 - Blocks high-impact actions such as restarts, deployments, infrastructure changes, database mutations, secret rotation, deletion, and cluster scaling
 - Stores incident state, policy decisions, and action outcomes in PostgreSQL
 - Sends Discord/email notifications
-- Tracks LLM calls and tool-loop behavior with Langfuse
+- Sends application logs, APM traces, LLM invocation telemetry, and metrics to Datadog
 
 ---
 
@@ -66,10 +66,10 @@ Deployment:
 React Dashboard        -> Vercel
 FastAPI Backend        -> Render
 Log Simulator          -> Render
-Incident State         -> Neon PostgreSQL
+Incident State         -> PostgreSQL 16 (Docker)
 Raw Logs               -> Datadog Logs
 Model Inference        -> Local Qwen + project LoRA adapter
-LLM Tracing            -> Langfuse
+Observability          -> Datadog Logs + APM + LLM Observability + Metrics
 Notifications          -> Discord / SMTP
 ```
 
@@ -343,7 +343,6 @@ python log-analyzer/scripts/check_runbook_coverage.py
 
 ### AI platform dashboard
 
-The existing incident dashboard now includes the project's local model status.
 The **Models** page shows the shared base model, active adapter, evaluation
 scores, and immutable artifact history; any READY artifact can be activated.
 The **Training** page exposes the full dataset → training job → model artifact
@@ -364,7 +363,7 @@ mapping.
 
 ## Tech Stack
 
-**Backend:** FastAPI, SQLAlchemy, PostgreSQL / Neon
+**Backend:** FastAPI, SQLAlchemy, PostgreSQL 16
 
 **Frontend:** React, Tailwind CSS, Vercel
 
@@ -374,16 +373,24 @@ mapping.
 
 **Notifications:** Discord, SMTP
 
-**Deployment:** Vercel, Render, Neon PostgreSQL
+**Deployment:** Vercel, Render, Dockerized PostgreSQL
 
 ---
 
 ## Quick Start
 
 ```bash
+# PostgreSQL
+docker compose up -d postgres
+
 # Backend
 pip install -r log-analyzer/requirements.txt
-python -m uvicorn app.main:app --port 8000 --app-dir log-analyzer
+DD_LLMOBS_ENABLED=1 \
+DD_LLMOBS_AGENTLESS_ENABLED=1 \
+DD_LLMOBS_ML_APP=incident-lens \
+DD_SITE=datadoghq.com \
+DD_API_KEY=<your-rotated-api-key> \
+ddtrace-run python -m uvicorn app.main:app --port 8000 --app-dir log-analyzer
 
 # Log simulator
 pip install -r log-server/requirements.txt
@@ -404,7 +411,11 @@ the project to have a READY active artifact produced by the training lifecycle.
 ## Environment Variables
 
 ```env
-DATABASE_URL=postgresql://user:pass@localhost:5432/log_analyzer
+POSTGRES_DB=incidentlens
+POSTGRES_USER=incidentlens
+POSTGRES_PASSWORD=incidentlens
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql://incidentlens:incidentlens@localhost:5432/incidentlens
 
 DATADOG_API_KEY=your_api_key
 DATADOG_APP_KEY=your_application_key
@@ -414,6 +425,15 @@ DATADOG_LOOKBACK_SECONDS=30
 DATADOG_ENVIRONMENT=prod
 DATADOG_SERVICE=
 POLL_INTERVAL=30
+
+DD_API_KEY=your_rotated_api_key
+DD_SITE=datadoghq.com
+DD_LLMOBS_ENABLED=1
+DD_LLMOBS_AGENTLESS_ENABLED=1
+DD_LLMOBS_ML_APP=incident-lens
+DD_TRACE_ENABLED=1
+DD_SERVICE=incident-lens
+DD_ENV=development
 
 MODEL_PROVIDER=local
 BASE_MODEL=Qwen/Qwen2.5-0.5B-Instruct
@@ -434,10 +454,6 @@ LORA_TARGET_MODULES=q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
 ARTIFACT_STORAGE_PATH=artifacts
 DATASET_STORAGE_PATH=datasets
 HF_TOKEN=optional_hugging_face_token
-
-LANGFUSE_PUBLIC_KEY=your_public_key
-LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_HOST=https://cloud.langfuse.com
 
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
@@ -466,3 +482,60 @@ The log simulator submits logs to Datadog's HTTP intake with
 `DATADOG_API_KEY`, `DATADOG_SITE`, `DATADOG_ENVIRONMENT`, and
 `LOG_SERVICE_NAME`. It does not require the application key, which is used only
 by the analyzer to search logs.
+
+### PostgreSQL with Docker
+
+The root `compose.yaml` runs PostgreSQL 16 with a persistent named volume and a
+health check. Copy `.env.example` to `.env`, change the development password if
+needed, and start only the database:
+
+```bash
+cp .env.example .env
+docker compose up -d postgres
+docker compose ps
+```
+
+The backend runs on the host and connects through `localhost:5432`. Stop the
+container with `docker compose stop postgres`. `docker compose down` removes
+the container and network but retains the named database volume unless `-v` is
+explicitly supplied.
+
+### Datadog LLM Observability
+
+The backend image includes `ddtrace` and starts Uvicorn through `ddtrace-run`.
+Local development should use the same prefix shown in Quick Start. Because no
+Datadog Agent container is required, set `DD_LLMOBS_AGENTLESS_ENABLED=1` along
+with `DD_SITE`, `DD_API_KEY`, `DD_LLMOBS_ENABLED=1`, and
+`DD_LLMOBS_ML_APP=incident-lens` before starting the Python process.
+
+`DD_API_KEY` can also serve as the Datadog Logs API key. Log search additionally
+requires `DATADOG_APP_KEY`; never commit either key to the repository.
+
+### Observability architecture
+
+Datadog is the single observability platform for every application plane:
+
+```text
+IncidentLens
+    |
+    v
+Datadog
+    |-- Logs
+    |-- APM
+    |-- LLM Observability
+    `-- Metrics
+```
+
+Data Plane spans cover ingestion, normalization, parsing, clustering, and
+evidence generation. Serving Plane spans cover runtime resolution, base-model
+and adapter loading, local inference, decision validation, policy evaluation,
+and action execution. Training Plane spans cover dataset generation, training
+job lifecycle, LoRA training, evaluation, artifact creation, and activation.
+Control Plane spans cover project, dataset, and training-job creation plus model
+activation.
+
+Trace metadata is restricted to operational identifiers and outcomes such as
+`project_id`, `dataset_version`, `training_job_id`, `artifact_version`,
+`base_model`, `adapter_version`, `incident_id`, `decision_source`, and
+`policy_result`. Prompts, completions, API keys, application keys, passwords,
+tokens, and raw credentials are never attached to spans.

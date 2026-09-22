@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.control.models import Project
 from app.control.repositories import ProjectRepository
 from app.shared.model_config import configured_base_model
+from app.shared.observability import trace_operation
 from app.training.models import (
     Dataset,
     DatasetStatus,
@@ -35,15 +36,27 @@ class ModelManagementService:
         status: DatasetStatus = DatasetStatus.VALIDATING,
         record_count: int = 0,
     ) -> Dataset:
-        self._require_project(project_id)
-        dataset = Dataset(
-            project_id=project_id,
-            dataset_version=dataset_version,
-            storage_key=storage_key,
-            status=status,
-            record_count=record_count,
-        )
-        return self._commit(self.datasets.add(dataset))
+        with trace_operation(
+            "dataset_creation",
+            plane="control",
+            metadata={
+                "project_id": project_id,
+                "dataset_version": dataset_version,
+                "record_count": record_count,
+            },
+        ) as span:
+            self._require_project(project_id)
+            dataset = Dataset(
+                project_id=project_id,
+                dataset_version=dataset_version,
+                storage_key=storage_key,
+                status=status,
+                record_count=record_count,
+            )
+            dataset = self._commit(self.datasets.add(dataset))
+            span.tag("dataset_id", dataset.id)
+            span.tag("result", "created")
+            return dataset
 
     def mark_dataset_ready(
         self, project_id: str, dataset_id: str, record_count: int
@@ -66,14 +79,21 @@ class ModelManagementService:
         )
 
     def create_training_job(self, project_id: str, dataset_id: str) -> TrainingJob:
-        self._require_project(project_id)
-        dataset = self.datasets.get_for_project(dataset_id, project_id)
-        if not dataset:
-            raise ValueError("Dataset does not belong to project")
-        if dataset.status != DatasetStatus.READY:
-            raise ValueError("Training jobs require a READY dataset")
-        job = TrainingJob(project_id=project_id, dataset_id=dataset_id)
-        return self._commit(self.training_jobs.add(job))
+        with trace_operation(
+            "training_job_creation",
+            plane="control",
+            metadata={"project_id": project_id, "dataset_id": dataset_id},
+        ) as span:
+            self._require_project(project_id)
+            dataset = self.datasets.get_for_project(dataset_id, project_id)
+            if not dataset:
+                raise ValueError("Dataset does not belong to project")
+            if dataset.status != DatasetStatus.READY:
+                raise ValueError("Training jobs require a READY dataset")
+            job = TrainingJob(project_id=project_id, dataset_id=dataset_id)
+            job = self._commit(self.training_jobs.add(job))
+            span.tags({"training_job_id": job.id, "result": "created"})
+            return job
 
     def register_model_artifact(
         self,
@@ -104,14 +124,31 @@ class ModelManagementService:
     def update_active_artifact(
         self, project_id: str, artifact_id: str | None
     ) -> Project:
-        project = self._require_project(project_id)
-        if artifact_id is not None:
-            artifact = self.artifacts.get_for_project(artifact_id, project_id)
-            if not artifact:
-                raise ValueError("Artifact does not belong to project")
-            if artifact.status != ModelArtifactStatus.READY:
-                raise ValueError("Only READY artifacts can be activated")
-        return self._commit(self.projects.set_active_artifact(project, artifact_id))
+        with trace_operation(
+            "model_activation",
+            plane="control",
+            metadata={"project_id": project_id, "artifact_id": artifact_id},
+        ) as span:
+            project = self._require_project(project_id)
+            artifact = None
+            if artifact_id is not None:
+                artifact = self.artifacts.get_for_project(artifact_id, project_id)
+                if not artifact:
+                    raise ValueError("Artifact does not belong to project")
+                if artifact.status != ModelArtifactStatus.READY:
+                    raise ValueError("Only READY artifacts can be activated")
+            project = self._commit(
+                self.projects.set_active_artifact(project, artifact_id)
+            )
+            span.tags(
+                {
+                    "artifact_version": (
+                        artifact.artifact_version if artifact is not None else None
+                    ),
+                    "result": "activated" if artifact_id else "deactivated",
+                }
+            )
+            return project
 
     def _require_project(self, project_id: str) -> Project:
         project = self.projects.get(project_id)

@@ -1,14 +1,14 @@
 import React from "react";
 
 const STATUS_STYLES = {
-  READY: "bg-green-500/15 text-green-400 border-green-500/30",
-  PASSED: "bg-green-500/15 text-green-400 border-green-500/30",
-  RUNNING: "bg-sky-500/15 text-sky-400 border-sky-500/30",
-  EVALUATING: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  QUEUED: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  VALIDATING: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  FAILED: "bg-red-500/15 text-red-400 border-red-500/30",
-  ARCHIVED: "bg-gray-500/15 text-gray-400 border-gray-500/30",
+  READY: "bg-green-500/15 text-google-green border-google-green/30",
+  PASSED: "bg-green-500/15 text-google-green border-google-green/30",
+  RUNNING: "bg-google-blue/15 text-google-blue border-google-blue/30",
+  EVALUATING: "bg-google-blue/10 text-google-blue border-google-blue/30",
+  QUEUED: "bg-amber-500/15 text-amber-700 border-amber-300/30",
+  VALIDATING: "bg-amber-500/15 text-amber-700 border-amber-300/30",
+  FAILED: "bg-red-500/15 text-google-red border-google-red/30",
+  ARCHIVED: "bg-google-chip text-google-muted border-google-border",
 };
 
 export function StatusBadge({ status, label }) {
@@ -17,7 +17,7 @@ export function StatusBadge({ status, label }) {
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${
         STATUS_STYLES[normalized] ||
-        "bg-gray-500/15 text-gray-400 border-gray-500/30"
+        "bg-google-chip text-google-muted border-google-border"
       }`}
     >
       {label || normalized}
@@ -55,7 +55,7 @@ export function displayModelName(model) {
 export function LifecycleError({ message }) {
   if (!message) return null;
   return (
-    <div className="mb-5 p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+    <div className="mb-5 p-3 rounded-lg border border-google-red/30 bg-red-50 text-google-red text-sm">
       {message}
     </div>
   );
@@ -63,7 +63,7 @@ export function LifecycleError({ message }) {
 
 export function EmptyState({ children }) {
   return (
-    <div className="rounded-lg border border-dashed border-gray-800 py-10 px-4 text-center text-sm text-gray-500">
+    <div className="rounded-lg border border-dashed border-google-border py-10 px-4 text-center text-sm text-google-muted">
       {children}
     </div>
   );

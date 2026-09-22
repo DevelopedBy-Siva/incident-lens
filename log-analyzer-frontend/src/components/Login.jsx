@@ -43,62 +43,34 @@ function Login() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto min-h-screen flex flex-col items-center justify-center p-4 pt-20 relative">
-      <div className="flex items-center">
-        <Activity className="text-sky-500 mr-2" size={28} />
+    <div className="auth-shell min-h-screen flex flex-col items-center justify-center p-4 relative">
+      <div className="flex items-center mb-8">
+        <Activity className="text-google-text mr-2" size={30} strokeWidth={2.4} />
+        <span className="text-xl font-semibold tracking-tight text-google-text">IncidentLens</span>
       </div>
-      <div className="rounded-2xl shadow-2xl w-full max-w-md p-8">
+      <div className="auth-card w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Login</h1>
+          <h1 className="text-4xl font-semibold tracking-[-0.04em] text-google-text mb-2">
+            Login
+          </h1>
+          <p className="text-sm text-google-muted">
+            Sign in to monitor and investigate your project’s incidents.
+          </p>
         </div>
 
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
             <AlertCircle
-              className="text-red-500 mr-3 flex-shrink-0"
+              className="text-google-red mr-3 flex-shrink-0"
               size={20}
             />
-            <p className="text-red-700 text-sm">{error}</p>
+            <p className="text-google-red text-sm">{error}</p>
           </div>
         )}
 
-        <div className="mb-6 p-5 rounded-xl border border-sky-500/30 bg-sky-500/10">
-          <p className="text-xs font-medium text-sky-500 mb-3">
-            Demo Credentials
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-sky-200">
-            <div className="flex flex-col">
-              <span className="text-xs text-sky-600 mb-1">Project Name</span>
-              <span className="font-normal text-xs text-gray-300">
-                test-server
-              </span>
-            </div>
-
-            <div className="flex flex-col">
-              <span className="text-xs text-sky-600 mb-1">Password</span>
-              <span className="font-normal text-xs text-gray-300">
-                testserver
-              </span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFormData({
-                name: "test-server",
-                password: "testserver",
-              })
-            }
-            className="mt-4 text-xs bg-sky-500 hover:bg-sky-600 text-white px-4 py-1 rounded-lg transition-colors"
-          >
-            Autofill Credentials
-          </button>
-        </div>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-normal text-gray-400 mb-2">
+            <label className="block text-sm font-normal text-google-muted mb-2">
               Project Name
             </label>
             <input
@@ -106,14 +78,14 @@ function Login() {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              className="text-sm w-full px-4 py-3 bg-transparent text-gray-100 border border-white/20 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 placeholder:text-gray-500"
+              className="text-sm w-full px-4 py-3 bg-white text-google-text border border-google-border rounded-lg focus:ring-2 focus:ring-google-blue focus:border-google-blue placeholder:text-google-muted"
               placeholder="my-awesome-project"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-normal text-gray-400 mb-2">
+            <label className="block text-sm font-normal text-google-muted mb-2">
               Password
             </label>
             <input
@@ -121,7 +93,7 @@ function Login() {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className="w-full px-4 py-3 bg-transparent text-gray-100 border border-white/20 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 placeholder:text-gray-500"
+              className="w-full px-4 py-3 bg-white text-google-text border border-google-border rounded-lg focus:ring-2 focus:ring-google-blue focus:border-google-blue placeholder:text-google-muted"
               placeholder="••••••••"
               required
               autoComplete="new-password"
@@ -131,21 +103,21 @@ function Login() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 rounded-lg text-sm font-medium text-white transition-colors ${
+            className={`w-full py-3 rounded-lg text-sm font-medium transition-colors ${
               loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-sky-500 hover:bg-sky-600"
+                ? "bg-google-border text-google-muted cursor-not-allowed"
+                : "bg-google-blue text-white hover:bg-google-blue-dark"
             }`}
           >
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-600 mt-6">
+        <p className="text-center text-sm text-google-muted mt-6">
           Don't have a project?{" "}
           <Link
             to="/register"
-            className="text-sky-500 hover:text-sky-600 font-medium"
+            className="text-google-blue hover:text-google-muted font-medium"
           >
             Create one here
           </Link>

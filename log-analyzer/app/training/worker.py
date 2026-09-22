@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.control.models import Project
 from app.control.repositories import ProjectRepository
 from app.shared.model_config import configured_base_model
+from app.shared.observability import trace_operation
 from app.training.artifact_metadata import (
     ArtifactMetadataAlreadyExistsError,
     ArtifactMetadataWriter,
@@ -92,6 +93,26 @@ class TrainingWorker:
         return self.run(job.id, job.project_id)
 
     def run(self, job_id: str, project_id: str) -> TrainingJob:
+        with trace_operation(
+            "training_job_lifecycle",
+            plane="training",
+            metadata={
+                "project_id": project_id,
+                "training_job_id": job_id,
+            },
+        ) as span:
+            job = self._run(job_id, project_id)
+            span.tags(
+                {
+                    "dataset_id": job.dataset_id,
+                    "artifact_id": job.artifact_id,
+                    "status": job.status.value,
+                    "result": job.status.value,
+                }
+            )
+            return job
+
+    def _run(self, job_id: str, project_id: str) -> TrainingJob:
         job = self.jobs.get_for_project(job_id, project_id)
         if not job:
             raise TrainingJobNotFoundError("Training job not found")
@@ -112,18 +133,45 @@ class TrainingWorker:
                 project.base_model = base_model
                 self._commit(project)
             artifact_version, adapter_path = self._prepare_artifact_output(project.id)
-            training_result = self.engine.train(
-                TrainingRequest(
-                    project_id=project_id,
-                    dataset_id=dataset.id,
-                    dataset_version=dataset.dataset_version,
-                    base_model=base_model,
-                    dataset_content=dataset_content,
-                    expected_record_count=dataset.record_count,
-                    adapter_output_path=adapter_path,
-                    profile=self.training_profile,
+            with trace_operation(
+                "lora_training",
+                plane="training",
+                metadata={
+                    "project_id": project_id,
+                    "training_job_id": job.id,
+                    "dataset_id": dataset.id,
+                    "dataset_version": dataset.dataset_version,
+                    "artifact_version": artifact_version,
+                    "base_model": base_model,
+                },
+            ) as training_span:
+                training_result = self.engine.train(
+                    TrainingRequest(
+                        project_id=project_id,
+                        dataset_id=dataset.id,
+                        dataset_version=dataset.dataset_version,
+                        base_model=base_model,
+                        dataset_content=dataset_content,
+                        expected_record_count=dataset.record_count,
+                        adapter_output_path=adapter_path,
+                        profile=self.training_profile,
+                    )
                 )
-            )
+                training_span.tags(
+                    {
+                        "training_engine": training_result.engine,
+                        "result": (
+                            "completed" if training_result.succeeded else "failed"
+                        ),
+                    }
+                )
+                training_span.metrics(
+                    {
+                        "training_duration_seconds": training_result.metrics.get(
+                            "duration_seconds"
+                        )
+                    }
+                )
             if not training_result.succeeded:
                 raise TrainingPipelineError(
                     training_result.error or "Training engine reported failure"
@@ -138,9 +186,25 @@ class TrainingWorker:
 
             self.jobs.transition(job, TrainingJobStatus.EVALUATING)
             self._commit(job)
-            evaluation = self.evaluator.evaluate(
-                dataset, dataset_content, training_result
-            )
+            with trace_operation(
+                "evaluation",
+                plane="training",
+                metadata={
+                    "project_id": project_id,
+                    "training_job_id": job.id,
+                    "dataset_id": dataset.id,
+                    "dataset_version": dataset.dataset_version,
+                    "artifact_version": artifact_version,
+                    "base_model": base_model,
+                },
+            ) as evaluation_span:
+                evaluation = self.evaluator.evaluate(
+                    dataset, dataset_content, training_result
+                )
+                evaluation_span.tag(
+                    "result", "passed" if evaluation.passed else "failed"
+                )
+                evaluation_span.metrics({"evaluation_score": evaluation.score})
             if not evaluation.passed:
                 raise TrainingPipelineError("Training evaluation did not pass")
 
@@ -151,13 +215,27 @@ class TrainingWorker:
                 adapter_path,
                 evaluation,
             )
-            self.artifact_writer.write(
-                project.id,
-                artifact.artifact_version,
-                self._artifact_metadata(
-                    project, dataset, artifact, training_result, evaluation
-                ),
-            )
+            with trace_operation(
+                "artifact_creation",
+                plane="training",
+                metadata={
+                    "project_id": project.id,
+                    "training_job_id": job.id,
+                    "dataset_id": dataset.id,
+                    "dataset_version": dataset.dataset_version,
+                    "artifact_id": artifact.id,
+                    "artifact_version": artifact.artifact_version,
+                    "base_model": base_model,
+                },
+            ) as artifact_span:
+                self.artifact_writer.write(
+                    project.id,
+                    artifact.artifact_version,
+                    self._artifact_metadata(
+                        project, dataset, artifact, training_result, evaluation
+                    ),
+                )
+                artifact_span.tag("result", "created")
             return self._activate_and_complete(project, job, artifact)
         except Exception as exc:  # noqa: BLE001 - lifecycle failures must mark the job
             logger.warning("Training job %s failed: %s", job_id, exc)
@@ -207,19 +285,32 @@ class TrainingWorker:
         job: TrainingJob,
         artifact: ModelArtifact,
     ) -> TrainingJob:
-        self.projects.set_active_artifact(project, artifact.id)
-        self.jobs.transition(
-            job,
-            TrainingJobStatus.PASSED,
-            artifact_id=artifact.id,
-            finished_at=datetime.utcnow(),
-        )
-        try:
-            self.db.commit()
-            return job
-        except Exception:
-            self.db.rollback()
-            raise
+        with trace_operation(
+            "artifact_activation",
+            plane="training",
+            metadata={
+                "project_id": project.id,
+                "training_job_id": job.id,
+                "dataset_id": job.dataset_id,
+                "artifact_id": artifact.id,
+                "artifact_version": artifact.artifact_version,
+                "base_model": artifact.base_model,
+            },
+        ) as span:
+            self.projects.set_active_artifact(project, artifact.id)
+            self.jobs.transition(
+                job,
+                TrainingJobStatus.PASSED,
+                artifact_id=artifact.id,
+                finished_at=datetime.utcnow(),
+            )
+            try:
+                self.db.commit()
+                span.tag("result", "activated")
+                return job
+            except Exception:
+                self.db.rollback()
+                raise
 
     def _fail(
         self,

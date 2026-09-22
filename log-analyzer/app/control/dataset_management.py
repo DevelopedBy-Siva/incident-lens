@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.control.model_management import ModelManagementService
 from app.control.repositories import ProjectRepository
+from app.shared.observability import trace_operation
 from app.training.dataset_builder import DatasetBuilder, DatasetEligibilityRules
 from app.training.dataset_serializer import JsonLinesDatasetSerializer
 from app.training.dataset_storage import DatasetStorage, configured_dataset_storage
@@ -36,6 +37,25 @@ class DatasetBuildCommand:
         self.model_management = ModelManagementService(db)
 
     def execute(self, project_id: str) -> Dataset:
+        with trace_operation(
+            "dataset_generation",
+            plane="training",
+            metadata={"project_id": project_id},
+        ) as span:
+            dataset = self._execute(project_id)
+            span.tags(
+                {
+                    "dataset_id": dataset.id,
+                    "dataset_version": dataset.dataset_version,
+                    "record_count": dataset.record_count,
+                    "status": dataset.status.value,
+                    "result": "created",
+                }
+            )
+            span.metrics({"record_count": dataset.record_count})
+            return dataset
+
+    def _execute(self, project_id: str) -> Dataset:
         if not ProjectRepository(self.db).get(project_id):
             raise ValueError("Project not found")
 

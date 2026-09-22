@@ -12,8 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-DATADOG_API_KEY = os.getenv("DATADOG_API_KEY", "")
-DATADOG_SITE = os.getenv("DATADOG_SITE", "datadoghq.com")
+DATADOG_API_KEY = os.getenv("DATADOG_API_KEY") or os.getenv("DD_API_KEY", "")
+DATADOG_SITE = os.getenv("DATADOG_SITE") or os.getenv("DD_SITE", "datadoghq.com")
 DATADOG_ENVIRONMENT = os.getenv("DATADOG_ENVIRONMENT", "prod")
 SERVICE_NAME = os.getenv("LOG_SERVICE_NAME", "log-server")
 

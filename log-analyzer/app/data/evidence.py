@@ -1,7 +1,9 @@
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
-import logging
+
+from app.shared.observability import trace_operation
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +110,27 @@ def build_evidence(incident, project) -> EvidenceBundle:
     Returns:
         EvidenceBundle — always returns something, never raises.
     """
+    with trace_operation(
+        "evidence_generation",
+        plane="data",
+        metadata={
+            "project_id": getattr(project, "id", None),
+            "incident_id": str(incident.id),
+            "source": incident.source,
+        },
+    ) as span:
+        bundle = _build_evidence(incident, project)
+        span.metrics(
+            {
+                "sample_count": len(bundle.sample_lines),
+                "related_incident_count": len(bundle.related_incidents),
+            }
+        )
+        span.tag("result", "completed")
+        return bundle
+
+
+def _build_evidence(incident, project) -> EvidenceBundle:
     bundle = EvidenceBundle()
 
     try:

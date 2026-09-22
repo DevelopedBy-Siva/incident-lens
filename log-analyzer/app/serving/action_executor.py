@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime
 
+from app.shared.observability import trace_operation
+
 logger = logging.getLogger(__name__)
 
 AUTO_SUPPRESS_MIN_CONFIDENCE = 0.80
@@ -17,9 +19,26 @@ def execute_actions(incident, analysis, policy_decision, project) -> list[str]:
     """
     Execute all applicable autonomous actions for this incident.
 
-    Returns list of action names that were executed (for logging/Langfuse).
+    Returns the action names that were executed for audit logging.
     Never raises — all errors are caught and logged.
     """
+    with trace_operation(
+        "action_execution",
+        plane="serving",
+        metadata={
+            "project_id": getattr(project, "id", None),
+            "incident_id": str(incident.id),
+            "decision_source": getattr(analysis, "analysis_source", "local_llm"),
+            "policy_result": "allowed" if policy_decision.allow else "blocked",
+        },
+    ) as span:
+        executed = _execute_actions(incident, analysis, policy_decision, project)
+        span.tag("result", "executed" if executed else "skipped")
+        span.metrics({"action_count": len(executed)})
+        return executed
+
+
+def _execute_actions(incident, analysis, policy_decision, project) -> list[str]:
     executed = []
 
     try:

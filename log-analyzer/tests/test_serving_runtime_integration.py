@@ -29,9 +29,6 @@ def project():
     return SimpleNamespace(
         id="project-1",
         name="project",
-        langfuse_public_key=None,
-        langfuse_secret_key=None,
-        langfuse_host=None,
     )
 
 

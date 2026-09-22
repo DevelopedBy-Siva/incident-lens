@@ -2,9 +2,11 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from app.shared.model_config import RuntimeModelSettings
+from app.shared.observability import trace_llm_operation, trace_operation
 
 
 class BaseModelLoadError(RuntimeError):
@@ -50,32 +52,43 @@ class BaseModelLoader:
         self.torch = torch_module
 
     def load(self, settings: RuntimeModelSettings) -> LoadedBaseModel:
-        try:
-            auto_model, auto_tokenizer, torch_module = self._dependencies()
-            token = os.getenv("HF_TOKEN", "").strip() or None
-            tokenizer = auto_tokenizer.from_pretrained(
-                settings.base_model,
-                token=token,
-            )
-            if tokenizer.pad_token_id is None:
-                tokenizer.pad_token = tokenizer.eos_token
+        with trace_operation(
+            "base_model_loading",
+            plane="serving",
+            metadata={
+                "base_model": settings.base_model,
+                "device": settings.device,
+                "model_provider": "local",
+            },
+        ) as span:
+            try:
+                auto_model, auto_tokenizer, torch_module = self._dependencies()
+                token = os.getenv("HF_TOKEN", "").strip() or None
+                tokenizer = auto_tokenizer.from_pretrained(
+                    settings.base_model,
+                    token=token,
+                )
+                if tokenizer.pad_token_id is None:
+                    tokenizer.pad_token = tokenizer.eos_token
 
-            model = auto_model.from_pretrained(
-                settings.base_model,
-                token=token,
-                dtype=self._dtype(torch_module, settings.dtype),
-                low_cpu_mem_usage=True,
-            )
-            model.to(settings.device)
-            model.eval()
-            return LoadedBaseModel(settings.base_model, tokenizer, model)
-        except Exception as exc:
-            if isinstance(exc, BaseModelLoadError):
-                raise
-            raise BaseModelLoadError(
-                f"Unable to load shared base model {settings.base_model!r} "
-                f"on {settings.device!r}: {exc}"
-            ) from exc
+                model = auto_model.from_pretrained(
+                    settings.base_model,
+                    token=token,
+                    dtype=self._dtype(torch_module, settings.dtype),
+                    low_cpu_mem_usage=True,
+                )
+                model.to(settings.device)
+                model.eval()
+                span.tag("result", "loaded")
+                return LoadedBaseModel(settings.base_model, tokenizer, model)
+            except Exception as exc:
+                span.tag("error_type", type(exc).__name__)
+                if isinstance(exc, BaseModelLoadError):
+                    raise
+                raise BaseModelLoadError(
+                    f"Unable to load shared base model {settings.base_model!r} "
+                    f"on {settings.device!r}: {exc}"
+                ) from exc
 
     def _dependencies(self):
         if self.auto_model is not None:
@@ -236,51 +249,81 @@ class LocalModelCache:
                 artifact_id=artifact_id,
                 adapter_path=adapter_path,
             )
-            try:
-                template_args = {
-                    "tokenize": True,
-                    "add_generation_prompt": True,
-                    "return_dict": True,
-                    "return_tensors": "pt",
-                }
-                if tools:
-                    template_args["tools"] = tools
-                inputs = self._base.tokenizer.apply_chat_template(
-                    messages,
-                    **template_args,
-                )
-                inputs = inputs.to(self.settings.device)
-                input_tokens = int(inputs["input_ids"].shape[-1])
-                generation_args = {
-                    "max_new_tokens": max_new_tokens,
-                    "do_sample": temperature > 0,
-                    "pad_token_id": self._base.tokenizer.pad_token_id,
-                    "eos_token_id": self._base.tokenizer.eos_token_id,
-                }
-                if temperature > 0:
-                    generation_args["temperature"] = temperature
+            started = perf_counter()
+            with trace_llm_operation(
+                "local_inference",
+                model_name=self.settings.base_model,
+                metadata={
+                    "project_id": project_id,
+                    "artifact_id": artifact_id,
+                    "base_model": self.settings.base_model,
+                    "adapter_version": artifact_id,
+                    "model_provider": "local",
+                    "device": self.settings.device,
+                },
+            ) as span:
+                try:
+                    template_args = {
+                        "tokenize": True,
+                        "add_generation_prompt": True,
+                        "return_dict": True,
+                        "return_tensors": "pt",
+                    }
+                    if tools:
+                        template_args["tools"] = tools
+                    inputs = self._base.tokenizer.apply_chat_template(
+                        messages,
+                        **template_args,
+                    )
+                    inputs = inputs.to(self.settings.device)
+                    input_tokens = int(inputs["input_ids"].shape[-1])
+                    generation_args = {
+                        "max_new_tokens": max_new_tokens,
+                        "do_sample": temperature > 0,
+                        "pad_token_id": self._base.tokenizer.pad_token_id,
+                        "eos_token_id": self._base.tokenizer.eos_token_id,
+                    }
+                    if temperature > 0:
+                        generation_args["temperature"] = temperature
 
-                import torch
+                    import torch
 
-                with torch.inference_mode():
-                    generated = model.generate(**inputs, **generation_args)
-                output_ids = generated[0][input_tokens:]
-                content = self._base.tokenizer.decode(
-                    output_ids,
-                    skip_special_tokens=True,
-                )
-                return LocalGeneration(
-                    content=content,
-                    input_tokens=input_tokens,
-                    output_tokens=len(output_ids),
-                )
-            except Exception as exc:
-                if isinstance(exc, (BaseModelLoadError, AdapterLoadError)):
-                    raise
-                raise LocalInferenceError(
-                    f"Local inference failed for project {project_id!r} with "
-                    f"artifact {artifact_id!r}: {exc}"
-                ) from exc
+                    with torch.inference_mode():
+                        generated = model.generate(**inputs, **generation_args)
+                    output_ids = generated[0][input_tokens:]
+                    content = self._base.tokenizer.decode(
+                        output_ids,
+                        skip_special_tokens=True,
+                    )
+                    output_tokens = len(output_ids)
+                    span.tags(
+                        {
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "result": "completed",
+                        }
+                    )
+                    span.metrics(
+                        {
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "total_tokens": input_tokens + output_tokens,
+                            "inference_duration_ms": (perf_counter() - started) * 1000,
+                        }
+                    )
+                    return LocalGeneration(
+                        content=content,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    )
+                except Exception as exc:
+                    span.tag("error_type", type(exc).__name__)
+                    if isinstance(exc, (BaseModelLoadError, AdapterLoadError)):
+                        raise
+                    raise LocalInferenceError(
+                        f"Local inference failed for project {project_id!r} with "
+                        f"artifact {artifact_id!r}: {exc}"
+                    ) from exc
 
     def _activate_adapter(
         self,
@@ -292,20 +335,31 @@ class LocalModelCache:
         adapter = self._adapters.get(artifact_id)
         if adapter is None:
             adapter_name = self._adapter_name(project_id, artifact_id)
-            if self._model is None:
-                self._model = self.adapter_loader.load_first(
-                    self._base.model,
-                    adapter_path=adapter_path,
-                    adapter_name=adapter_name,
-                    expected_base_model=self.settings.base_model,
-                )
-            else:
-                self.adapter_loader.load_additional(
-                    self._model,
-                    adapter_path=adapter_path,
-                    adapter_name=adapter_name,
-                    expected_base_model=self.settings.base_model,
-                )
+            with trace_operation(
+                "adapter_loading",
+                plane="serving",
+                metadata={
+                    "project_id": project_id,
+                    "artifact_id": artifact_id,
+                    "adapter_version": artifact_id,
+                    "base_model": self.settings.base_model,
+                },
+            ) as span:
+                if self._model is None:
+                    self._model = self.adapter_loader.load_first(
+                        self._base.model,
+                        adapter_path=adapter_path,
+                        adapter_name=adapter_name,
+                        expected_base_model=self.settings.base_model,
+                    )
+                else:
+                    self.adapter_loader.load_additional(
+                        self._model,
+                        adapter_path=adapter_path,
+                        adapter_name=adapter_name,
+                        expected_base_model=self.settings.base_model,
+                    )
+                span.tag("result", "loaded")
             adapter = LoadedAdapter(
                 artifact_id=artifact_id,
                 project_id=project_id,

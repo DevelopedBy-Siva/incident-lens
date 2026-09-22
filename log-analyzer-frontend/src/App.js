@@ -135,13 +135,13 @@ function App() {
           element={
             <div className="min-h-screen flex items-center justify-center">
               <div className="text-center">
-                <h1 className="text-7xl font-semibold text-gray-400 mb-4">
+                <h1 className="text-7xl font-semibold text-google-muted mb-4">
                   404
                 </h1>
-                <p className="text-gray-400 mb-10">Page not available.</p>
+                <p className="text-google-muted mb-10">Page not available.</p>
                 <a
                   href="/dashboard"
-                  className="text-sm px-8 py-3 bg-sky-500 text-white font-normal rounded-lg hover:bg-sky-600"
+                  className="text-sm px-8 py-3 bg-google-blue text-white font-normal rounded-lg hover:bg-google-blue-dark"
                 >
                   Return to Home
                 </a>

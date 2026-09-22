@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import time
 from typing import Optional
 
@@ -10,6 +9,7 @@ from app.serving.local_model import (
     LocalInferenceError,
 )
 from app.serving.model_runtime import get_model_runtime
+from app.shared.observability import trace_operation
 
 logger = logging.getLogger(__name__)
 
@@ -310,9 +310,6 @@ class InvestigationLoop:
         self._last_tool_calls = []
         self._last_iterations = 0
         self._last_fallback = False
-        lf = self._make_langfuse(project)
-        trace = self._start_trace(lf, incident)
-
         runtime_session = get_model_runtime().resolve_project_model(
             getattr(project, "id", None), project=project
         )
@@ -349,19 +346,36 @@ class InvestigationLoop:
         try:
             for iteration in range(MAX_ITERATIONS + 1):
                 self._last_iterations = iteration
-                span = self._start_span(trace, f"iteration-{iteration}", messages)
-
-                response = runtime_session.complete_with_tools(
-                    model=runtime_session.default_model,
-                    messages=messages,
-                    tools=TOOLS if iteration < MAX_ITERATIONS else None,
-                    tool_choice="auto" if iteration < MAX_ITERATIONS else None,
-                    temperature=0.2,
-                    max_tokens=1500,
-                )
-
-                msg = response
-                self._end_span(span, msg)
+                with trace_operation(
+                    "investigation_iteration",
+                    plane="serving",
+                    metadata={
+                        "project_id": getattr(project, "id", None),
+                        "incident_id": str(incident.id),
+                        "base_model": getattr(
+                            runtime_session,
+                            "base_model",
+                            runtime_session.default_model,
+                        ),
+                        "decision_source": "local_llm",
+                    },
+                ) as span:
+                    response = runtime_session.complete_with_tools(
+                        model=runtime_session.default_model,
+                        messages=messages,
+                        tools=TOOLS if iteration < MAX_ITERATIONS else None,
+                        tool_choice="auto" if iteration < MAX_ITERATIONS else None,
+                        temperature=0.2,
+                        max_tokens=1500,
+                    )
+                    msg = response
+                    span.metrics(
+                        {
+                            "iteration": iteration,
+                            "message_count": len(messages),
+                            "has_tool_calls": int(bool(msg.tool_calls)),
+                        }
+                    )
 
                 if not msg.tool_calls:
                     final_text = msg.content or ""
@@ -432,7 +446,9 @@ class InvestigationLoop:
                 return self._fallback(incident, project, evidence)
 
             elapsed_ms = int((time.time() - t0) * 1000)
-            self._update_trace(trace, analysis, tool_calls_made, elapsed_ms)
+            self._record_result(
+                incident, project, analysis, tool_calls_made, elapsed_ms
+            )
 
             logger.info(
                 "[INVESTIGATOR] Done in %dms — %s/%s — %d tool calls",
@@ -445,12 +461,12 @@ class InvestigationLoop:
 
         except (AdapterLoadError, BaseModelLoadError, LocalInferenceError) as e:
             logger.error("[INVESTIGATOR] Local model failure: %s", e)
-            self._update_trace(trace, None, tool_calls_made, 0, error=str(e))
+            self._record_result(incident, project, None, tool_calls_made, 0, error=e)
             self._last_tool_calls = list(tool_calls_made)
             return None
         except Exception as e:
             logger.error("[INVESTIGATOR] Loop failed: %s — falling back", e)
-            self._update_trace(trace, None, tool_calls_made, 0, error=str(e))
+            self._record_result(incident, project, None, tool_calls_made, 0, error=e)
             self._last_tool_calls = list(tool_calls_made)
             self._last_fallback = True
             return self._fallback(incident, project, evidence)
@@ -497,80 +513,36 @@ class InvestigationLoop:
             )
             return None
 
-    def _make_langfuse(self, project):
-        try:
-            from langfuse import Langfuse
-
-            pk = (project.langfuse_public_key if project else None) or os.getenv(
-                "LANGFUSE_PUBLIC_KEY", ""
-            )
-            sk = (project.langfuse_secret_key if project else None) or os.getenv(
-                "LANGFUSE_SECRET_KEY", ""
-            )
-            host = (project.langfuse_host if project else None) or os.getenv(
-                "LANGFUSE_HOST", "https://cloud.langfuse.com"
-            )
-            if not pk or not sk:
-                return None
-            return Langfuse(public_key=pk, secret_key=sk, host=host)
-        except Exception:
-            return None
-
-    def _start_trace(self, lf, incident):
-        if not lf:
-            return _NoOp()
-        try:
-            return lf.trace(
-                name="investigation-loop",
-                metadata={"incident_id": str(incident.id), "source": incident.source},
-            )
-        except Exception:
-            return _NoOp()
-
-    def _start_span(self, trace, name, messages):
-        try:
-            return trace.span(name=name, input={"message_count": len(messages)})
-        except Exception:
-            return _NoOp()
-
-    def _end_span(self, span, msg):
-        try:
-            has_tools = bool(getattr(msg, "tool_calls", None))
-            span.end(
-                output={
-                    "has_tool_calls": has_tools,
-                    "content_len": len(msg.content or ""),
+    def _record_result(
+        self,
+        incident,
+        project,
+        analysis,
+        tool_calls,
+        elapsed_ms,
+        error=None,
+    ):
+        with trace_operation(
+            "investigation_result",
+            plane="serving",
+            metadata={
+                "project_id": getattr(project, "id", None),
+                "incident_id": str(incident.id),
+                "source": incident.source,
+                "decision_source": "local_llm",
+                "policy_result": (
+                    analysis.disposition if analysis is not None else "failed"
+                ),
+                "result": analysis.severity if analysis is not None else "error",
+                "error_type": type(error).__name__ if error is not None else None,
+            },
+        ) as span:
+            span.metrics(
+                {
+                    "elapsed_ms": elapsed_ms,
+                    "tool_call_count": len(tool_calls),
                 }
             )
-        except Exception:
-            pass
-
-    def _update_trace(self, trace, analysis, tool_calls, elapsed_ms, error=None):
-        try:
-            meta = {"tool_calls": tool_calls, "elapsed_ms": elapsed_ms}
-            if analysis:
-                meta.update(
-                    {"severity": analysis.severity, "disposition": analysis.disposition}
-                )
-            if error:
-                meta["error"] = error
-            trace.update(metadata=meta)
-        except Exception:
-            pass
-
-
-class _NoOp:
-    def span(self, *a, **kw):
-        return _NoOp()
-
-    def generation(self, *a, **kw):
-        return _NoOp()
-
-    def update(self, *a, **kw):
-        return self
-
-    def end(self, *a, **kw):
-        return self
 
 
 _investigation_loop: Optional[InvestigationLoop] = None

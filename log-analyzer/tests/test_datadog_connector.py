@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -33,6 +34,13 @@ def _project(**overrides):
 
 
 class DatadogConnectorTests(unittest.TestCase):
+    def test_shared_dd_api_key_is_used_as_the_deployment_fallback(self):
+        project = _project(datadog_api_key=None)
+        with patch.dict(os.environ, {"DD_API_KEY": "shared-api-key"}, clear=True):
+            config = DatadogLogSourceConfig.from_project(project)
+
+        self.assertEqual(config.api_key, "shared-api-key")
+
     def test_search_authenticates_pages_and_normalizes_in_timestamp_order(self):
         requests = []
 

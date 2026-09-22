@@ -16,6 +16,7 @@ from app.control.auth import (
 from app.control.models import Project
 from app.data.ingestion.datadog_connector import SUPPORTED_DATADOG_SITES
 from app.shared.database import get_db
+from app.shared.observability import trace_operation
 
 router = APIRouter()
 security = HTTPBearer()
@@ -59,10 +60,6 @@ class ProjectSettings(BaseModel):
     datadog_query: Optional[str] = None
     datadog_environment: Optional[str] = None
     datadog_service: Optional[str] = None
-    # Observability
-    langfuse_public_key: Optional[str] = None
-    langfuse_secret_key: Optional[str] = None
-    langfuse_host: Optional[str] = None
     # Notifications
     user_email: Optional[str] = None
     discord_webhook_escalate: Optional[str] = None
@@ -95,9 +92,17 @@ def _mask(value: Optional[str], is_test: bool = False) -> Optional[str]:
     return "••••••"
 
 
+def _enabled(name: str, default: str = "1") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _project_to_dict(project: Project) -> dict:
     t = project.is_test
-    datadog_api_key = project.datadog_api_key or os.getenv("DATADOG_API_KEY")
+    datadog_api_key = (
+        project.datadog_api_key
+        or os.getenv("DATADOG_API_KEY")
+        or os.getenv("DD_API_KEY")
+    )
     datadog_app_key = project.datadog_app_key or os.getenv("DATADOG_APP_KEY")
     datadog_configured = bool(datadog_api_key and datadog_app_key)
     return {
@@ -111,16 +116,19 @@ def _project_to_dict(project: Project) -> dict:
         "datadog_api_key": _mask(datadog_api_key, t),
         "datadog_app_key": _mask(datadog_app_key, t),
         "datadog_site": project.datadog_site
-        or os.getenv("DATADOG_SITE", "datadoghq.com"),
+        or os.getenv("DATADOG_SITE")
+        or os.getenv("DD_SITE", "datadoghq.com"),
         "datadog_query": project.datadog_query
         or os.getenv("DATADOG_QUERY", "status:(error OR warn OR critical)"),
         "datadog_environment": project.datadog_environment
         or os.getenv("DATADOG_ENVIRONMENT", "prod"),
         "datadog_service": project.datadog_service or os.getenv("DATADOG_SERVICE"),
-        # Observability
-        "langfuse_public_key": _mask(project.langfuse_public_key, t),
-        "langfuse_secret_key": _mask(project.langfuse_secret_key, t),
-        "langfuse_host": HIDDEN if t else project.langfuse_host,
+        "observability": {
+            "platform": "Datadog",
+            "llm_observability": _enabled("DD_LLMOBS_ENABLED"),
+            "logs": datadog_configured,
+            "tracing": _enabled("DD_TRACE_ENABLED"),
+        },
         # Notifications
         "user_email": HIDDEN if t else project.user_email,
         "discord_webhook_escalate": HIDDEN if t else project.discord_webhook_escalate,
@@ -135,9 +143,7 @@ def _project_to_dict(project: Project) -> dict:
         "setup_status": {
             "datadog": datadog_configured,
             "llm": bool(project.active_artifact_id),
-            "observability": all(
-                [project.langfuse_public_key, project.langfuse_secret_key]
-            ),
+            "observability": _enabled("DD_LLMOBS_ENABLED"),
             "notifications": any(
                 [
                     project.user_email,
@@ -170,26 +176,32 @@ def register_project(data: ProjectRegister, db: Session = Depends(get_db)):
     if db.query(Project).filter(Project.name == data.name).first():
         raise HTTPException(status_code=400, detail="Project name already exists")
 
-    project = Project(
-        name=data.name,
-        password_hash=hash_password(data.password),
-    )
-    try:
-        db.add(project)
-        db.commit()
-        db.refresh(project)
-        token = create_access_token(
-            {"project_id": project.id, "project_name": project.name}
+    with trace_operation(
+        "project_creation",
+        plane="control",
+        metadata={"result": "started"},
+    ) as span:
+        project = Project(
+            name=data.name,
+            password_hash=hash_password(data.password),
         )
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "project": _project_to_dict(project),
-            "message": "Project created. Configure your credentials in Settings to start monitoring.",
-        }
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create project")
+        try:
+            db.add(project)
+            db.commit()
+            db.refresh(project)
+            span.tags({"project_id": project.id, "result": "created"})
+            token = create_access_token(
+                {"project_id": project.id, "project_name": project.name}
+            )
+            return {
+                "access_token": token,
+                "token_type": "bearer",
+                "project": _project_to_dict(project),
+                "message": "Project created. Configure your credentials in Settings to start monitoring.",
+            }
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to create project")
 
 
 @router.post("/login")
@@ -232,9 +244,6 @@ def update_settings(
         "datadog_query",
         "datadog_environment",
         "datadog_service",
-        "langfuse_public_key",
-        "langfuse_secret_key",
-        "langfuse_host",
         "user_email",
         "discord_webhook_escalate",
         "discord_webhook_dev",
@@ -262,16 +271,22 @@ def update_settings(
 @router.get("/settings/status")
 def settings_status(project: Project = Depends(get_current_project)):
     datadog_configured = bool(
-        (project.datadog_api_key or os.getenv("DATADOG_API_KEY"))
+        (
+            project.datadog_api_key
+            or os.getenv("DATADOG_API_KEY")
+            or os.getenv("DD_API_KEY")
+        )
         and (project.datadog_app_key or os.getenv("DATADOG_APP_KEY"))
     )
     return {
         "datadog": {"configured": datadog_configured},
         "llm": {"configured": bool(project.active_artifact_id)},
         "observability": {
-            "configured": all(
-                [project.langfuse_public_key, project.langfuse_secret_key]
-            )
+            "configured": _enabled("DD_LLMOBS_ENABLED"),
+            "platform": "Datadog",
+            "llm_observability": _enabled("DD_LLMOBS_ENABLED"),
+            "logs": datadog_configured,
+            "tracing": _enabled("DD_TRACE_ENABLED"),
         },
         "notifications": {
             "configured": any(

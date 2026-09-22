@@ -16,6 +16,7 @@ from app.shared.model_config import (
     configured_base_model,
     configured_runtime_settings,
 )
+from app.shared.observability import trace_operation
 from app.training.models import ModelArtifact, ModelArtifactStatus
 from app.training.repositories import ModelArtifactRepository
 
@@ -197,6 +198,38 @@ class ModelRuntime:
         self.provider.initialize(self.settings.base_model)
 
     def resolve_project_model(
+        self,
+        project_id: str | None,
+        *,
+        project: Project | None = None,
+    ) -> ModelRuntimeSession:
+        with trace_operation(
+            "runtime_resolution",
+            plane="serving",
+            metadata={
+                "project_id": project_id or getattr(project, "id", None) or "system",
+                "base_model": self.settings.base_model,
+                "model_provider": self.settings.provider,
+                "runtime_type": "local_peft",
+            },
+        ) as span:
+            session = self._resolve_project_model(project_id, project=project)
+            span.tags(
+                {
+                    "artifact_id": (
+                        session.active_artifact.id if session.active_artifact else None
+                    ),
+                    "adapter_version": (
+                        session.active_artifact.version
+                        if session.active_artifact
+                        else None
+                    ),
+                    "result": "resolved",
+                }
+            )
+            return session
+
+    def _resolve_project_model(
         self,
         project_id: str | None,
         *,

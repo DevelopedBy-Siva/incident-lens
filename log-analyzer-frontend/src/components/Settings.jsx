@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { authAPI, modelLifecycleAPI } from "../services/api";
+import { authAPI } from "../services/api";
 import Navbar from "./Navbar";
 import {
   Save,
@@ -9,7 +9,7 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
-  Cpu,
+  Info,
 } from "lucide-react";
 
 const HIDDEN_MARKER = "HIDDEN: TEST CREDENTIAL";
@@ -19,31 +19,56 @@ function SectionHeader({ title, description, configured, open, onToggle }) {
     <button
       type="button"
       onClick={onToggle}
-      className="w-full flex items-center justify-between py-3 text-left"
+      className="w-full flex items-center justify-between pt-4 pb-5 pr-2 text-left"
     >
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-200">{title}</span>
+          <span className="text-sm font-medium text-google-text">{title}</span>
           {configured ? (
-            <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
+            <span className="text-[10px] leading-4 px-1.5 py-px bg-green-500/20 text-google-green rounded-full border border-google-green/30">
               Configured
             </span>
           ) : (
-            <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30">
+            <span className="text-[10px] leading-4 px-1.5 py-px bg-amber-500/20 text-amber-700 rounded-full border border-amber-300/30">
               Not set
             </span>
           )}
         </div>
         {description && (
-          <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+          <p className="text-xs text-google-muted mt-0.5">{description}</p>
         )}
       </div>
       {open ? (
-        <ChevronUp size={16} className="text-gray-400" />
+        <ChevronUp size={16} className="text-google-muted" />
       ) : (
-        <ChevronDown size={16} className="text-gray-400" />
+        <ChevronDown size={16} className="text-google-muted" />
       )}
     </button>
+  );
+}
+
+function FieldLabel({ label, hint }) {
+  return (
+    <div className="flex items-center gap-1.5 mb-1.5">
+      <label className="block text-xs text-google-muted">{label}</label>
+      {hint && (
+        <span className="relative inline-flex group">
+          <button
+            type="button"
+            aria-label={`${label} information`}
+            className="text-google-muted hover:text-google-blue focus:text-google-blue focus:outline-none"
+          >
+            <Info size={13} />
+          </button>
+          <span
+            role="tooltip"
+            className="pointer-events-none invisible absolute left-1/2 bottom-full z-20 mb-2 w-64 -translate-x-1/2 rounded-lg bg-google-text px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+          >
+            {hint}
+          </span>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -61,7 +86,7 @@ function SecretInput({
 
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1.5">{label}</label>
+      <FieldLabel label={label} hint={hint} />
       <div className="relative">
         <input
           type={show && !isHidden ? "text" : "password"}
@@ -70,19 +95,18 @@ function SecretInput({
           onChange={onChange}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full px-4 py-2.5 pr-10 bg-transparent text-gray-100 border border-gray-700 rounded-lg text-sm disabled:text-gray-500 disabled:cursor-not-allowed placeholder:text-gray-600 focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+          className="w-full px-4 py-2.5 pr-10 bg-white text-google-text border border-google-border rounded-lg text-sm disabled:text-google-muted disabled:cursor-not-allowed placeholder:text-google-muted focus:ring-1 focus:ring-google-blue focus:border-google-blue"
         />
         {!disabled && (
           <button
             type="button"
             onClick={() => setShow((s) => !s)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-google-muted hover:text-google-text"
           >
             {show ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
         )}
       </div>
-      {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -99,7 +123,7 @@ function PlainInput({
 }) {
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1.5">{label}</label>
+      <FieldLabel label={label} hint={hint} />
       <input
         type={type}
         name={name}
@@ -107,22 +131,8 @@ function PlainInput({
         onChange={onChange}
         placeholder={placeholder}
         disabled={disabled}
-        className="w-full px-4 py-2.5 bg-transparent text-gray-100 border border-gray-700 rounded-lg text-sm disabled:text-gray-500 disabled:cursor-not-allowed placeholder:text-gray-600 focus:ring-1 focus:ring-sky-500 focus:border-sky-500"
+        className="w-full px-4 py-2.5 bg-white text-google-text border border-google-border rounded-lg text-sm disabled:text-google-muted disabled:cursor-not-allowed placeholder:text-google-muted focus:ring-1 focus:ring-google-blue focus:border-google-blue"
       />
-      {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-function RuntimeValue({ label, value, mono = false }) {
-  return (
-    <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-3">
-      <div className="text-xs text-gray-600">{label}</div>
-      <div
-        className={`text-sm text-gray-300 mt-1 break-all ${mono ? "font-mono" : ""}`}
-      >
-        {value || "—"}
-      </div>
     </div>
   );
 }
@@ -133,11 +143,8 @@ function Settings() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [isTest, setIsTest] = useState(false);
-  const [runtime, setRuntime] = useState(null);
   const [openSections, setOpenSections] = useState({
     datadog: true,
-    runtime: true,
-    observability: false,
     notifications: false,
     security: false,
   });
@@ -147,12 +154,6 @@ function Settings() {
     datadog_api_key: "",
     datadog_app_key: "",
     datadog_site: "datadoghq.com",
-    datadog_query: "status:(error OR warn OR critical)",
-    datadog_environment: "prod",
-    datadog_service: "",
-    langfuse_public_key: "",
-    langfuse_secret_key: "",
-    langfuse_host: "",
     user_email: "",
     discord_webhook_escalate: "",
     discord_webhook_dev: "",
@@ -162,25 +163,14 @@ function Settings() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [projectResponse, runtimeResponse] = await Promise.all([
-          authAPI.getMe(),
-          modelLifecycleAPI.getRuntime(),
-        ]);
+        const projectResponse = await authAPI.getMe();
         const p = projectResponse.data;
-        setRuntime(runtimeResponse.data);
         setIsTest(p.is_test);
         setSetupStatus(p.setup_status || {});
         setForm({
           datadog_api_key: p.datadog_api_key || "",
           datadog_app_key: p.datadog_app_key || "",
           datadog_site: p.datadog_site || "datadoghq.com",
-          datadog_query:
-            p.datadog_query || "status:(error OR warn OR critical)",
-          datadog_environment: p.datadog_environment || "prod",
-          datadog_service: p.datadog_service || "",
-          langfuse_public_key: p.langfuse_public_key || "",
-          langfuse_secret_key: p.langfuse_secret_key || "",
-          langfuse_host: p.langfuse_host || "https://cloud.langfuse.com",
           user_email: p.user_email || "",
           discord_webhook_escalate: p.discord_webhook_escalate || "",
           discord_webhook_dev: p.discord_webhook_dev || "",
@@ -213,7 +203,7 @@ function Settings() {
     const payload = {};
     Object.entries(form).forEach(([k, v]) => {
       const isVisibleValue = v !== "••••••" && v !== HIDDEN_MARKER;
-      if (isVisibleValue && (v || k === "datadog_service")) {
+      if (isVisibleValue && v) {
         payload[k] = v;
       }
     });
@@ -236,10 +226,12 @@ function Settings() {
 
   if (fetching) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="app-shell">
+        <div className="app-canvas min-h-full flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <span className="loader" />
+        </div>
         </div>
       </div>
     );
@@ -248,23 +240,26 @@ function Settings() {
   const disabled = isTest;
 
   return (
-    <div className="min-h-screen">
+    <div className="app-shell">
+      <div className="app-canvas">
       <Navbar />
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-semibold text-white mb-1">
-          Project Settings
-        </h1>
-        <p className="text-sm text-gray-400 mb-8">
-          Configure your credentials to start monitoring.
-        </p>
+      <div className="max-w-2xl mx-auto px-4 pt-16 pb-16">
+        <div className="mb-12">
+          <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.04em] text-google-text">
+            Project Settings
+          </h1>
+          <p className="text-sm text-google-muted mt-2">
+            Connect your log source, choose alert recipients, and manage access.
+          </p>
+        </div>
 
         {isTest && (
-          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start">
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-300/30 rounded-lg flex items-start">
             <AlertCircle
-              className="text-amber-400 mr-3 shrink-0 mt-0.5"
+              className="text-amber-700 mr-3 shrink-0 mt-0.5"
               size={16}
             />
-            <p className="text-amber-300 text-sm">
+            <p className="text-amber-700 text-sm">
               This is a test project. Credentials are hidden and settings are
               read-only.
             </p>
@@ -272,45 +267,45 @@ function Settings() {
         )}
 
         {!isTest && !setupStatus.datadog && (
-          <div className="mb-6 p-4 bg-sky-500/10 border border-sky-500/30 rounded-lg flex items-start">
+          <div className="mb-6 p-4 bg-google-blue/10 border border-google-blue/30 rounded-lg flex items-start">
             <AlertCircle
-              className="text-sky-400 mr-3 shrink-0 mt-0.5"
+              className="text-google-blue mr-3 shrink-0 mt-0.5"
               size={16}
             />
             <div>
-              <p className="text-sky-300 text-sm font-medium">
+              <p className="text-google-blue text-sm font-medium">
                 Setup incomplete
               </p>
-              <p className="text-sky-400/70 text-xs mt-0.5">
-                Configure Datadog credentials to start ingestion. Local AI
-                inference becomes ready when the project has an active adapter.
+              <p className="text-google-blue/70 text-xs mt-0.5">
+                Add your Datadog credentials below so IncidentLens can start
+                monitoring your logs.
               </p>
             </div>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center">
-            <CheckCircle className="text-green-400 mr-3 shrink-0" size={16} />
-            <p className="text-green-300 text-sm">
+          <div className="mb-6 p-4 bg-green-50 border border-google-green/30 rounded-lg flex items-center">
+            <CheckCircle className="text-google-green mr-3 shrink-0" size={16} />
+            <p className="text-google-green text-sm">
               Settings saved successfully.
             </p>
           </div>
         )}
 
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center">
-            <AlertCircle className="text-red-400 mr-3 shrink-0" size={16} />
-            <p className="text-red-300 text-sm">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border border-google-red/30 rounded-lg flex items-center">
+            <AlertCircle className="text-google-red mr-3 shrink-0" size={16} />
+            <p className="text-google-red text-sm">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-2">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Datadog Configuration */}
-          <div className="border border-gray-800 rounded-xl px-5">
+          <div className="soft-card px-5">
             <SectionHeader
-              title="Datadog Configuration"
-              description="Log ingestion source — required to start monitoring"
+              title="Datadog Connection"
+              description="Connect Datadog so IncidentLens can read and analyze your logs."
               configured={setupStatus.datadog}
               open={openSections.datadog}
               onToggle={() => toggleSection("datadog")}
@@ -324,7 +319,7 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="API key"
                   disabled={disabled}
-                  hint="Organization Settings → API Keys"
+                  hint="In Datadog, open Organization Settings → API Keys, then copy an existing key or create a new one."
                 />
                 <SecretInput
                   label="Datadog Application Key"
@@ -333,7 +328,7 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="Application key"
                   disabled={disabled}
-                  hint="Must have the logs_read_data permission"
+                  hint="Create an application key in Datadog with the logs_read_data permission so IncidentLens can read your logs."
                 />
                 <PlainInput
                   label="Datadog Site"
@@ -342,139 +337,17 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="datadoghq.com"
                   disabled={disabled}
-                  hint="For example: datadoghq.com, datadoghq.eu, or us5.datadoghq.com"
-                />
-                <PlainInput
-                  label="Log Query"
-                  name="datadog_query"
-                  value={form.datadog_query}
-                  onChange={handleChange}
-                  placeholder="status:(error OR warn OR critical)"
-                  disabled={disabled}
-                  hint="Datadog Logs search syntax. Environment and service filters are added automatically."
-                />
-                <PlainInput
-                  label="Environment"
-                  name="datadog_environment"
-                  value={form.datadog_environment}
-                  onChange={handleChange}
-                  placeholder="prod"
-                  disabled={disabled}
-                  hint="Matches the env tag and becomes the incident environment"
-                />
-                <PlainInput
-                  label="Service Filter (optional)"
-                  name="datadog_service"
-                  value={form.datadog_service}
-                  onChange={handleChange}
-                  placeholder="log-server"
-                  disabled={disabled}
-                  hint="Leave blank to ingest matching logs from every service"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Local AI runtime */}
-          <div className="border border-gray-800 rounded-xl px-5">
-            <SectionHeader
-              title="AI Runtime"
-              description="Read-only local model and storage configuration"
-              configured={Boolean(runtime)}
-              open={openSections.runtime}
-              onToggle={() => toggleSection("runtime")}
-            />
-            {openSections.runtime && (
-              <div className="pb-5">
-                <div className="flex items-center gap-2 mb-4 text-xs text-sky-400">
-                  <Cpu size={14} />
-                  Current Runtime: Local
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <RuntimeValue
-                    label="Base Model"
-                    value={runtime?.base_model}
-                  />
-                  <RuntimeValue
-                    label="Inference Device"
-                    value={runtime?.device?.toUpperCase()}
-                  />
-                  <RuntimeValue
-                    label="Model Path"
-                    value={runtime?.model_path}
-                    mono
-                  />
-                  <RuntimeValue
-                    label="Active Adapter"
-                    value={
-                      runtime?.active_artifact_version || "No active adapter"
-                    }
-                  />
-                  <RuntimeValue
-                    label="Artifact Storage"
-                    value={runtime?.artifact_storage}
-                    mono
-                  />
-                  <RuntimeValue
-                    label="Dataset Storage"
-                    value={runtime?.dataset_storage}
-                    mono
-                  />
-                </div>
-                <p className="text-xs text-gray-600 mt-3">
-                  Runtime values are configured by the backend deployment and
-                  cannot be changed per project.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Langfuse */}
-          <div className="border border-gray-800 rounded-xl px-5">
-            <SectionHeader
-              title="Langfuse Observability"
-              description="LLM tracing, cost tracking, and latency metrics — optional but recommended"
-              configured={setupStatus.observability}
-              open={openSections.observability}
-              onToggle={() => toggleSection("observability")}
-            />
-            {openSections.observability && (
-              <div className="pb-5 space-y-4">
-                <SecretInput
-                  label="Public Key"
-                  name="langfuse_public_key"
-                  value={form.langfuse_public_key}
-                  onChange={handleChange}
-                  placeholder="pk-lf-..."
-                  disabled={disabled}
-                  hint="From cloud.langfuse.com → project → Settings"
-                />
-                <SecretInput
-                  label="Secret Key"
-                  name="langfuse_secret_key"
-                  value={form.langfuse_secret_key}
-                  onChange={handleChange}
-                  placeholder="sk-lf-..."
-                  disabled={disabled}
-                />
-                <PlainInput
-                  label="Host"
-                  name="langfuse_host"
-                  value={form.langfuse_host}
-                  onChange={handleChange}
-                  placeholder="https://cloud.langfuse.com"
-                  disabled={disabled}
-                  hint="Only change if self-hosting Langfuse"
+                  hint="Use the site from your Datadog URL, such as datadoghq.com, datadoghq.eu, or us5.datadoghq.com."
                 />
               </div>
             )}
           </div>
 
           {/* Notifications */}
-          <div className="border border-gray-800 rounded-xl px-5">
+          <div className="soft-card px-5">
             <SectionHeader
               title="Notifications"
-              description="Discord webhooks and email for incident alerts — optional"
+              description="Choose who should be notified when an incident needs attention."
               configured={setupStatus.notifications}
               open={openSections.notifications}
               onToggle={() => toggleSection("notifications")}
@@ -489,7 +362,7 @@ function Settings() {
                   placeholder="oncall@example.com"
                   type="email"
                   disabled={disabled}
-                  hint="Receives NEEDS_ONCALL incidents"
+                  hint="IncidentLens emails this address when an incident needs an on-call response."
                 />
                 <PlainInput
                   label="Discord Webhook — Critical"
@@ -498,7 +371,7 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="https://discord.com/api/webhooks/..."
                   disabled={disabled}
-                  hint="Receives ESCALATE incidents"
+                  hint="Urgent incidents that need immediate escalation are sent to this Discord channel."
                 />
                 <PlainInput
                   label="Discord Webhook — Dev Team"
@@ -507,17 +380,17 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="https://discord.com/api/webhooks/..."
                   disabled={disabled}
-                  hint="Receives NEEDS_DEV incidents"
+                  hint="Incidents that need engineering investigation are sent to this Discord channel."
                 />
               </div>
             )}
           </div>
 
           {/* Security */}
-          <div className="border border-gray-800 rounded-xl px-5">
+          <div className="soft-card px-5">
             <SectionHeader
               title="Security"
-              description="Change your project password"
+              description="Update the password used to sign in to this project."
               configured={true}
               open={openSections.security}
               onToggle={() => toggleSection("security")}
@@ -531,7 +404,7 @@ function Settings() {
                   onChange={handleChange}
                   placeholder="••••••••"
                   disabled={disabled}
-                  hint="Minimum 8 characters"
+                  hint="Use at least 8 characters. Leave this field empty to keep your current password."
                 />
               </div>
             )}
@@ -541,13 +414,14 @@ function Settings() {
             <button
               type="submit"
               disabled={disabled || loading}
-              className="w-full py-3 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors"
+              className="w-full py-3 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 bg-google-blue hover:bg-google-blue-dark disabled:bg-google-border disabled:cursor-not-allowed transition-colors"
             >
               <Save size={15} />
               {loading ? "Saving..." : "Save Settings"}
             </button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ from app.data.clustering import cluster_log_db
 from app.data.parser import ParsedLog
 from app.data.signatures import generate_signature
 from app.shared.database import SessionLocal
+from app.shared.observability import trace_operation
 
 
 def process_log_batch(payload: dict):
@@ -30,43 +31,76 @@ def process_log_batch(payload: dict):
         finally:
             db.close()
 
-    print(f"[WORKER] {len(logs)} logs for '{project.name}'")
-    created = updated = failed = 0
+    with trace_operation(
+        "log_processing",
+        plane="data",
+        metadata={
+            "project_id": project_id,
+            "source": source,
+            "environment": environment,
+            "log_count": len(logs),
+        },
+    ) as batch_span:
+        print(f"[WORKER] {len(logs)} logs for '{project.name}'")
+        created = updated = failed = 0
 
-    for log_line in logs:
-        try:
-            parsed = ParsedLog(log_line)
-            if parsed.level not in ["ERROR", "WARN", "WARNING", "CRITICAL"]:
-                continue
+        for log_line in logs:
+            try:
+                with trace_operation(
+                    "parsing",
+                    plane="data",
+                    metadata={"project_id": project_id, "source": source},
+                ):
+                    parsed = ParsedLog(log_line)
+                if parsed.level not in ["ERROR", "WARN", "WARNING", "CRITICAL"]:
+                    continue
 
-            sig = generate_signature(source, parsed)
-            incident, is_new = cluster_log_db(
-                project_id=project_id,
-                source=source,
-                environment=environment,
-                parsed_log=parsed,
-                signature=sig,
-            )
+                sig = generate_signature(source, parsed)
+                with trace_operation(
+                    "clustering",
+                    plane="data",
+                    metadata={"project_id": project_id, "source": source},
+                ) as cluster_span:
+                    incident, is_new = cluster_log_db(
+                        project_id=project_id,
+                        source=source,
+                        environment=environment,
+                        parsed_log=parsed,
+                        signature=sig,
+                    )
+                    cluster_span.tags(
+                        {
+                            "incident_id": str(incident.id),
+                            "result": "created" if is_new else "updated",
+                        }
+                    )
 
-            if is_new:
-                analyze_incident(incident, project=project, force=False)
-                run_root_cause_chaining(incident, project_id, project=project)
-                created += 1
-            else:
-                if incident.count in {5, 10, 20}:
-                    analyze_incident(incident, project=project, force=True)
-                updated += 1
+                if is_new:
+                    analyze_incident(incident, project=project, force=False)
+                    run_root_cause_chaining(incident, project_id, project=project)
+                    created += 1
+                else:
+                    if incident.count in {5, 10, 20}:
+                        analyze_incident(incident, project=project, force=True)
+                    updated += 1
 
-        except Exception as e:
-            print(f"[WORKER] Failed: {e} | {log_line[:80]}")
-            failed += 1
+            except Exception as e:
+                print(f"[WORKER] Failed: {e} | {log_line[:80]}")
+                failed += 1
 
-    print(f"[WORKER] created={created} updated={updated} failed={failed}")
-    if failed > 0 and created == 0 and updated == 0:
-        raise RuntimeError(f"Batch entirely failed — {failed} errors")
+        print(f"[WORKER] created={created} updated={updated} failed={failed}")
+        batch_span.metrics(
+            {
+                "incidents_created": created,
+                "incidents_updated": updated,
+                "failed_logs": failed,
+            }
+        )
+        if failed > 0 and created == 0 and updated == 0:
+            raise RuntimeError(f"Batch entirely failed — {failed} errors")
 
-    return {
-        "incidents_created": created,
-        "incidents_updated": updated,
-        "failed": failed,
-    }
+        return {
+            "incidents_created": created,
+            "incidents_updated": updated,
+            "failed": failed,
+        }

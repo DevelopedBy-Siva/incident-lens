@@ -1,4 +1,3 @@
-import os
 import time
 from typing import Optional
 
@@ -8,67 +7,9 @@ from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from app.serving.model_runtime import get_model_runtime
+from app.shared.observability import trace_operation
 
 load_dotenv()
-
-
-def _make_langfuse(project=None):
-    try:
-        from langfuse import Langfuse
-
-        public_key = (project.langfuse_public_key if project else None) or os.getenv(
-            "LANGFUSE_PUBLIC_KEY", ""
-        )
-        secret_key = (project.langfuse_secret_key if project else None) or os.getenv(
-            "LANGFUSE_SECRET_KEY", ""
-        )
-        host = (project.langfuse_host if project else None) or os.getenv(
-            "LANGFUSE_HOST", "https://cloud.langfuse.com"
-        )
-        if not public_key or not secret_key:
-            return None
-        return Langfuse(public_key=public_key, secret_key=secret_key, host=host)
-    except ImportError:
-        return None
-
-
-class _NoOpTrace:
-    def span(self, *a, **kw):
-        return _NoOpSpan()
-
-    def generation(self, *a, **kw):
-        return _NoOpSpan()
-
-    def update(self, *a, **kw):
-        return self
-
-    def end(self, *a, **kw):
-        return self
-
-
-class _NoOpSpan:
-    def end(self, *a, **kw):
-        return self
-
-    def update(self, *a, **kw):
-        return self
-
-
-def _langfuse_usage_payload(response) -> Optional[dict]:
-    usage = getattr(response, "usage_metadata", None) or {}
-    input_tokens = usage.get("input_tokens", 0)
-    output_tokens = usage.get("output_tokens", 0)
-    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
-
-    if not input_tokens and not output_tokens and not total_tokens:
-        return None
-
-    return {
-        "input": input_tokens,
-        "output": output_tokens,
-        "total": total_tokens,
-        "unit": "TOKENS",
-    }
 
 
 class IncidentAnalysis(BaseModel):
@@ -272,20 +213,6 @@ Was the new incident caused by one of the earlier incidents?
                       If None, falls back to incident.sample_lines[:3] (old behaviour)
         """
         t0 = time.time()
-        lf = _make_langfuse(project)
-        trace = (
-            lf.trace(
-                name="incident-analysis",
-                metadata={
-                    "incident_id": str(incident.id),
-                    "source": incident.source,
-                    "count": incident.count,
-                    "has_evidence_bundle": evidence is not None,
-                },
-            )
-            if lf
-            else _NoOpTrace()
-        )
 
         if evidence is not None:
             evidence_context = evidence.as_prompt_context()
@@ -305,71 +232,69 @@ Was the new incident caused by one of the earlier incidents?
             evidence_context=evidence_context,
         )
 
-        runtime_session = get_model_runtime().resolve_project_model(
-            getattr(project, "id", None), project=project
-        )
-        model_name = runtime_session.default_model
-
-        try:
-            gen = trace.generation(
-                name="llm-analysis",
-                model=model_name,
-                model_parameters={"temperature": 0.3},
-                input=evidence_context,
+        with trace_operation(
+            "decision_generation",
+            plane="serving",
+            metadata={
+                "project_id": getattr(project, "id", None),
+                "incident_id": str(incident.id),
+                "source": incident.source,
+                "decision_source": "local_llm",
+            },
+        ) as trace:
+            runtime_session = get_model_runtime().resolve_project_model(
+                getattr(project, "id", None), project=project
             )
-
-            response = runtime_session.complete(
-                model=model_name,
-                messages=formatted,
-                temperature=0.3,
-            )
-            elapsed_ms = int((time.time() - t0) * 1000)
-
-            usage_payload = _langfuse_usage_payload(response)
-            if usage_payload is None:
-                gen.end(output=response.content)
-            else:
-                gen.end(output=response.content, usage=usage_payload)
-
-            analysis = self.parser.parse(response.content)
-            analysis = validate_analysis(analysis, incident)
-
-            trace.update(
-                metadata={
-                    "severity": analysis.severity,
-                    "disposition": analysis.disposition,
-                    "latency_ms": elapsed_ms,
-                    "analysis_source": "llm",
-                    "model": model_name,
-                    "evidence_related_count": (
-                        len(evidence.related_incidents) if evidence else 0
+            model_name = runtime_session.default_model
+            trace.tags(
+                {
+                    "base_model": getattr(runtime_session, "base_model", model_name),
+                    "adapter_version": (
+                        runtime_session.active_artifact.version
+                        if getattr(runtime_session, "active_artifact", None)
+                        else None
                     ),
                 }
             )
-            return analysis
-        except Exception as error:
-            trace.update(metadata={"error": str(error)})
-            print(f"[LLM] local analyze_incident failed: {error}")
-            return None
+
+            try:
+                response = runtime_session.complete(
+                    model=model_name,
+                    messages=formatted,
+                    temperature=0.3,
+                )
+                elapsed_ms = int((time.time() - t0) * 1000)
+
+                with trace_operation(
+                    "decision_validation",
+                    plane="serving",
+                    metadata={
+                        "project_id": getattr(project, "id", None),
+                        "incident_id": str(incident.id),
+                        "decision_source": "local_llm",
+                    },
+                ):
+                    analysis = self.parser.parse(response.content)
+                    analysis = validate_analysis(analysis, incident)
+
+                trace.tags(
+                    {
+                        "policy_result": analysis.disposition,
+                        "result": analysis.severity,
+                    }
+                )
+                trace.metrics({"inference_latency_ms": elapsed_ms})
+                return analysis
+            except Exception as error:
+                trace.tag("error_type", type(error).__name__)
+                print(f"[LLM] local analyze_incident failed: {error}")
+                return None
 
     def chain_root_cause(
         self, new_incident, earlier_incidents, project=None
     ) -> Optional[RootCauseResult]:
         if not earlier_incidents:
             return None
-
-        lf = _make_langfuse(project)
-        trace = (
-            lf.trace(
-                name="root-cause-chaining",
-                metadata={
-                    "new_incident_id": str(new_incident.id),
-                    "candidates": len(earlier_incidents),
-                },
-            )
-            if lf
-            else _NoOpTrace()
-        )
 
         earlier_blocks = []
         for inc in earlier_incidents:
@@ -391,38 +316,39 @@ Was the new incident caused by one of the earlier incidents?
             earlier_incidents="\n\n".join(earlier_blocks),
         )
 
-        runtime_session = get_model_runtime().resolve_project_model(
-            getattr(project, "id", None), project=project
-        )
-        model_name = runtime_session.default_model
-
-        try:
-            gen = trace.generation(name="root-cause-llm", model=model_name)
-            response = runtime_session.complete(
-                model=model_name,
-                messages=formatted,
-                temperature=0.3,
+        with trace_operation(
+            "root_cause_chaining",
+            plane="serving",
+            metadata={
+                "project_id": getattr(project, "id", None),
+                "incident_id": str(new_incident.id),
+                "candidate_count": len(earlier_incidents),
+                "decision_source": "local_llm",
+            },
+        ) as trace:
+            runtime_session = get_model_runtime().resolve_project_model(
+                getattr(project, "id", None), project=project
             )
-            gen.end(output=response.content)
+            model_name = runtime_session.default_model
 
-            result = self.root_cause_parser.parse(response.content)
-            valid_ids = {inc.id for inc in earlier_incidents}
-            if result.has_cause and result.cause_incident_id not in valid_ids:
-                print("[CHAIN] LLM returned invalid cause_incident_id — discarding")
+            try:
+                response = runtime_session.complete(
+                    model=model_name,
+                    messages=formatted,
+                    temperature=0.3,
+                )
+                result = self.root_cause_parser.parse(response.content)
+                valid_ids = {inc.id for inc in earlier_incidents}
+                if result.has_cause and result.cause_incident_id not in valid_ids:
+                    print("[CHAIN] LLM returned invalid cause_incident_id — discarding")
+                    return None
+
+                trace.tag("result", "cause_found" if result.has_cause else "no_cause")
+                return result
+            except Exception as error:
+                trace.tag("error_type", type(error).__name__)
+                print(f"[CHAIN] local chain_root_cause failed: {error}")
                 return None
-
-            trace.update(
-                metadata={
-                    "has_cause": result.has_cause,
-                    "confidence": result.confidence,
-                    "model": model_name,
-                }
-            )
-            return result
-        except Exception as error:
-            trace.update(metadata={"error": str(error)})
-            print(f"[CHAIN] local chain_root_cause failed: {error}")
-            return None
 
 
 _decision_engine: Optional[DecisionEngine] = None

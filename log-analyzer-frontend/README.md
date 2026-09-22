@@ -5,17 +5,15 @@ project model lifecycle without duplicating backend workflow logic.
 
 ## Pages
 
-- **Dashboard** — existing incident dashboard plus a cached AI Model Status
-  summary. Incident investigation details show the current local serving model,
-  active adapter, artifact version, and decision source.
+- **Dashboard** — incident statistics, filters, simulator controls, and incident
+  investigation details, including the serving model and decision source.
 - **Models** — shared base model, active project adapter, artifact history,
   evaluation scores, and activation controls for READY artifacts.
 - **Training** — immutable dataset history, synchronous dataset builds, training
   job creation/execution, status progress, and produced artifacts.
-- **Settings** — Datadog API/application credentials, site, query, environment,
-  optional service filter, Langfuse, notification, and security settings plus
-  a read-only view of the local AI runtime and storage configuration. There is
-  no remote inference provider configuration.
+- **Settings** — Datadog API/application credentials and site, notification and
+  security settings, plus a read-only view of the local AI runtime/storage
+  configuration. There is no remote inference provider configuration.
 
 ## Model lifecycle
 
