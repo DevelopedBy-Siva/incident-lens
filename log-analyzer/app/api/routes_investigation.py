@@ -6,9 +6,6 @@ New endpoints for IncidentLens agent visibility:
   GET  /api/incidents/{id}/evidence      — evidence bundle used for this incident
   GET  /api/incidents/{id}/actions       — action log + verifier outcome
   GET  /api/incidents/{id}/investigation — full InvestigationRun audit trail
-  POST /api/log-server/scenario/{name}   — trigger a demo scenario (test projects)
-  GET  /api/log-server/scenarios         — list available scenarios
-
 Register in app/main.py:
     from app.api import routes_investigation
     app.include_router(routes_investigation.router, prefix="/api", tags=["investigation"])
@@ -302,58 +299,6 @@ def get_investigation(
         result["note"] = f"InvestigationRun table not yet migrated: {e}"
 
     return result
-
-
-# ---------------------------------------------------------------------------
-# Log server scenario routes (moved here from routes_log_server.py)
-# ---------------------------------------------------------------------------
-
-
-@router.post("/log-server/scenario/{scenario_name}")
-def run_scenario(
-    scenario_name: str,
-    project: Project = Depends(get_current_project),
-):
-    """Trigger a named demo scenario against the log server (test projects only)."""
-    import os, requests
-
-    if not project.is_test:
-        raise HTTPException(
-            status_code=403, detail="Scenarios only available for demo project"
-        )
-
-    log_server_url = os.getenv("LOG_SERVER_URL", "http://localhost:5001").rstrip("/")
-    try:
-        resp = requests.post(
-            f"{log_server_url}/api/scenario/{scenario_name}", timeout=10
-        )
-        if resp.status_code == 404:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown scenario: {scenario_name}"
-            )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return resp.json()
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Log server unreachable: {e}")
-
-
-@router.get("/log-server/scenarios")
-def list_scenarios(project: Project = Depends(get_current_project)):
-    """List available demo scenarios."""
-    import os, requests
-
-    if not project.is_test:
-        raise HTTPException(
-            status_code=403, detail="Scenarios only available for demo project"
-        )
-
-    log_server_url = os.getenv("LOG_SERVER_URL", "http://localhost:5001").rstrip("/")
-    try:
-        resp = requests.get(f"{log_server_url}/api/scenario", timeout=10)
-        return resp.json()
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Log server unreachable: {e}")
 
 
 # ---------------------------------------------------------------------------

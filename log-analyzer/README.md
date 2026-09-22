@@ -13,17 +13,12 @@ text to the existing parser and incident pipeline. Parser, signature,
 clustering, evidence, serving, policy, notification, and training behavior do
 not depend on Datadog response objects.
 
-Configure ingestion globally with deployment environment variables or per
-project through the Settings page:
+Configure each project's Datadog connection through the Settings page. The API
+key, application key, site, query, and service are stored on that project; the
+worker has no deployment-level credential fallback.
 
 ```env
-DATADOG_API_KEY=your_api_key
-DATADOG_APP_KEY=your_application_key
-DATADOG_SITE=datadoghq.com
-DATADOG_QUERY=status:(error OR warn OR critical)
 DATADOG_LOOKBACK_SECONDS=30
-DATADOG_ENVIRONMENT=prod
-DATADOG_SERVICE=
 POLL_INTERVAL=30
 
 DD_API_KEY=your_rotated_api_key
@@ -34,14 +29,24 @@ DD_LLMOBS_ML_APP=incident-lens
 DD_TRACE_ENABLED=1
 ```
 
-The application key must have `logs_read_data` permission. A project-level API
-key, application key, query, environment, and optional service filter are used
-only for that project's polling cycle. A polling cursor advances after a
-successful query and remains unchanged after a request or processing failure.
+The application key must have `logs_read_data` permission. Query and service
+are required, and the analyzer always adds `env:prod`. The Verify Datadog
+Configuration button tests credentials and log-search access without saving;
+the normal Save Settings button persists them. A polling cursor advances after
+a successful query and remains unchanged after a request or processing
+failure.
 
 On startup, migration `0006_datadog_log_source` adds the Datadog project
 settings and removes the retired provider columns. No incident or model
 lifecycle schema is changed.
+
+Authenticated projects can clear their incident-processing records with
+`DELETE /api/incidents`. The project account, Datadog configuration, datasets,
+and model artifacts are preserved.
+
+The Settings danger zone exposes this incident reset and permanent project
+deletion. Deleting a project also removes its datasets, training jobs, model
+artifacts, and local project storage.
 
 ## Local PostgreSQL
 

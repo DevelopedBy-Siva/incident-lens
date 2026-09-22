@@ -417,13 +417,8 @@ POSTGRES_PASSWORD=incidentlens
 POSTGRES_PORT=5432
 DATABASE_URL=postgresql://incidentlens:incidentlens@localhost:5432/incidentlens
 
-DATADOG_API_KEY=your_api_key
-DATADOG_APP_KEY=your_application_key
-DATADOG_SITE=datadoghq.com
-DATADOG_QUERY=status:(error OR warn OR critical)
+# Analyzer polling cadence; Datadog read configuration is stored per project
 DATADOG_LOOKBACK_SECONDS=30
-DATADOG_ENVIRONMENT=prod
-DATADOG_SERVICE=
 POLL_INTERVAL=30
 
 DD_API_KEY=your_rotated_api_key
@@ -465,23 +460,24 @@ LOG_SERVER_URL=http://localhost:5001
 CORS_ORIGINS=http://localhost:3000
 ```
 
-The application key used by the analyzer must have Datadog's
-`logs_read_data` permission. `DATADOG_SITE` is the Datadog site domain for the
-organization, such as `datadoghq.com`, `datadoghq.eu`, or
-`us5.datadoghq.com`. Credentials may be configured per project on the Settings
-page; environment values are deployment-level fallbacks.
+The analyzer's API key, application key, site, query, and service are configured
+per project on the Settings page and stored in PostgreSQL. There are no global
+credential or filter fallbacks. The application key must have Datadog's
+`logs_read_data` permission. The Verify button tests the entered values without
+saving them; Save Settings persists them. The analyzer always filters on
+`env:prod`.
 
 The Data Plane depends on the provider-neutral `LogSourceConnector` contract.
 Its Datadog implementation performs cursor-paginated searches over contiguous
 polling windows, converts each result to an internal log envelope, and only
 then hands plain log batches to the existing parser and incident pipeline.
-Project credentials, queries, environment tags, and optional service filters
-remain isolated during polling.
+Project credentials, queries, and required service filters remain isolated
+during polling.
 
-The log simulator submits logs to Datadog's HTTP intake with
-`DATADOG_API_KEY`, `DATADOG_SITE`, `DATADOG_ENVIRONMENT`, and
-`LOG_SERVICE_NAME`. It does not require the application key, which is used only
-by the analyzer to search logs.
+The local-only log simulator exposes only start and stop. The analyzer forwards
+the current project's API key, site, and service to the start endpoint through
+headers; the simulator has no Datadog environment configuration. Swagger UI is
+available at `http://localhost:5001/docs`.
 
 ### PostgreSQL with Docker
 
@@ -508,8 +504,8 @@ Datadog Agent container is required, set `DD_LLMOBS_AGENTLESS_ENABLED=1` along
 with `DD_SITE`, `DD_API_KEY`, `DD_LLMOBS_ENABLED=1`, and
 `DD_LLMOBS_ML_APP=incident-lens` before starting the Python process.
 
-`DD_API_KEY` can also serve as the Datadog Logs API key. Log search additionally
-requires `DATADOG_APP_KEY`; never commit either key to the repository.
+The analyzer's `DD_*` values instrument IncidentLens itself and are independent
+from per-project log-search credentials. Never commit any key to the repository.
 
 ### Observability architecture
 

@@ -19,6 +19,9 @@ from app.shared.migrations.versions.v0005_remove_remote_model_config import (
 from app.shared.migrations.versions.v0006_datadog_log_source import (
     upgrade as upgrade_v6,
 )
+from app.shared.migrations.versions.v0007_remove_datadog_environment import (
+    upgrade as upgrade_v7,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -67,7 +70,6 @@ class ModelLifecycleTests(unittest.TestCase):
         self.project.datadog_app_key = "app-secret"
         self.project.datadog_site = "datadoghq.eu"
         self.project.datadog_query = "service:checkout"
-        self.project.datadog_environment = "staging"
         self.project.datadog_service = "checkout"
 
         with patch.dict(
@@ -79,7 +81,8 @@ class ModelLifecycleTests(unittest.TestCase):
         self.assertEqual(payload["datadog_api_key"], "••••••")
         self.assertEqual(payload["datadog_app_key"], "••••••")
         self.assertEqual(payload["datadog_site"], "datadoghq.eu")
-        self.assertEqual(payload["datadog_environment"], "staging")
+        self.assertEqual(payload["datadog_query"], "service:checkout")
+        self.assertEqual(payload["datadog_service"], "checkout")
         self.assertTrue(payload["setup_status"]["datadog"])
         self.assertEqual(payload["observability"]["platform"], "Datadog")
         self.assertTrue(payload["observability"]["llm_observability"])
@@ -273,7 +276,6 @@ class ModelLifecycleMigrationTests(unittest.TestCase):
                 "datadog_app_key",
                 "datadog_site",
                 "datadog_query",
-                "datadog_environment",
                 "datadog_service",
             }.issubset(columns)
         )
@@ -297,6 +299,23 @@ class ModelLifecycleMigrationTests(unittest.TestCase):
 
         columns = {column["name"] for column in inspect(engine).get_columns("projects")}
         self.assertNotIn("groq_api_key", columns)
+        engine.dispose()
+
+    def test_datadog_environment_migration_removes_legacy_column(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE projects ("
+                    "id VARCHAR PRIMARY KEY, "
+                    "datadog_environment VARCHAR"
+                    ")"
+                )
+            )
+            upgrade_v7(connection)
+
+        columns = {column["name"] for column in inspect(engine).get_columns("projects")}
+        self.assertNotIn("datadog_environment", columns)
         engine.dispose()
 
     def test_shared_base_model_migration_replaces_legacy_alias(self):

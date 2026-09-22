@@ -5,11 +5,7 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import {
-  API_BASE_URL,
-  isAuthenticated,
-  TEST_LOG_SERVER_URL,
-} from "./services/api";
+import { API_BASE_URL, isAuthenticated } from "./services/api";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import Dashboard from "./components/Dashboard";
@@ -28,36 +24,23 @@ function PublicRoute({ children }) {
 }
 
 function App() {
-  const [status, setStatus] = useState({
-    serverA: "pending",
-    serverB: "pending",
-  });
+  const [status, setStatus] = useState("pending");
 
   useEffect(() => {
-    const wake = async (name, url) => {
+    const wake = async () => {
       try {
-        await axios.get(url, { timeout: 120000 });
-        setStatus((s) => ({ ...s, [name]: "up" }));
-        return true;
+        await axios.get(`${API_BASE_URL}/health`, { timeout: 120000 });
+        setStatus("up");
       } catch {
-        setStatus((s) => ({ ...s, [name]: "down" }));
-        return false;
+        setStatus("down");
       }
     };
-
-    const wakeAll = async () => {
-      await Promise.all([
-        wake("serverA", `${API_BASE_URL}/health`),
-        wake("serverB", `${TEST_LOG_SERVER_URL}/health`),
-      ]);
-    };
-
-    wakeAll();
+    wake();
   }, []);
 
-  return status.serverA !== "up" && status.serverB !== "up" ? (
+  return status !== "up" ? (
     <div className="server-loading">
-      {status.serverA === "pending" || status.serverB === "pending" ? (
+      {status === "pending" ? (
         <>
           <span className="loader"></span>
           <p>
@@ -65,7 +48,7 @@ function App() {
             servers are on free instances.
           </p>
         </>
-      ) : status.serverA === "down" || status.serverB === "down" ? (
+      ) : status === "down" ? (
         <>
           <MdError />
           <p>Failed to initialize the server. Please try again later. </p>

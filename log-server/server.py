@@ -1,39 +1,54 @@
 import asyncio
 import logging
-import os
 import random
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Header, HTTPException
 
-load_dotenv()
-
-DATADOG_API_KEY = os.getenv("DATADOG_API_KEY") or os.getenv("DD_API_KEY", "")
-DATADOG_SITE = os.getenv("DATADOG_SITE") or os.getenv("DD_SITE", "datadoghq.com")
-DATADOG_ENVIRONMENT = os.getenv("DATADOG_ENVIRONMENT", "prod")
-SERVICE_NAME = os.getenv("LOG_SERVICE_NAME", "log-server")
-
-cors_origins = os.getenv("CORS_ORIGINS", "")
-origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
-
-app = FastAPI(title="Log Server")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="IncidentLens Log Server",
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
 )
 
+SUPPORTED_DATADOG_SITES = {
+    "datadoghq.com",
+    "us3.datadoghq.com",
+    "us5.datadoghq.com",
+    "datadoghq.eu",
+    "ap1.datadoghq.com",
+    "ap2.datadoghq.com",
+    "uk1.datadoghq.com",
+    "ddog-gov.com",
+    "us2.ddog-gov.com",
+}
 
-def _datadog_intake_url() -> str:
-    site = DATADOG_SITE.strip().lower().removeprefix("https://").rstrip("/")
-    return f"https://http-intake.logs.{site}/api/v2/logs"
+
+@dataclass(frozen=True)
+class DatadogWriteConfig:
+    api_key: str
+    site: str
+    service: str
+
+    def __post_init__(self):
+        api_key = self.api_key.strip()
+        site = self.site.strip().lower().removeprefix("https://").rstrip("/")
+        service = self.service.strip()
+        if not api_key or not site or not service:
+            raise ValueError("Datadog API key, site, and service are required")
+        if site not in SUPPORTED_DATADOG_SITES:
+            raise ValueError("Unsupported Datadog site")
+        object.__setattr__(self, "api_key", api_key)
+        object.__setattr__(self, "site", site)
+        object.__setattr__(self, "service", service)
+
+
+def _datadog_intake_url(config: DatadogWriteConfig) -> str:
+    return f"https://http-intake.logs.{config.site}/api/v2/logs"
 
 
 def _datadog_status(line: str) -> str:
@@ -47,22 +62,24 @@ def _datadog_status(line: str) -> str:
 
 async def push_to_datadog(
     lines: list[str],
+    config: DatadogWriteConfig,
     extra_tags: dict | None = None,
     *,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
     """Send log events to the Datadog HTTP intake API."""
-    if not DATADOG_API_KEY:
-        print("[DATADOG] API key not set — dropping logs")
-        return False
-
-    tags = {
-        "env": DATADOG_ENVIRONMENT,
-        "service": SERVICE_NAME,
-        **(extra_tags or {}),
+    custom_tags = {
+        key: value
+        for key, value in (extra_tags or {}).items()
+        if key not in {"env", "service"}
     }
-    service = str(tags.pop("service", SERVICE_NAME))
-    environment = str(tags.pop("env", DATADOG_ENVIRONMENT))
+    tags = {
+        "env": "prod",
+        "service": config.service,
+        **custom_tags,
+    }
+    service = str(tags.pop("service", config.service))
+    environment = str(tags.pop("env", "prod"))
     tag_string = ",".join(
         [f"env:{environment}", *(f"{key}:{value}" for key, value in tags.items())]
     )
@@ -82,11 +99,11 @@ async def push_to_datadog(
     request_client = client or httpx.AsyncClient(timeout=10)
     try:
         response = await request_client.post(
-            _datadog_intake_url(),
+            _datadog_intake_url(config),
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "DD-API-KEY": DATADOG_API_KEY,
+                "DD-API-KEY": config.api_key,
             },
             json=payload,
         )
@@ -427,8 +444,8 @@ def format_scenario_log(
     fields = {
         "timestamp": ts,
         "level": step.get("level", "ERROR"),
-        "service": step.get("service", SERVICE_NAME),
-        "source": step.get("source", step.get("service", SERVICE_NAME)),
+        "service": step["service"],
+        "source": step.get("source", step["service"]),
         "environment": step.get("environment", "prod"),
         "scenario": scenario_name,
         "run": run_idx,
@@ -1093,10 +1110,10 @@ async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0)
 
             success = await push_to_datadog(
                 [log_line],
+                log_generator.datadog_config,
                 extra_tags={
                     "scenario": scenario_name,
-                    "service": step.get("service", SERVICE_NAME),
-                    "env": step.get("environment", "prod"),
+                    "component_service": step["service"],
                     "step": str(i + 1),
                     "run": str(run_idx + 1),
                 },
@@ -1138,6 +1155,7 @@ class LogGenerator:
         }
         self.last_push_at: str | None = None
         self.last_error: str | None = None
+        self.datadog_config: DatadogWriteConfig | None = None
         self.logger = self._setup_logger()
 
     def _setup_logger(self):
@@ -1155,6 +1173,7 @@ class LogGenerator:
 
     async def start(
         self,
+        datadog_config: DatadogWriteConfig,
         duration: int = 300,
         interval_seconds: float = 3.0,
         batch_size: int = 1,
@@ -1164,6 +1183,7 @@ class LogGenerator:
         async with self._lock:
             if self.running:
                 return False, "Already running"
+            self.datadog_config = datadog_config
             self._stop_event.clear()
             self.stats = {k: 0 for k in self.stats}
             self.last_error = None
@@ -1264,7 +1284,13 @@ class LogGenerator:
         logs = list(self.log_buffer)
         self.log_buffer.clear()
 
-        success = await push_to_datadog(logs)
+        if self.datadog_config is None:
+            self.last_error = "Datadog configuration missing"
+            self.stats["push_errors"] += 1
+            self.log_buffer.extendleft(reversed(logs))
+            return
+
+        success = await push_to_datadog(logs, self.datadog_config)
         if success:
             self.stats["logs_shipped"] += len(logs)
             self.stats["batches_pushed"] += 1
@@ -1284,15 +1310,6 @@ async def startup_event():
     global log_generator
     log_generator = LogGenerator()
 
-    if not DATADOG_API_KEY:
-        print("[LOG-SERVER] WARNING: DATADOG_API_KEY is not set")
-    else:
-        ok = await push_to_datadog(["[startup] Log server connected to Datadog"])
-        if ok:
-            print(f"[LOG-SERVER] Datadog intake connected for {DATADOG_SITE}")
-        else:
-            print("[LOG-SERVER] WARNING: Datadog send test failed — check credentials")
-
 
 @app.post("/api/start")
 async def start_generation(
@@ -1301,8 +1318,21 @@ async def start_generation(
     batch_size: int = 1,
     error_rate: float = ERROR_RATE,
     slow_rate: float = SLOW_REQUEST_RATE,
+    datadog_api_key: str = Header(alias="X-Datadog-API-Key"),
+    datadog_site: str = Header(alias="X-Datadog-Site"),
+    datadog_service: str = Header(alias="X-Datadog-Service"),
 ):
-    ok, msg = await log_generator.start(
+    try:
+        config = DatadogWriteConfig(
+            api_key=datadog_api_key,
+            site=datadog_site,
+            service=datadog_service,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    _, msg = await log_generator.start(
+        datadog_config=config,
         duration=duration,
         interval_seconds=interval_seconds,
         batch_size=batch_size,
@@ -1323,190 +1353,11 @@ async def start_generation(
 
 @app.post("/api/stop")
 async def stop_generation():
-    ok, msg = await log_generator.stop()
+    _, msg = await log_generator.stop()
     return {
         "message": msg,
         "stats": log_generator.stats,
         "status": "idle",
-    }
-
-
-@app.get("/api/status")
-async def get_status():
-    return {
-        "status": "running" if log_generator.running else "idle",
-        "stats": log_generator.stats,
-        "last_push_at": log_generator.last_push_at,
-        "last_error": log_generator.last_error,
-        "transport": "datadog",
-        "datadog_site": DATADOG_SITE,
-    }
-
-
-@app.post("/api/scenario/{scenario_name}")
-async def run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0):
-    """
-    Fire a correlated error scenario through Datadog Logs.
-    """
-    requested_name = scenario_name
-    scenario_name = SCENARIO_ALIASES.get(scenario_name, scenario_name)
-    if scenario_name not in SCENARIOS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown scenario '{requested_name}'. Available: {list(SCENARIOS.keys())}",
-        )
-    if repeat < 1:
-        raise HTTPException(status_code=400, detail="repeat must be >= 1")
-    if speed <= 0:
-        raise HTTPException(status_code=400, detail="speed must be > 0")
-
-    asyncio.create_task(_run_scenario(scenario_name, repeat=repeat, speed=speed))
-
-    scenario = SCENARIOS[scenario_name]
-    steps = scenario["steps"]
-    total_delay = sum(s["delay_seconds"] for s in steps) * repeat / max(speed, 0.01)
-    return {
-        "scenario": scenario_name,
-        "requested_scenario": requested_name,
-        "description": scenario["description"],
-        "status": "started",
-        "steps": len(steps),
-        "repeat": repeat,
-        "speed": speed,
-        "estimated_duration_seconds": total_delay,
-        "message": (
-            f"Scenario '{scenario_name}' is running in the background. "
-            f"{len(steps) * repeat} log entries will be sent to Datadog over ~{total_delay:.1f}s."
-        ),
-    }
-
-
-@app.post("/api/burst")
-async def generate_burst(
-    count: int = 100,
-    error_rate: float = 1.0,
-    slow_rate: float = 0.0,
-):
-    """
-    Generate and push a burst of logs immediately.
-    Useful for throughput and clustering tests without waiting for the background loop.
-    """
-    if count < 1:
-        raise HTTPException(status_code=400, detail="count must be >= 1")
-    if error_rate < 0 or slow_rate < 0 or error_rate + slow_rate > 1:
-        raise HTTPException(
-            status_code=400,
-            detail="error_rate and slow_rate must be >= 0 and sum to <= 1",
-        )
-
-    log_generator._generate_logs(count, error_rate=error_rate, slow_rate=slow_rate)
-    await log_generator._flush_to_datadog()
-    return {
-        "message": "burst_generated",
-        "count": count,
-        "error_rate": error_rate,
-        "slow_rate": slow_rate,
-        "stats": log_generator.stats,
-    }
-
-
-@app.get("/api/scenario")
-async def list_scenarios():
-    """List all available test scenarios."""
-    return {
-        "scenarios": {
-            name: {
-                "description": scenario["description"],
-                "services": scenario.get("services", []),
-                "expected_runbook": scenario.get("expected_runbook"),
-                "expected_severity": scenario.get("expected_severity"),
-                "expected_disposition": scenario.get("expected_disposition"),
-                "expected_allowed_actions": scenario.get(
-                    "expected_allowed_actions", []
-                ),
-                "expected_blocked_actions": scenario.get(
-                    "expected_blocked_actions", []
-                ),
-                "steps": len(scenario["steps"]),
-                "estimated_duration_seconds": sum(
-                    s["delay_seconds"] for s in scenario["steps"]
-                ),
-            }
-            for name, scenario in SCENARIOS.items()
-        },
-        "aliases": SCENARIO_ALIASES,
-    }
-
-
-@app.get("/health")
-async def health():
-    datadog_ok = await push_to_datadog(["[healthcheck] ping"])
-    return {
-        "status": "healthy",
-        "datadog": "connected" if datadog_ok else "unreachable",
-    }
-
-
-@app.get("/ready")
-async def ready():
-    return {
-        "status": "ready",
-        "generator": "running" if log_generator and log_generator.running else "idle",
-        "transport": "datadog",
-    }
-
-
-@app.get("/db-health")
-async def db_health():
-    return {
-        "status": "degraded" if not DATADOG_API_KEY else "healthy",
-        "database": "simulated",
-        "message": "db-health endpoint is synthetic; no real database dependency is checked",
-    }
-
-
-@app.post("/api/recover")
-async def recover():
-    """
-    Stop active background generation and emit a short recovery signal.
-    """
-    if log_generator and log_generator.running:
-        await log_generator.stop()
-
-    recovery_line = format_scenario_log(
-        _scenario_step(
-            "RecoveryComplete: service metrics returned to baseline manual remediation verified",
-            level="INFO",
-            service=SERVICE_NAME,
-            endpoint="/api/recover",
-            operation="recover",
-            status_code=200,
-            latency_ms=120,
-            error_type="None",
-            host="log-server-01",
-            pod="log-server",
-            delay_seconds=0,
-        ),
-        "recovery",
-        1,
-        1,
-    )
-    pushed = await push_to_datadog([recovery_line], extra_tags={"scenario": "recovery"})
-    return {
-        "status": "recovered",
-        "generator": "idle",
-        "recovery_log_pushed": pushed,
-    }
-
-
-@app.get("/")
-async def root():
-    return {
-        "service": "log-server",
-        "status": "running",
-        "transport": "datadog",
-        "datadog_site": DATADOG_SITE,
-        "scenarios": list(SCENARIOS.keys()),
     }
 
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { authAPI } from "../services/api";
+import { authAPI, incidentsAPI, logout } from "../services/api";
 import Navbar from "./Navbar";
 import {
   Save,
@@ -10,9 +10,13 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  ShieldCheck,
+  Database,
+  Trash2,
 } from "lucide-react";
 
-const HIDDEN_MARKER = "HIDDEN: TEST CREDENTIAL";
+const HIDDEN_MARKER = "HIDDEN CREDENTIAL";
+const DEFAULT_LOG_QUERY = "status:(error OR warn OR critical)";
 
 function SectionHeader({ title, description, configured, open, onToggle }) {
   return (
@@ -24,11 +28,7 @@ function SectionHeader({ title, description, configured, open, onToggle }) {
       <div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-google-text">{title}</span>
-          {configured ? (
-            <span className="text-[10px] leading-4 px-1.5 py-px bg-green-500/20 text-google-green rounded-full border border-google-green/30">
-              Configured
-            </span>
-          ) : (
+          {!configured && (
             <span className="text-[10px] leading-4 px-1.5 py-px bg-amber-500/20 text-amber-700 rounded-full border border-amber-300/30">
               Not set
             </span>
@@ -142,6 +142,11 @@ function Settings() {
   const [fetching, setFetching] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [verifyingDatadog, setVerifyingDatadog] = useState(false);
+  const [datadogVerification, setDatadogVerification] = useState(null);
+  const [clearingIncidents, setClearingIncidents] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [isTest, setIsTest] = useState(false);
   const [openSections, setOpenSections] = useState({
     datadog: true,
@@ -153,7 +158,9 @@ function Settings() {
   const [form, setForm] = useState({
     datadog_api_key: "",
     datadog_app_key: "",
-    datadog_site: "datadoghq.com",
+    datadog_site: "",
+    datadog_query: DEFAULT_LOG_QUERY,
+    datadog_service: "",
     user_email: "",
     discord_webhook_escalate: "",
     discord_webhook_dev: "",
@@ -170,7 +177,9 @@ function Settings() {
         setForm({
           datadog_api_key: p.datadog_api_key || "",
           datadog_app_key: p.datadog_app_key || "",
-          datadog_site: p.datadog_site || "datadoghq.com",
+          datadog_site: p.datadog_site || "",
+          datadog_query: p.datadog_query || DEFAULT_LOG_QUERY,
+          datadog_service: p.datadog_service || "",
           user_email: p.user_email || "",
           discord_webhook_escalate: p.discord_webhook_escalate || "",
           discord_webhook_dev: p.discord_webhook_dev || "",
@@ -187,10 +196,86 @@ function Settings() {
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    if (e.target.name.startsWith("datadog_")) {
+      setDatadogVerification(null);
+    }
+  };
+
+  const handleVerifyDatadog = async () => {
+    setVerifyingDatadog(true);
+    setDatadogVerification(null);
+    try {
+      const payload = {
+        datadog_api_key: form.datadog_api_key,
+        datadog_app_key: form.datadog_app_key,
+        datadog_site: form.datadog_site,
+        datadog_query: form.datadog_query,
+        datadog_service: form.datadog_service,
+      };
+      const response = await authAPI.verifyDatadogSettings(payload);
+      setDatadogVerification({
+        valid: true,
+        message: response.data.message,
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setDatadogVerification({
+        valid: false,
+        message:
+          typeof detail === "string"
+            ? detail
+            : "Datadog verification failed.",
+      });
+    } finally {
+      setVerifyingDatadog(false);
+    }
   };
 
   const toggleSection = (key) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleClearIncidents = async () => {
+    if (
+      !window.confirm(
+        "Clear all incidents, analyses, investigations, and action logs for this project?",
+      )
+    ) {
+      return;
+    }
+    setClearingIncidents(true);
+    setMaintenanceMessage("");
+    try {
+      await incidentsAPI.clear();
+      setMaintenanceMessage("Project incident data cleared.");
+    } catch (err) {
+      setMaintenanceMessage(
+        err.response?.data?.detail || "Failed to clear incident data.",
+      );
+    } finally {
+      setClearingIncidents(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (
+      !window.confirm(
+        "Permanently delete this project and all of its data? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setDeletingProject(true);
+    setMaintenanceMessage("");
+    try {
+      await authAPI.deleteProject();
+      logout();
+    } catch (err) {
+      setMaintenanceMessage(
+        err.response?.data?.detail || "Failed to delete project.",
+      );
+      setDeletingProject(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -246,7 +331,7 @@ function Settings() {
       <div className="max-w-2xl mx-auto px-4 pt-16 pb-16">
         <div className="mb-12">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-[-0.04em] text-google-text">
-            Project Settings
+            Settings
           </h1>
           <p className="text-sm text-google-muted mt-2">
             Connect your log source, choose alert recipients, and manage access.
@@ -260,23 +345,23 @@ function Settings() {
               size={16}
             />
             <p className="text-amber-700 text-sm">
-              This is a test project. Credentials are hidden and settings are
-              read-only.
+              Credentials are hidden and settings are read-only for this
+              project.
             </p>
           </div>
         )}
 
         {!isTest && !setupStatus.datadog && (
-          <div className="mb-6 p-4 bg-google-blue/10 border border-google-blue/30 rounded-lg flex items-start">
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start">
             <AlertCircle
-              className="text-google-blue mr-3 shrink-0 mt-0.5"
+              className="text-amber-700 mr-3 shrink-0 mt-0.5"
               size={16}
             />
             <div>
-              <p className="text-google-blue text-sm font-medium">
+              <p className="text-amber-800 text-sm font-medium">
                 Setup incomplete
               </p>
-              <p className="text-google-blue/70 text-xs mt-0.5">
+              <p className="text-amber-700 text-xs mt-0.5">
                 Add your Datadog credentials below so IncidentLens can start
                 monitoring your logs.
               </p>
@@ -313,32 +398,74 @@ function Settings() {
             {openSections.datadog && (
               <div className="pb-5 space-y-4">
                 <SecretInput
-                  label="Datadog API Key"
+                  label="API Key"
                   name="datadog_api_key"
                   value={form.datadog_api_key}
                   onChange={handleChange}
                   placeholder="API key"
                   disabled={disabled}
-                  hint="In Datadog, open Organization Settings → API Keys, then copy an existing key or create a new one."
+                  hint="Used to send logs to your account."
                 />
                 <SecretInput
-                  label="Datadog Application Key"
+                  label="Application Key"
                   name="datadog_app_key"
                   value={form.datadog_app_key}
                   onChange={handleChange}
                   placeholder="Application key"
                   disabled={disabled}
-                  hint="Create an application key in Datadog with the logs_read_data permission so IncidentLens can read your logs."
+                  hint="Must have permission to read logs."
                 />
                 <PlainInput
-                  label="Datadog Site"
+                  label="Site"
                   name="datadog_site"
                   value={form.datadog_site}
                   onChange={handleChange}
                   placeholder="datadoghq.com"
                   disabled={disabled}
-                  hint="Use the site from your Datadog URL, such as datadoghq.com, datadoghq.eu, or us5.datadoghq.com."
+                  hint="The domain shown in your account URL, such as datadoghq.com or datadoghq.eu."
                 />
+                <PlainInput
+                  label="Log Query"
+                  name="datadog_query"
+                  value={form.datadog_query}
+                  onChange={handleChange}
+                  placeholder="status:(error OR warn OR critical)"
+                  disabled={disabled}
+                  hint="Choose which logs IncidentLens should analyze."
+                />
+                <PlainInput
+                  label="Service to Monitor"
+                  name="datadog_service"
+                  value={form.datadog_service}
+                  onChange={handleChange}
+                  placeholder="project-1-api"
+                  disabled={disabled}
+                  hint="Enter the exact service value attached to your logs, for example checkout-api."
+                />
+                <button
+                  type="button"
+                  onClick={handleVerifyDatadog}
+                  disabled={disabled || verifyingDatadog}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border border-google-blue text-google-blue hover:bg-google-blue/5 disabled:border-google-border disabled:text-google-muted disabled:cursor-not-allowed transition-colors"
+                >
+                  <ShieldCheck size={15} />
+                  {verifyingDatadog
+                    ? "Verifying Connection..."
+                    : "Verify Connection"}
+                </button>
+                {datadogVerification && (
+                  <div
+                    className={`rounded-lg border px-3 py-2 text-xs ${
+                      datadogVerification.valid
+                        ? "border-google-green/30 bg-green-50 text-google-green"
+                        : "border-google-red/30 bg-red-50 text-google-red"
+                    }`}
+                  >
+                    {datadogVerification.message}
+                    {datadogVerification.valid &&
+                      " This verification did not save any changes."}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -421,6 +548,38 @@ function Settings() {
             </button>
           </div>
         </form>
+
+        <div className="soft-card px-5 py-5 mt-8 border-google-red/30">
+          <h2 className="text-sm font-medium text-google-text">Danger zone</h2>
+          <p className="text-xs text-google-muted mt-1 mb-4">
+            Clear incident data or permanently remove this project.
+          </p>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handleClearIncidents}
+              disabled={disabled || clearingIncidents || deletingProject}
+              className="w-full py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 border border-google-red text-google-red hover:bg-red-50 disabled:border-google-border disabled:text-google-muted disabled:cursor-not-allowed"
+            >
+              <Database size={15} />
+              {clearingIncidents ? "Clearing..." : "Clear Incident Data"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteProject}
+              disabled={disabled || deletingProject || clearingIncidents}
+              className="w-full py-2.5 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 bg-google-red hover:bg-red-700 disabled:bg-google-border disabled:cursor-not-allowed"
+            >
+              <Trash2 size={15} />
+              {deletingProject ? "Deleting..." : "Delete Project"}
+            </button>
+          </div>
+          {maintenanceMessage && (
+            <p className="mt-3 text-xs text-google-muted">
+              {maintenanceMessage}
+            </p>
+          )}
+        </div>
       </div>
       </div>
     </div>

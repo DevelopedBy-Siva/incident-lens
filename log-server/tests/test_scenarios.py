@@ -36,6 +36,14 @@ REQUIRED_SCENARIOS = {
 
 
 class ScenarioRegistryTests(unittest.TestCase):
+    def test_swagger_ui_is_exposed(self):
+        self.assertEqual(server.app.docs_url, "/docs")
+        self.assertEqual(server.app.openapi_url, "/openapi.json")
+
+    def test_only_start_and_stop_business_endpoints_are_exposed(self):
+        paths = set(server.app.openapi()["paths"])
+        self.assertEqual(paths, {"/api/start", "/api/stop"})
+
     def test_registry_includes_required_scenarios(self):
         self.assertTrue(REQUIRED_SCENARIOS.issubset(server.SCENARIOS.keys()))
 
@@ -77,41 +85,6 @@ class ScenarioRegistryTests(unittest.TestCase):
 
 
 class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_run_scenario_sends_to_datadog_without_live_datadog(self):
-        pushed = []
-
-        async def fake_push(lines, extra_tags=None):
-            pushed.append((lines, extra_tags))
-            return True
-
-        with patch.object(
-            server, "push_to_datadog", new=AsyncMock(side_effect=fake_push)
-        ):
-            await server._run_scenario(
-                "healthcheck_timeout_noise", repeat=1, speed=1000
-            )
-
-        self.assertEqual(
-            len(pushed),
-            len(server.SCENARIOS["healthcheck_timeout_noise"]["steps"]),
-        )
-        for lines, labels in pushed:
-            self.assertEqual(len(lines), 1)
-            self.assertEqual(labels["scenario"], "healthcheck_timeout_noise")
-            self.assertIn("timestamp=", lines[0])
-            self.assertIn("message=", lines[0])
-
-    async def test_legacy_scenario_aliases_still_execute(self):
-        with patch.object(
-            server, "push_to_datadog", new=AsyncMock(return_value=True)
-        ) as push:
-            await server._run_scenario("db_cascade", repeat=1, speed=1000)
-
-        self.assertEqual(
-            push.await_count,
-            len(server.SCENARIOS["ambiguous_cascade"]["steps"]),
-        )
-
     async def test_datadog_intake_uses_api_key_and_provider_fields(self):
         captured = {}
 
@@ -120,17 +93,18 @@ class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(202, request=request)
 
         transport = httpx.MockTransport(handler)
+        config = server.DatadogWriteConfig(
+            api_key="api-secret",
+            site="datadoghq.eu",
+            service="checkout",
+        )
         async with httpx.AsyncClient(transport=transport) as client:
-            with (
-                patch.object(server, "DATADOG_API_KEY", "api-secret"),
-                patch.object(server, "DATADOG_SITE", "datadoghq.eu"),
-                patch.object(server, "DATADOG_ENVIRONMENT", "staging"),
-            ):
-                result = await server.push_to_datadog(
-                    ["ERROR checkout failed"],
-                    extra_tags={"service": "checkout", "scenario": "payment"},
-                    client=client,
-                )
+            result = await server.push_to_datadog(
+                ["ERROR checkout failed"],
+                config,
+                extra_tags={"service": "ignored", "scenario": "payment"},
+                client=client,
+            )
 
         self.assertTrue(result)
         request = captured["request"]
@@ -142,8 +116,30 @@ class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
         event = json.loads(request.content)[0]
         self.assertEqual(event["service"], "checkout")
         self.assertEqual(event["status"], "error")
-        self.assertIn("env:staging", event["ddtags"])
+        self.assertIn("env:prod", event["ddtags"])
         self.assertIn("scenario:payment", event["ddtags"])
+
+    async def test_start_builds_datadog_config_from_headers(self):
+        generator = SimpleNamespace(
+            start=AsyncMock(return_value=(True, "started")), running=True
+        )
+        with patch.object(server, "log_generator", generator):
+            response = await server.start_generation(
+                duration=60,
+                interval_seconds=1,
+                batch_size=1,
+                error_rate=0.5,
+                slow_rate=0.1,
+                datadog_api_key="api-secret",
+                datadog_site="datadoghq.com",
+                datadog_service="project-api",
+            )
+
+        config = generator.start.await_args.kwargs["datadog_config"]
+        self.assertEqual(config.api_key, "api-secret")
+        self.assertEqual(config.site, "datadoghq.com")
+        self.assertEqual(config.service, "project-api")
+        self.assertEqual(response["status"], "running")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,33 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
+from sqlalchemy.orm import Session
+
+from app.api.routes_auth import get_current_project
+from app.control.maintenance import cleanup_project_data
 from app.control.models import Project
 from app.data.models import Incident
 from app.serving.models import Analysis
 from app.shared.database import get_db
-from app.api.routes_auth import get_current_project
 
 router = APIRouter()
+
+
+@router.delete("/incidents")
+def clear_project_incident_data(
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    """Clear incident-processing data for the authenticated project."""
+    try:
+        deleted = cleanup_project_data(db, project.id)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to clear project incident data"
+        ) from exc
+    return {"status": "cleared", "project_id": project.id, "deleted": deleted}
 
 
 def _incident_to_dict(inc: Incident, analysis: Optional[Analysis]) -> dict:

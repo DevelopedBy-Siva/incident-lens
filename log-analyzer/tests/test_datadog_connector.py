@@ -1,5 +1,4 @@
 import json
-import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -26,7 +25,6 @@ def _project(**overrides):
         "datadog_app_key": "app-key",
         "datadog_site": "datadoghq.com",
         "datadog_query": "status:error",
-        "datadog_environment": "prod",
         "datadog_service": "checkout",
     }
     values.update(overrides)
@@ -34,12 +32,10 @@ def _project(**overrides):
 
 
 class DatadogConnectorTests(unittest.TestCase):
-    def test_shared_dd_api_key_is_used_as_the_deployment_fallback(self):
+    def test_project_configuration_does_not_use_deployment_fallbacks(self):
         project = _project(datadog_api_key=None)
-        with patch.dict(os.environ, {"DD_API_KEY": "shared-api-key"}, clear=True):
-            config = DatadogLogSourceConfig.from_project(project)
-
-        self.assertEqual(config.api_key, "shared-api-key")
+        with self.assertRaisesRegex(ValueError, "API key"):
+            DatadogLogSourceConfig.from_project(project)
 
     def test_search_authenticates_pages_and_normalizes_in_timestamp_order(self):
         requests = []
@@ -141,7 +137,6 @@ class DatadogConnectorTests(unittest.TestCase):
                 id="project-2",
                 datadog_api_key="api-key-2",
                 datadog_app_key="app-key-2",
-                datadog_environment="staging",
                 datadog_service="billing",
             ),
         ]
@@ -157,8 +152,32 @@ class DatadogConnectorTests(unittest.TestCase):
         self.assertEqual(captured[0][:2], ("api-key", "app-key"))
         self.assertIn('service:"checkout"', captured[0][2])
         self.assertEqual(captured[1][:2], ("api-key-2", "app-key-2"))
-        self.assertIn('env:"staging"', captured[1][2])
+        self.assertIn('env:"prod"', captured[1][2])
         self.assertIn('service:"billing"', captured[1][2])
+
+    def test_verify_access_uses_a_single_minimal_search(self):
+        requests = []
+
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(200, request=request, json={"data": []})
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            connector = DatadogLogConnector(
+                DatadogLogSourceConfig.from_project(_project()), client=client
+            )
+            connector.verify_access(
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(len(requests), 1)
+        body = json.loads(requests[0].content)
+        self.assertEqual(body["page"]["limit"], 1)
+        self.assertEqual(
+            body["filter"]["query"],
+            '(status:error) AND env:"prod" AND service:"checkout"',
+        )
 
 
 class DatadogWatcherTests(unittest.TestCase):

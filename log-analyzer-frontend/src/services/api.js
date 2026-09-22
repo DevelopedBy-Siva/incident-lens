@@ -2,8 +2,6 @@ import axios from "axios";
 
 export const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:8000";
-export const TEST_LOG_SERVER_URL =
-  process.env.REACT_APP_TEST_LOG_SERVER_URL || "http://localhost:8001";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,20 +19,21 @@ export const authAPI = {
   login: (data) => api.post("/api/auth/login", data),
   getMe: () => api.get("/api/auth/me"),
   updateSettings: (data) => api.put("/api/auth/settings", data),
+  verifyDatadogSettings: (data) =>
+    api.post("/api/auth/settings/datadog/verify", data),
+  deleteProject: () => api.delete("/api/auth/project"),
   settingsStatus: () => api.get("/api/auth/settings/status"),
 };
 
 export const logServerAPI = {
   start: () => api.post("/api/log-server/start"),
   stop: () => api.post("/api/log-server/stop"),
-  status: () => api.get("/api/log-server/status"),
-  runScenario: (name) => api.post(`/api/log-server/scenario/${name}`),
-  listScenarios: () => api.get("/api/log-server/scenarios"),
 };
 
 export const incidentsAPI = {
   list: (params) => api.get("/api/incidents", { params }),
   get: (id) => api.get(`/api/incidents/${id}`),
+  clear: () => api.delete("/api/incidents"),
   close: (id) => api.post(`/api/incidents/${id}/close`),
   ignore: (id) => api.post(`/api/incidents/${id}/ignore`),
   // Agent visibility — new

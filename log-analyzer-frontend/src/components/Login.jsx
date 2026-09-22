@@ -54,7 +54,7 @@ function Login() {
             Login
           </h1>
           <p className="text-sm text-google-muted">
-            Sign in to monitor and investigate your project’s incidents.
+            Monitor and investigate incidents.
           </p>
         </div>
 

@@ -112,8 +112,7 @@ class DatadogObservabilityTests(unittest.TestCase):
             datadog_app_key="app-key",
             datadog_site="datadoghq.com",
             datadog_query="status:error",
-            datadog_environment="prod",
-            datadog_service=None,
+            datadog_service="checkout",
         )
         now = datetime.now(timezone.utc)
         with patch("app.data.ingestion.log_source_watcher.trace_operation", record):

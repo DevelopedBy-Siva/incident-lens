@@ -52,7 +52,7 @@ function Register() {
               Create Project
             </h1>
             <p className="text-sm text-google-muted mt-2">
-              Create a workspace for monitoring and investigating incidents.
+              Create your incident workspace.
             </p>
           </div>
 

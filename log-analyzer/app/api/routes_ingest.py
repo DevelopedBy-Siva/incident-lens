@@ -15,12 +15,23 @@ def _url(path: str) -> str:
 
 @router.post("/log-server/start")
 def start_log_server(project: Project = Depends(get_current_project)):
-    if not project.is_test:
+    if not all(
+        [project.datadog_api_key, project.datadog_site, project.datadog_service]
+    ):
         raise HTTPException(
-            status_code=403, detail="Log server is only available for the demo project."
+            status_code=422,
+            detail="Configure the project's Datadog API key, site, and service first",
         )
     try:
-        resp = requests.post(_url("/api/start"), timeout=10)
+        resp = requests.post(
+            _url("/api/start"),
+            headers={
+                "X-Datadog-API-Key": project.datadog_api_key,
+                "X-Datadog-Site": project.datadog_site,
+                "X-Datadog-Service": project.datadog_service,
+            },
+            timeout=10,
+        )
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return resp.json()
@@ -30,27 +41,8 @@ def start_log_server(project: Project = Depends(get_current_project)):
 
 @router.post("/log-server/stop")
 def stop_log_server(project: Project = Depends(get_current_project)):
-    if not project.is_test:
-        raise HTTPException(
-            status_code=403, detail="Log server is only available for the demo project."
-        )
     try:
         resp = requests.post(_url("/api/stop"), timeout=10)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return resp.json()
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Log server unreachable: {e}")
-
-
-@router.get("/log-server/status")
-def log_server_status(project: Project = Depends(get_current_project)):
-    if not project.is_test:
-        raise HTTPException(
-            status_code=403, detail="Log server is only available for the demo project."
-        )
-    try:
-        resp = requests.get(_url("/api/status"), timeout=10)
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return resp.json()

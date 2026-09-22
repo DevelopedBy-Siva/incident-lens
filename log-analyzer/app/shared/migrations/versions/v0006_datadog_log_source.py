@@ -7,7 +7,6 @@ DATADOG_COLUMNS = {
     "datadog_app_key": "VARCHAR",
     "datadog_site": "VARCHAR",
     "datadog_query": "VARCHAR",
-    "datadog_environment": "VARCHAR",
     "datadog_service": "VARCHAR",
 }
 

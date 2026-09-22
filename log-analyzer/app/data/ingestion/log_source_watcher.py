@@ -24,14 +24,15 @@ def _load_active_projects():
 
     db = SessionLocal()
     try:
-        global_api_key = os.getenv("DATADOG_API_KEY") or os.getenv("DD_API_KEY")
-        global_app_key = os.getenv("DATADOG_APP_KEY")
         active_projects = db.query(Project).filter(Project.is_active.is_(True)).all()
         projects = [
             project
             for project in active_projects
-            if (project.datadog_api_key or global_api_key)
-            and (project.datadog_app_key or global_app_key)
+            if project.datadog_api_key
+            and project.datadog_app_key
+            and project.datadog_site
+            and project.datadog_query
+            and project.datadog_service
         ]
         for project in projects:
             db.expunge(project)
@@ -53,7 +54,7 @@ def fetch_logs_for_project(
         metadata={
             "project_id": str(project.id),
             "source": "datadog",
-            "environment": getattr(project, "datadog_environment", None),
+            "environment": "prod",
         },
     ) as span:
         config = DatadogLogSourceConfig.from_project(project)

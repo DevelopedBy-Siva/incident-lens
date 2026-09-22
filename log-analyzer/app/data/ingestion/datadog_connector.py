@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -12,8 +11,7 @@ from app.data.ingestion.log_source import (
     LogSourceError,
 )
 
-DEFAULT_DATADOG_SITE = "datadoghq.com"
-DEFAULT_DATADOG_QUERY = "status:(error OR warn OR critical)"
+DATADOG_ENVIRONMENT = "prod"
 SUPPORTED_DATADOG_SITES = {
     "datadoghq.com",
     "us3.datadoghq.com",
@@ -31,55 +29,41 @@ SUPPORTED_DATADOG_SITES = {
 class DatadogLogSourceConfig:
     api_key: str
     app_key: str
-    site: str = DEFAULT_DATADOG_SITE
-    query: str = DEFAULT_DATADOG_QUERY
-    environment: str = "prod"
-    service_filter: str | None = None
+    site: str
+    query: str
+    service_filter: str
 
     def __post_init__(self) -> None:
+        required = {
+            "API key": self.api_key,
+            "application key": self.app_key,
+            "site": self.site,
+            "query": self.query,
+            "service": self.service_filter,
+        }
+        missing = [name for name, value in required.items() if not value.strip()]
+        if missing:
+            raise ValueError(f"Datadog {', '.join(missing)} required")
         site = self.site.strip().lower().removeprefix("https://").rstrip("/")
         if site not in SUPPORTED_DATADOG_SITES:
             supported = ", ".join(sorted(SUPPORTED_DATADOG_SITES))
             raise ValueError(
                 f"Unsupported Datadog site {site!r}; expected one of {supported}"
             )
-        if not self.api_key.strip() or not self.app_key.strip():
-            raise ValueError("Datadog API and application keys are required")
         object.__setattr__(self, "site", site)
-        object.__setattr__(
-            self,
-            "query",
-            self.query.strip() or DEFAULT_DATADOG_QUERY,
-        )
-        object.__setattr__(
-            self,
-            "environment",
-            self.environment.strip() or "prod",
-        )
-        object.__setattr__(
-            self,
-            "service_filter",
-            self.service_filter.strip() if self.service_filter else None,
-        )
+        object.__setattr__(self, "api_key", self.api_key.strip())
+        object.__setattr__(self, "app_key", self.app_key.strip())
+        object.__setattr__(self, "query", self.query.strip())
+        object.__setattr__(self, "service_filter", self.service_filter.strip())
 
     @classmethod
     def from_project(cls, project) -> "DatadogLogSourceConfig":
         return cls(
-            api_key=getattr(project, "datadog_api_key", None)
-            or os.getenv("DATADOG_API_KEY")
-            or os.getenv("DD_API_KEY", ""),
-            app_key=getattr(project, "datadog_app_key", None)
-            or os.getenv("DATADOG_APP_KEY", ""),
-            site=getattr(project, "datadog_site", None)
-            or os.getenv("DATADOG_SITE")
-            or os.getenv("DD_SITE", DEFAULT_DATADOG_SITE),
-            query=getattr(project, "datadog_query", None)
-            or os.getenv("DATADOG_QUERY", DEFAULT_DATADOG_QUERY),
-            environment=getattr(project, "datadog_environment", None)
-            or os.getenv("DATADOG_ENVIRONMENT", "prod"),
-            service_filter=getattr(project, "datadog_service", None)
-            or os.getenv("DATADOG_SERVICE", "")
-            or None,
+            api_key=getattr(project, "datadog_api_key", None) or "",
+            app_key=getattr(project, "datadog_app_key", None) or "",
+            site=getattr(project, "datadog_site", None) or "",
+            query=getattr(project, "datadog_query", None) or "",
+            service_filter=getattr(project, "datadog_service", None) or "",
         )
 
     @property
@@ -88,11 +72,11 @@ class DatadogLogSourceConfig:
 
     @property
     def effective_query(self) -> str:
-        filters = [f"({self.query})"]
-        if self.environment:
-            filters.append(f"env:{_quoted(self.environment)}")
-        if self.service_filter:
-            filters.append(f"service:{_quoted(self.service_filter)}")
+        filters = [
+            f"({self.query})",
+            f"env:{_quoted(DATADOG_ENVIRONMENT)}",
+            f"service:{_quoted(self.service_filter)}",
+        ]
         return " AND ".join(filters)
 
 
@@ -186,6 +170,41 @@ class DatadogLogConnector(LogSourceConnector):
             key=lambda envelope: (envelope.timestamp, envelope.provider_id),
         )
 
+    def verify_access(self, start: datetime, end: datetime) -> None:
+        """Verify credentials and logs-read access without persisting anything."""
+        body = {
+            "filter": {
+                "from": _iso_utc(start),
+                "to": _iso_utc(end),
+                "query": self.config.effective_query,
+            },
+            "sort": "-timestamp",
+            "page": {"limit": 1},
+        }
+        try:
+            response = self.client.post(
+                self.config.search_url,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "DD-API-KEY": self.config.api_key,
+                    "DD-APPLICATION-KEY": self.config.app_key,
+                },
+                json=body,
+            )
+        except httpx.HTTPError as exc:
+            raise LogSourceError(f"Datadog access verification failed: {exc}") from exc
+
+        if response.status_code in {401, 403}:
+            raise LogSourceAuthenticationError(
+                "Datadog rejected the credentials or logs_read_data access"
+            )
+        if response.status_code != 200:
+            raise LogSourceError(
+                f"Datadog verification failed with HTTP {response.status_code}: "
+                f"{response.text[:200]}"
+            )
+
     def close(self) -> None:
         if self._owns_client:
             self.client.close()
@@ -200,7 +219,7 @@ class DatadogLogConnector(LogSourceConnector):
             custom.get("env")
             or custom.get("environment")
             or _tag_value(tags, "env")
-            or self.config.environment
+            or DATADOG_ENVIRONMENT
         )
         source = (
             attributes.get("service")

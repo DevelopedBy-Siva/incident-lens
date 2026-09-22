@@ -27,7 +27,6 @@ class Project(Base):
     datadog_app_key = Column(String, nullable=True)
     datadog_site = Column(String, nullable=True)
     datadog_query = Column(String, nullable=True)
-    datadog_environment = Column(String, nullable=True)
     datadog_service = Column(String, nullable=True)
     user_email = Column(String, nullable=True)
     discord_webhook_escalate = Column(String, nullable=True)

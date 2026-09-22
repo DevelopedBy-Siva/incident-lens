@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { incidentsAPI, logServerAPI, authAPI } from "../services/api";
 import Navbar from "./Navbar";
 import IncidentCard from "./IncidentCard";
@@ -8,8 +9,6 @@ import {
   Play,
   Square,
   AlertCircle,
-  Zap,
-  Activity,
 } from "lucide-react";
 
 function useDebounce(value, delay) {
@@ -21,69 +20,12 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
-const SCENARIOS = [
-  {
-    id: "db_cascade",
-    label: "Database Failure",
-    description: "Simulates database pressure that disrupts payments",
-    duration: "~105s",
-  },
-  {
-    id: "memory_leak",
-    label: "Memory Leak",
-    description: "Simulates rising memory use until a service restarts",
-    duration: "~185s",
-  },
-  {
-    id: "deployment_gone_wrong",
-    label: "Bad Deploy",
-    description: "Simulates a deployment that reduces capacity and fails",
-    duration: "~85s",
-  },
-  {
-    id: "auth_cascade",
-    label: "Authentication Failure",
-    description: "Simulates an authentication outage and rate limiting",
-    duration: "~75s",
-  },
-];
-
-function ScenarioButton({ scenario, onRun, running }) {
-  return (
-    <button
-      onClick={() => onRun(scenario.id)}
-      disabled={running === scenario.id}
-      className="flex flex-col items-start px-3 py-2.5 rounded-lg border border-google-border hover:border-google-blue/40 hover:bg-google-blue/5 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed group"
-    >
-      <div className="flex items-center gap-1.5 mb-0.5">
-        {running === scenario.id ? (
-          <Activity size={11} className="text-google-blue animate-pulse" />
-        ) : (
-          <Zap
-            size={11}
-            className="text-google-muted group-hover:text-google-blue transition-colors"
-          />
-        )}
-        <span className="text-xs font-medium text-google-text">
-          {scenario.label}
-        </span>
-        <span className="text-xs text-google-muted">{scenario.duration}</span>
-      </div>
-      <p className="text-xs text-google-muted leading-tight">
-        {scenario.description}
-      </p>
-    </button>
-  );
-}
-
 function Dashboard() {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isTest, setIsTest] = useState(false);
-  const [logStatus, setLogStatus] = useState("unknown");
+  const [datadogConfigured, setDatadogConfigured] = useState(null);
+  const [logStatus, setLogStatus] = useState("idle");
   const [logServerError, setLogServerError] = useState("");
-  const [runningScenario, setRunningScenario] = useState(null);
-  const [scenarioMsg, setScenarioMsg] = useState("");
   const [filters, setFilters] = useState({
     status: "open",
     severity: "",
@@ -96,7 +38,9 @@ function Dashboard() {
   useEffect(() => {
     authAPI
       .getMe()
-      .then((res) => setIsTest(res.data?.is_test ?? false))
+      .then((res) =>
+        setDatadogConfigured(res.data?.setup_status?.datadog ?? false),
+      )
       .catch(() => {});
   }, []);
 
@@ -121,25 +65,6 @@ function Dashboard() {
     return () => clearInterval(t);
   }, [debouncedFilters, fetchIncidents]);
 
-  useEffect(() => {
-    if (!isTest) return;
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await logServerAPI.status();
-        if (alive) setLogStatus(res.data?.status || "unknown");
-      } catch {
-        if (alive) setLogStatus("unknown");
-      }
-    };
-    poll();
-    const t = setInterval(poll, 5000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [isTest]);
-
   const handleStart = async () => {
     setLogServerError("");
     try {
@@ -160,22 +85,6 @@ function Dashboard() {
       setLogStatus("idle");
     } catch {
       setLogServerError("Failed to stop log server.");
-    }
-  };
-
-  const handleRunScenario = async (name) => {
-    setRunningScenario(name);
-    setScenarioMsg("");
-    try {
-      const res = await logServerAPI.runScenario(name);
-      const est = res.data?.estimated_duration_seconds;
-      setScenarioMsg(
-        `Scenario "${name}" started — ${res.data?.steps} log entries over ~${est}s. Watch incidents appear below.`,
-      );
-      setTimeout(() => setRunningScenario(null), (est || 120) * 1000);
-    } catch (err) {
-      setScenarioMsg(err.response?.data?.detail || "Failed to run scenario.");
-      setRunningScenario(null);
     }
   };
 
@@ -210,6 +119,32 @@ function Dashboard() {
             response.
           </p>
         </div>
+
+        {datadogConfigured === false && (
+          <div className="mb-8 flex flex-col gap-4 rounded-lg border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle
+                className="mt-0.5 shrink-0 text-amber-700"
+                size={18}
+              />
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  Configuration required
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Go to Settings and configure your log connection to start
+                  monitoring incidents.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/settings"
+              className="shrink-0 rounded-lg border border-amber-400 bg-white px-4 py-2 text-center text-xs font-medium text-amber-800 transition-colors hover:bg-google-bg"
+            >
+              Configure
+            </Link>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -303,7 +238,7 @@ function Dashboard() {
                 className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted placeholder:text-google-muted focus:ring-1 focus:ring-google-blue"
               />
             </div>
-            {isTest && (
+            {datadogConfigured && (
               <div className="flex items-end gap-2">
                 <button
                   onClick={handleStart}
@@ -322,30 +257,6 @@ function Dashboard() {
               </div>
             )}
           </div>
-
-          {/* Scenario buttons */}
-          {isTest && (
-            <div>
-              <p className="text-xs text-google-muted mb-2">
-                Test with a simulated incident
-              </p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {SCENARIOS.map((s) => (
-                  <ScenarioButton
-                    key={s.id}
-                    scenario={s}
-                    onRun={handleRunScenario}
-                    running={runningScenario}
-                  />
-                ))}
-              </div>
-              {scenarioMsg && (
-                <div className="mt-3 p-2.5 bg-google-blue/10 border border-google-blue/20 rounded-lg text-xs text-google-blue">
-                  {scenarioMsg}
-                </div>
-              )}
-            </div>
-          )}
 
           {logServerError && (
             <div className="flex items-start gap-3 p-3 bg-red-50 border border-google-red/30 rounded-lg">
@@ -367,7 +278,7 @@ function Dashboard() {
             <p className="text-google-muted text-sm">
               {filters.status || filters.severity || filters.ticket_title
                 ? "No incidents match your filters"
-                : "No incidents yet — start the log server or run a scenario"}
+                : "No incidents yet — start log generation"}
             </p>
           </div>
         ) : (

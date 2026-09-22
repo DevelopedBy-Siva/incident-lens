@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,14 +15,23 @@ from app.control.auth import (
     verify_password,
 )
 from app.control.models import Project
-from app.data.ingestion.datadog_connector import SUPPORTED_DATADOG_SITES
+from app.control.maintenance import delete_project
+from app.data.ingestion.datadog_connector import (
+    SUPPORTED_DATADOG_SITES,
+    DatadogLogConnector,
+    DatadogLogSourceConfig,
+)
+from app.data.ingestion.log_source import (
+    LogSourceAuthenticationError,
+    LogSourceError,
+)
 from app.shared.database import get_db
 from app.shared.observability import trace_operation
 
 router = APIRouter()
 security = HTTPBearer()
 
-HIDDEN = "HIDDEN: TEST CREDENTIAL"
+HIDDEN = "HIDDEN CREDENTIAL"
 
 
 class ProjectRegister(BaseModel):
@@ -58,7 +68,6 @@ class ProjectSettings(BaseModel):
     datadog_app_key: Optional[str] = None
     datadog_site: Optional[str] = None
     datadog_query: Optional[str] = None
-    datadog_environment: Optional[str] = None
     datadog_service: Optional[str] = None
     # Notifications
     user_email: Optional[str] = None
@@ -83,8 +92,20 @@ class ProjectSettings(BaseModel):
         return v
 
 
+class DatadogVerificationRequest(BaseModel):
+    datadog_api_key: Optional[str] = None
+    datadog_app_key: Optional[str] = None
+    datadog_site: Optional[str] = None
+    datadog_query: Optional[str] = None
+    datadog_service: Optional[str] = None
+
+    @validator("datadog_site")
+    def validate_datadog_site(cls, v):
+        return ProjectSettings.validate_datadog_site(v)
+
+
 def _mask(value: Optional[str], is_test: bool = False) -> Optional[str]:
-    """Return masked value for API keys, HIDDEN for test projects."""
+    """Return a masked or hidden value for API keys."""
     if not value:
         return None
     if is_test:
@@ -98,13 +119,17 @@ def _enabled(name: str, default: str = "1") -> bool:
 
 def _project_to_dict(project: Project) -> dict:
     t = project.is_test
-    datadog_api_key = (
-        project.datadog_api_key
-        or os.getenv("DATADOG_API_KEY")
-        or os.getenv("DD_API_KEY")
+    datadog_api_key = project.datadog_api_key
+    datadog_app_key = project.datadog_app_key
+    datadog_configured = all(
+        [
+            datadog_api_key,
+            datadog_app_key,
+            project.datadog_site,
+            project.datadog_query,
+            project.datadog_service,
+        ]
     )
-    datadog_app_key = project.datadog_app_key or os.getenv("DATADOG_APP_KEY")
-    datadog_configured = bool(datadog_api_key and datadog_app_key)
     return {
         "id": project.id,
         "name": project.name,
@@ -115,14 +140,9 @@ def _project_to_dict(project: Project) -> dict:
         # Datadog Logs
         "datadog_api_key": _mask(datadog_api_key, t),
         "datadog_app_key": _mask(datadog_app_key, t),
-        "datadog_site": project.datadog_site
-        or os.getenv("DATADOG_SITE")
-        or os.getenv("DD_SITE", "datadoghq.com"),
-        "datadog_query": project.datadog_query
-        or os.getenv("DATADOG_QUERY", "status:(error OR warn OR critical)"),
-        "datadog_environment": project.datadog_environment
-        or os.getenv("DATADOG_ENVIRONMENT", "prod"),
-        "datadog_service": project.datadog_service or os.getenv("DATADOG_SERVICE"),
+        "datadog_site": project.datadog_site,
+        "datadog_query": project.datadog_query,
+        "datadog_service": project.datadog_service,
         "observability": {
             "platform": "Datadog",
             "llm_observability": _enabled("DD_LLMOBS_ENABLED"),
@@ -242,7 +262,6 @@ def update_settings(
         "datadog_app_key",
         "datadog_site",
         "datadog_query",
-        "datadog_environment",
         "datadog_service",
         "user_email",
         "discord_webhook_escalate",
@@ -268,15 +287,73 @@ def update_settings(
         raise HTTPException(status_code=500, detail="Failed to update settings")
 
 
+def _verification_secret(candidate: Optional[str], stored: Optional[str]) -> str:
+    if candidate and candidate not in {"••••••", HIDDEN}:
+        return candidate
+    return stored or ""
+
+
+@router.post("/settings/datadog/verify")
+def verify_datadog_settings(
+    settings: DatadogVerificationRequest,
+    project: Project = Depends(get_current_project),
+):
+    """Verify the proposed Datadog configuration without saving it."""
+    try:
+        config = DatadogLogSourceConfig(
+            api_key=_verification_secret(
+                settings.datadog_api_key, project.datadog_api_key
+            ),
+            app_key=_verification_secret(
+                settings.datadog_app_key, project.datadog_app_key
+            ),
+            site=settings.datadog_site or "",
+            query=settings.datadog_query or "",
+            service_filter=settings.datadog_service or "",
+        )
+        end = datetime.now(timezone.utc)
+        with DatadogLogConnector(config, page_size=1) as connector:
+            connector.verify_access(end - timedelta(minutes=5), end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LogSourceAuthenticationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LogSourceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {
+        "valid": True,
+        "message": "Datadog credentials and logs-read access verified",
+    }
+
+
+@router.delete("/project")
+def remove_project(
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete the authenticated project and all of its data."""
+    project_id = project.id
+    try:
+        deleted = delete_project(db, project_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete project") from exc
+    return {"status": "deleted", "project_id": project_id, "deleted": deleted}
+
+
 @router.get("/settings/status")
 def settings_status(project: Project = Depends(get_current_project)):
-    datadog_configured = bool(
-        (
-            project.datadog_api_key
-            or os.getenv("DATADOG_API_KEY")
-            or os.getenv("DD_API_KEY")
-        )
-        and (project.datadog_app_key or os.getenv("DATADOG_APP_KEY"))
+    datadog_configured = all(
+        [
+            project.datadog_api_key,
+            project.datadog_app_key,
+            project.datadog_site,
+            project.datadog_query,
+            project.datadog_service,
+        ]
     )
     return {
         "datadog": {"configured": datadog_configured},
