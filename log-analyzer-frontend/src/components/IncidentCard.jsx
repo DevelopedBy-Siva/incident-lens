@@ -355,6 +355,7 @@ function AgentTrail({ incidentId, modelInfo, analysisSource }) {
 
 function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState(false);
 
   const displaySeverity =
@@ -378,7 +379,7 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
   };
 
   return (
-    <div className="soft-card overflow-hidden hover:-translate-y-0.5 hover:shadow-google transition-all">
+    <article className="overflow-hidden rounded-xl border border-google-border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-google">
       {/* Header */}
       <div className="px-5 pt-5 pb-4">
         <div className="flex justify-between items-start mb-4">
@@ -387,9 +388,6 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               className={`px-2.5 py-1 rounded-full text-xs font-semibold ${severityClass(displaySeverity)}`}
             >
               {displaySeverity.toUpperCase()}
-            </span>
-            <span className="px-2.5 py-1 bg-google-chip text-google-muted rounded text-xs">
-              {incident.source}
             </span>
             <span className="px-2.5 py-1 bg-google-blue/10 text-google-blue border border-google-blue/20 rounded-full text-xs font-semibold">
               {incident.count}×
@@ -406,11 +404,13 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
           </div>
         </div>
 
-        <div className="bg-google-bg/50 border border-google-border text-google-text p-3 rounded-lg mb-4 overflow-x-auto">
-          <code className="text-xs font-mono whitespace-pre-wrap break-all">
-            {incident.sample_lines?.[0] || "N/A"}
-          </code>
-        </div>
+        {detailsOpen && (
+          <div className="bg-google-bg/50 border border-google-border text-google-text p-3 rounded-lg mb-4 overflow-x-auto">
+            <code className="text-xs font-mono whitespace-pre-wrap break-all">
+              {incident.sample_lines?.[0] || "N/A"}
+            </code>
+          </div>
+        )}
 
         {analysis && (
           <div className="bg-white border border-google-border rounded-lg p-4 mb-4">
@@ -446,7 +446,7 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               </span>
             </div>
 
-            {analysis.next_steps?.length > 0 && (
+            {detailsOpen && analysis.next_steps?.length > 0 && (
               <div className="mb-3">
                 <p className="text-xs text-google-muted mb-1.5">Next steps</p>
                 <ol className="list-decimal list-inside space-y-1">
@@ -459,7 +459,7 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               </div>
             )}
 
-            {analysis.ticket_title && (
+            {detailsOpen && analysis.ticket_title && (
               <div className="bg-google-chip border border-google-border rounded p-3">
                 <p className="text-xs text-google-muted mb-1">Ticket draft</p>
                 <p className="text-sm text-google-text font-medium mb-1">
@@ -475,7 +475,16 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
           </div>
         )}
 
-        {incident.status === "open" ? (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((open) => !open)}
+          className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-google-border bg-white px-3 py-2 text-xs font-medium text-google-muted transition-colors hover:bg-google-hover hover:text-google-text"
+        >
+          {detailsOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {detailsOpen ? "Hide details" : "View details"}
+        </button>
+
+        {detailsOpen && (incident.status === "open" ? (
           <div className="flex gap-2">
             <button
               onClick={handleClose}
@@ -508,21 +517,23 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               Status: {incident.status.toUpperCase()}
             </span>
           </div>
-        )}
+        ))}
       </div>
 
-      <button
-        onClick={() => setTrailOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-2.5 bg-google-subtle border-t border-google-border hover:bg-google-hover transition-colors text-xs text-google-muted hover:text-google-text"
-      >
-        <span className="flex items-center gap-1.5">
-          <Shield size={11} />
-          Why did the agent do this?
-        </span>
-        {trailOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </button>
+      {detailsOpen && (
+        <button
+          onClick={() => setTrailOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-5 py-2.5 bg-google-subtle border-t border-google-border hover:bg-google-hover transition-colors text-xs text-google-muted hover:text-google-text"
+        >
+          <span className="flex items-center gap-1.5">
+            <Shield size={11} />
+            Why did the agent do this?
+          </span>
+          {trailOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      )}
 
-      {trailOpen && (
+      {detailsOpen && trailOpen && (
         <div className="px-5 pb-5 pt-3 border-t border-google-border bg-google-subtle">
           <AgentTrail
             incidentId={incident.id}
@@ -531,7 +542,7 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
           />
         </div>
       )}
-    </div>
+    </article>
   );
 }
 

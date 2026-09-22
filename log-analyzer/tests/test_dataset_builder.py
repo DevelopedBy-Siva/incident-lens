@@ -17,7 +17,7 @@ from app.api.routes_auth import get_current_project
 from app.control.dataset_management import DatasetBuildCommand, NoEligibleIncidentsError
 from app.control.models import Project
 from app.data.models import Incident
-from app.serving.models import Analysis, ActionLog, InvestigationRun
+from app.serving.models import ActionLog, Analysis, InvestigationRun
 from app.shared.database import Base
 from app.training.dataset_builder import (
     DATASET_EXAMPLE_SCHEMA_VERSION,
@@ -184,7 +184,7 @@ class DatasetBuilderTests(unittest.TestCase):
 
             self.assertEqual((Path(directory) / key).read_bytes(), b"first\n")
 
-    def test_command_creates_immutable_incrementing_ready_datasets(self):
+    def test_command_creates_immutable_incrementing_review_datasets(self):
         incident = self._incident()
         self._analysis(incident)
         self.db.commit()
@@ -198,7 +198,7 @@ class DatasetBuilderTests(unittest.TestCase):
 
             self.assertEqual(first.dataset_version, "dataset-v1")
             self.assertEqual(second.dataset_version, "dataset-v2")
-            self.assertEqual(first.status, DatasetStatus.READY)
+            self.assertEqual(first.status, DatasetStatus.VALIDATING)
             self.assertEqual(first.record_count, 1)
             self.assertNotEqual(first.storage_key, second.storage_key)
             self.assertTrue((Path(directory) / first.storage_key).is_file())
@@ -258,9 +258,89 @@ class DatasetBuilderTests(unittest.TestCase):
             self.assertEqual(response.status_code, 201)
             payload = response.json()
             self.assertEqual(payload["dataset_version"], "dataset-v1")
-            self.assertEqual(payload["status"], "READY")
+            self.assertEqual(payload["status"], "VALIDATING")
             self.assertEqual(payload["record_count"], 1)
             self.assertTrue((Path(directory) / payload["storage_key"]).is_file())
+
+    def test_dataset_records_selection_and_safe_deletion_api(self):
+        incident = self._incident()
+        self._analysis(incident)
+        self.db.commit()
+
+        api = FastAPI()
+        api.include_router(routes_model_management.router, prefix="/api")
+        api.dependency_overrides[get_current_project] = lambda: self.project
+
+        def override_db():
+            yield self.db
+
+        api.dependency_overrides[routes_model_management.get_db] = override_db
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(os.environ, {"DATASET_STORAGE_PATH": directory}):
+                client = TestClient(api)
+                first = client.post("/api/datasets/build").json()
+
+                view_response = client.get(f"/api/datasets/{first['id']}/records")
+                self.assertEqual(view_response.status_code, 200)
+                records = view_response.json()["records"]
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0]["index"], 0)
+                self.assertEqual(
+                    records[0]["data"]["input"]["incident"]["id"], incident.id
+                )
+
+                approval_response = client.post(
+                    f"/api/datasets/{first['id']}/approve",
+                    json={"selected_record_indices": [0]},
+                )
+                self.assertEqual(approval_response.status_code, 200)
+                self.assertEqual(approval_response.json()["status"], "READY")
+                self.assertEqual(
+                    approval_response.json()["selected_record_indices"], [0]
+                )
+
+                download_response = client.get(f"/api/datasets/{first['id']}/download")
+                self.assertEqual(download_response.status_code, 200)
+                self.assertEqual(download_response.json(), [records[0]["data"]])
+                self.assertIn(
+                    "dataset-v1.json",
+                    download_response.headers["content-disposition"],
+                )
+
+                job_response = client.post(
+                    "/api/training-jobs",
+                    json={
+                        "dataset_id": first["id"],
+                        "selected_record_indices": [0],
+                    },
+                )
+                self.assertEqual(job_response.status_code, 201)
+                self.assertEqual(job_response.json()["selected_record_indices"], [0])
+
+                referenced_delete = client.delete(f"/api/datasets/{first['id']}")
+                self.assertEqual(referenced_delete.status_code, 409)
+
+                second = client.post("/api/datasets/build").json()
+                storage_path = Path(directory) / second["storage_key"]
+                self.assertTrue(storage_path.is_file())
+                delete_response = client.delete(f"/api/datasets/{second['id']}")
+                self.assertEqual(delete_response.status_code, 204)
+                self.assertFalse(storage_path.exists())
+                self.assertIsNone(self.db.get(Dataset, second["id"]))
+
+                invalid_upload = client.post(
+                    "/api/datasets/upload", json={"records": [{"input": {}}]}
+                )
+                self.assertEqual(invalid_upload.status_code, 422)
+
+                upload_response = client.post(
+                    "/api/datasets/upload",
+                    json={"records": [records[0]["data"]]},
+                )
+                self.assertEqual(upload_response.status_code, 201)
+                self.assertEqual(upload_response.json()["status"], "VALIDATING")
+                self.assertEqual(upload_response.json()["record_count"], 1)
 
 
 if __name__ == "__main__":

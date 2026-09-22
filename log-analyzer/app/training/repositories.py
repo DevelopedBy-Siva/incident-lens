@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.data.models import Incident
-from app.serving.models import Analysis, ActionLog, InvestigationRun
+from app.serving.models import ActionLog, Analysis, InvestigationRun
 from app.training.models import (
     Dataset,
     DatasetStatus,
@@ -138,6 +138,10 @@ class DatasetRepository:
         dataset.status = status
         if record_count is not None:
             dataset.record_count = record_count
+        return dataset
+
+    def set_record_count(self, dataset: Dataset, record_count: int) -> Dataset:
+        dataset.record_count = record_count
         return dataset
 
 

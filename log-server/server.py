@@ -1319,7 +1319,7 @@ async def start_generation(
     error_rate: float = ERROR_RATE,
     slow_rate: float = SLOW_REQUEST_RATE,
     datadog_api_key: str = Header(alias="X-Datadog-API-Key"),
-    datadog_site: str = Header(alias="X-Datadog-Site"),
+    datadog_site: str = Header(default="datadoghq.com", alias="X-Datadog-Site"),
     datadog_service: str = Header(alias="X-Datadog-Service"),
 ):
     try:

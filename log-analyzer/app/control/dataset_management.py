@@ -73,7 +73,7 @@ class DatasetBuildCommand:
             self.model_management.mark_dataset_failed(project_id, dataset.id)
             raise
 
-        return self.model_management.mark_dataset_ready(
+        return self.model_management.mark_dataset_pending_review(
             project_id, dataset.id, record_count=len(examples)
         )
 
@@ -96,3 +96,23 @@ class DatasetBuildCommand:
                     raise
 
         raise RuntimeError("Unable to reserve a dataset version")
+
+
+class DatasetImportCommand(DatasetBuildCommand):
+    """Validate, store, and register an uploaded dataset for review."""
+
+    def execute(self, project_id: str, examples: list[dict]) -> Dataset:
+        if not ProjectRepository(self.db).get(project_id):
+            raise ValueError("Project not found")
+
+        self.serializer.validate(examples)
+        serialized = self.serializer.serialize(examples)
+        dataset = self._reserve_version(project_id)
+        try:
+            self.storage.save(dataset.storage_key, serialized)
+        except Exception:
+            self.model_management.mark_dataset_failed(project_id, dataset.id)
+            raise
+        return self.model_management.mark_dataset_pending_review(
+            project_id, dataset.id, record_count=len(examples)
+        )

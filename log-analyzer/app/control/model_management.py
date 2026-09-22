@@ -59,17 +59,31 @@ class ModelManagementService:
             return dataset
 
     def mark_dataset_ready(
-        self, project_id: str, dataset_id: str, record_count: int
+        self,
+        project_id: str,
+        dataset_id: str,
+        record_count: int,
+        selected_record_indices: list[int] | None = None,
     ) -> Dataset:
         if record_count < 0:
             raise ValueError("Dataset record count cannot be negative")
         dataset = self._require_dataset(project_id, dataset_id)
         self._require_validating_dataset(dataset)
+        dataset.selected_record_indices = selected_record_indices
         return self._commit(
             self.datasets.set_status(
                 dataset, DatasetStatus.READY, record_count=record_count
             )
         )
+
+    def mark_dataset_pending_review(
+        self, project_id: str, dataset_id: str, record_count: int
+    ) -> Dataset:
+        if record_count <= 0:
+            raise ValueError("Dataset must contain at least one record")
+        dataset = self._require_dataset(project_id, dataset_id)
+        self._require_validating_dataset(dataset)
+        return self._commit(self.datasets.set_record_count(dataset, record_count))
 
     def mark_dataset_failed(self, project_id: str, dataset_id: str) -> Dataset:
         dataset = self._require_dataset(project_id, dataset_id)
@@ -78,7 +92,12 @@ class ModelManagementService:
             self.datasets.set_status(dataset, DatasetStatus.FAILED, record_count=0)
         )
 
-    def create_training_job(self, project_id: str, dataset_id: str) -> TrainingJob:
+    def create_training_job(
+        self,
+        project_id: str,
+        dataset_id: str,
+        selected_record_indices: list[int] | None = None,
+    ) -> TrainingJob:
         with trace_operation(
             "training_job_creation",
             plane="control",
@@ -90,7 +109,11 @@ class ModelManagementService:
                 raise ValueError("Dataset does not belong to project")
             if dataset.status != DatasetStatus.READY:
                 raise ValueError("Training jobs require a READY dataset")
-            job = TrainingJob(project_id=project_id, dataset_id=dataset_id)
+            job = TrainingJob(
+                project_id=project_id,
+                dataset_id=dataset_id,
+                selected_record_indices=selected_record_indices,
+            )
             job = self._commit(self.training_jobs.add(job))
             span.tags({"training_job_id": job.id, "result": "created"})
             return job

@@ -3,14 +3,17 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import (
+    JSON,
     Column,
     DateTime,
-    Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
     Integer,
     String,
     UniqueConstraint,
+)
+from sqlalchemy import (
+    Enum as SQLAlchemyEnum,
 )
 
 from app.shared.database import Base
@@ -49,6 +52,7 @@ class Dataset(Base):
     dataset_version = Column(String, nullable=False)
     storage_key = Column(String, nullable=False)
     record_count = Column(Integer, nullable=False, default=0, server_default="0")
+    selected_record_indices = Column(JSON, nullable=True)
     status = Column(
         SQLAlchemyEnum(
             DatasetStatus,
@@ -115,6 +119,7 @@ class TrainingJob(Base):
     artifact_id = Column(
         String, ForeignKey("model_artifacts.id"), nullable=True, index=True
     )
+    selected_record_indices = Column(JSON, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

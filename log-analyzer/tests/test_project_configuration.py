@@ -151,6 +151,61 @@ class ProjectConfigurationApiTests(unittest.TestCase):
         self.assertEqual(self.db.query(ActionLog).count(), 1)
         self.assertEqual(self.db.query(InvestigationRun).count(), 1)
 
+    def test_incident_list_accepts_multiple_severities(self):
+        incidents = [
+            Incident(
+                project_id=self.project.id,
+                source="checkout",
+                signature=f"severity-{severity}",
+                sample_lines=[f"ERROR {severity}"],
+            )
+            for severity in ("low", "medium", "high", "critical")
+        ]
+        self.db.add_all(incidents)
+        self.db.flush()
+        self.db.add_all(
+            [
+                Analysis(
+                    incident_id=incident.id,
+                    severity=severity,
+                    summary=severity,
+                )
+                for incident, severity in zip(
+                    incidents, ("low", "medium", "high", "critical")
+                )
+            ]
+        )
+        self.db.add(
+            Incident(
+                project_id=self.project.id,
+                source="checkout",
+                signature="severity-fallback-low",
+                sample_lines=["ERROR fallback low"],
+                count=1,
+            )
+        )
+        self.db.commit()
+
+        response = self.client.get(
+            "/api/incidents", params={"severity": "medium,high,critical"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["analysis"]["severity"] for item in response.json()["items"]},
+            {"medium", "high", "critical"},
+        )
+        self.assertEqual(response.json()["total"], 3)
+
+        low_response = self.client.get(
+            "/api/incidents", params={"severity": "low", "page_size": 5}
+        )
+
+        self.assertEqual(low_response.status_code, 200)
+        self.assertEqual(low_response.json()["total"], 2)
+        self.assertEqual(low_response.json()["total_pages"], 1)
+        self.assertEqual(len(low_response.json()["items"]), 2)
+
     def test_delete_project_removes_only_authenticated_project(self):
         incident = Incident(
             project_id=self.project.id,

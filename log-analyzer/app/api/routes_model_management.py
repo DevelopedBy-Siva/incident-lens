@@ -1,20 +1,35 @@
+import json
 import os
 from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.api.routes_auth import get_current_project
-from app.control.dataset_management import DatasetBuildCommand, NoEligibleIncidentsError
+from app.control.dataset_management import (
+    DatasetBuildCommand,
+    DatasetImportCommand,
+    NoEligibleIncidentsError,
+)
 from app.control.model_management import ModelManagementService
 from app.control.models import Project
 from app.shared.database import get_db
 from app.shared.model_config import configured_runtime_settings
-from app.training.dataset_storage import DatasetAlreadyExistsError
+from app.training.dataset_serializer import (
+    DatasetValidationError,
+    JsonLinesDatasetSerializer,
+)
+from app.training.dataset_storage import (
+    DatasetAlreadyExistsError,
+    configured_dataset_storage,
+)
 from app.training.models import (
     DatasetStatus,
+    ModelArtifact,
     ModelArtifactStatus,
+    TrainingJob,
     TrainingJobStatus,
 )
 from app.training.repositories import (
@@ -39,6 +54,7 @@ class DatasetResponse(BaseModel):
     dataset_version: str
     storage_key: str
     record_count: int
+    selected_record_indices: list[int] | None
     status: DatasetStatus
     created_at: datetime
 
@@ -51,6 +67,7 @@ class TrainingJobResponse(BaseModel):
     dataset_id: str
     status: TrainingJobStatus
     artifact_id: str | None
+    selected_record_indices: list[int] | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -58,6 +75,25 @@ class TrainingJobResponse(BaseModel):
 
 class TrainingJobCreate(BaseModel):
     dataset_id: str
+    selected_record_indices: list[int] | None = None
+
+
+class DatasetRecordResponse(BaseModel):
+    index: int
+    data: dict[str, Any]
+
+
+class DatasetContentsResponse(BaseModel):
+    dataset: DatasetResponse
+    records: list[DatasetRecordResponse]
+
+
+class DatasetUploadRequest(BaseModel):
+    records: list[dict[str, Any]]
+
+
+class DatasetApprovalRequest(BaseModel):
+    selected_record_indices: list[int]
 
 
 class ModelArtifactResponse(BaseModel):
@@ -113,6 +149,20 @@ def build_dataset(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/datasets/upload", response_model=DatasetResponse, status_code=201)
+def upload_dataset(
+    request: DatasetUploadRequest,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    try:
+        return DatasetImportCommand(db).execute(project.id, request.records)
+    except DatasetValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatasetAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/datasets/{dataset_id}", response_model=DatasetResponse)
 def get_dataset(
     dataset_id: str,
@@ -123,6 +173,145 @@ def get_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return dataset
+
+
+@router.get("/datasets/{dataset_id}/records", response_model=DatasetContentsResponse)
+def get_dataset_records(
+    dataset_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetRepository(db).get_for_project(dataset_id, project.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.status not in {DatasetStatus.VALIDATING, DatasetStatus.READY}:
+        raise HTTPException(status_code=409, detail="Dataset is not available to view")
+
+    try:
+        records = JsonLinesDatasetSerializer().deserialize(
+            configured_dataset_storage().load(dataset.storage_key)
+        )
+    except (FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Dataset contents are not available"
+        ) from exc
+
+    return DatasetContentsResponse(
+        dataset=DatasetResponse.model_validate(dataset),
+        records=[
+            DatasetRecordResponse(index=index, data=record)
+            for index, record in enumerate(records)
+        ],
+    )
+
+
+@router.get("/datasets/{dataset_id}/download")
+def download_dataset(
+    dataset_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetRepository(db).get_for_project(dataset_id, project.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.status not in {DatasetStatus.VALIDATING, DatasetStatus.READY}:
+        raise HTTPException(status_code=409, detail="Dataset is not available")
+    try:
+        records = JsonLinesDatasetSerializer().deserialize(
+            configured_dataset_storage().load(dataset.storage_key)
+        )
+    except (FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Dataset contents are not available"
+        ) from exc
+
+    content = json.dumps(records, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{dataset.dataset_version}.json"'
+            )
+        },
+    )
+
+
+@router.post("/datasets/{dataset_id}/approve", response_model=DatasetResponse)
+def approve_dataset(
+    dataset_id: str,
+    request: DatasetApprovalRequest,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetRepository(db).get_for_project(dataset_id, project.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.status != DatasetStatus.VALIDATING:
+        raise HTTPException(status_code=409, detail="Dataset is not pending review")
+
+    selected_indices = request.selected_record_indices
+    if not selected_indices:
+        raise HTTPException(
+            status_code=422, detail="Select at least one dataset record"
+        )
+    if len(selected_indices) != len(set(selected_indices)):
+        raise HTTPException(
+            status_code=422, detail="Dataset record selection contains duplicates"
+        )
+    if min(selected_indices) < 0 or max(selected_indices) >= dataset.record_count:
+        raise HTTPException(
+            status_code=422, detail="Dataset record selection is out of range"
+        )
+
+    return ModelManagementService(db).mark_dataset_ready(
+        project.id,
+        dataset.id,
+        dataset.record_count,
+        sorted(selected_indices),
+    )
+
+
+@router.delete("/datasets/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dataset(
+    dataset_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    dataset = DatasetRepository(db).get_for_project(dataset_id, project.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    is_referenced = (
+        db.query(TrainingJob.id)
+        .filter(
+            TrainingJob.project_id == project.id,
+            TrainingJob.dataset_id == dataset.id,
+        )
+        .first()
+        is not None
+        or db.query(ModelArtifact.id)
+        .filter(
+            ModelArtifact.project_id == project.id,
+            ModelArtifact.dataset_id == dataset.id,
+        )
+        .first()
+        is not None
+    )
+    if is_referenced:
+        raise HTTPException(
+            status_code=409,
+            detail="This dataset is used by training history and cannot be deleted",
+        )
+
+    try:
+        configured_dataset_storage().delete(dataset.storage_key)
+        db.delete(dataset)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/training-jobs", response_model=list[TrainingJobResponse])
@@ -144,8 +333,24 @@ def create_training_job(
         raise HTTPException(status_code=404, detail="Dataset not found")
     if dataset.status != DatasetStatus.READY:
         raise HTTPException(status_code=409, detail="Dataset is not READY")
+
+    selected_indices = request.selected_record_indices
+    if selected_indices is not None:
+        if not selected_indices:
+            raise HTTPException(
+                status_code=422, detail="Select at least one dataset record"
+            )
+        if len(selected_indices) != len(set(selected_indices)):
+            raise HTTPException(
+                status_code=422, detail="Dataset record selection contains duplicates"
+            )
+        if min(selected_indices) < 0 or max(selected_indices) >= dataset.record_count:
+            raise HTTPException(
+                status_code=422, detail="Dataset record selection is out of range"
+            )
+        selected_indices = sorted(selected_indices)
     return ModelManagementService(db).create_training_job(
-        project.id, request.dataset_id
+        project.id, request.dataset_id, selected_indices
     )
 
 

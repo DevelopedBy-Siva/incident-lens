@@ -1,15 +1,60 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { incidentsAPI, logServerAPI, authAPI } from "../services/api";
+import { incidentsAPI, authAPI } from "../services/api";
 import Navbar from "./Navbar";
 import IncidentCard from "./IncidentCard";
 import { useModelLifecycle } from "../hooks/useModelLifecycle";
 import {
   AlertTriangle,
-  Play,
-  Square,
-  AlertCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+
+const SEVERITY_OPTIONS = ["critical", "high", "medium", "low"];
+
+function SeveritySelect({ value, onChange }) {
+  const toggle = (severity) => {
+    onChange(
+      value.includes(severity)
+        ? value.filter((item) => item !== severity)
+        : [...value, severity],
+    );
+  };
+
+  const selectionLabel =
+    value.length === 0 || value.length === SEVERITY_OPTIONS.length
+      ? "All severities"
+      : `${value.length} selected`;
+
+  return (
+    <details className="group relative">
+      <summary className="flex w-full cursor-pointer list-none items-center justify-between rounded-lg border border-google-border bg-white px-3 py-2 text-sm text-google-muted focus:ring-1 focus:ring-google-blue [&::-webkit-details-marker]:hidden">
+        <span>{selectionLabel}</span>
+        <ChevronDown
+          size={14}
+          className="transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="absolute z-50 mt-1 w-full rounded-lg border border-google-border bg-white p-2 shadow-google">
+        {SEVERITY_OPTIONS.map((severity) => (
+          <label
+            key={severity}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-google-text hover:bg-google-hover"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(severity)}
+              onChange={() => toggle(severity)}
+              className="h-4 w-4 rounded border-google-border text-google-blue focus:ring-google-blue"
+            />
+            <span className="capitalize">{severity}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -24,12 +69,16 @@ function Dashboard() {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [datadogConfigured, setDatadogConfigured] = useState(null);
-  const [logStatus, setLogStatus] = useState("idle");
-  const [logServerError, setLogServerError] = useState("");
   const [filters, setFilters] = useState({
     status: "open",
-    severity: "",
-    ticket_title: "",
+    severity: ["medium", "high", "critical"],
+    search: "",
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0,
   });
   const modelLifecycle = useModelLifecycle({ pollWhileActive: true });
 
@@ -44,10 +93,22 @@ function Dashboard() {
       .catch(() => {});
   }, []);
 
-  const fetchIncidents = useCallback(async (f) => {
+  const fetchIncidents = useCallback(async (f, page, pageSize) => {
     try {
-      const res = await incidentsAPI.list(f);
-      setIncidents(res.data);
+      const res = await incidentsAPI.list({
+        ...f,
+        severity: f.severity.length ? f.severity.join(",") : undefined,
+        page,
+        page_size: pageSize,
+      });
+      setIncidents(res.data.items);
+      setPagination((current) => ({
+        ...current,
+        page: res.data.page,
+        pageSize: res.data.page_size,
+        total: res.data.total,
+        totalPages: res.data.total_pages,
+      }));
     } catch (e) {
       console.error("fetch incidents:", e);
     } finally {
@@ -57,48 +118,52 @@ function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    fetchIncidents(debouncedFilters);
-  }, [debouncedFilters, fetchIncidents]);
+    fetchIncidents(
+      debouncedFilters,
+      pagination.page,
+      pagination.pageSize,
+    );
+  }, [
+    debouncedFilters,
+    pagination.page,
+    pagination.pageSize,
+    fetchIncidents,
+  ]);
 
   useEffect(() => {
-    const t = setInterval(() => fetchIncidents(debouncedFilters), 5000);
+    const t = setInterval(
+      () =>
+        fetchIncidents(
+          debouncedFilters,
+          pagination.page,
+          pagination.pageSize,
+        ),
+      5000,
+    );
     return () => clearInterval(t);
-  }, [debouncedFilters, fetchIncidents]);
+  }, [
+    debouncedFilters,
+    pagination.page,
+    pagination.pageSize,
+    fetchIncidents,
+  ]);
 
-  const handleStart = async () => {
-    setLogServerError("");
-    try {
-      await logServerAPI.start();
-      setLogStatus("running");
-    } catch (err) {
-      setLogServerError(
-        err.response?.data?.detail || "Failed to start log server.",
-      );
-      setLogStatus("idle");
-    }
-  };
-
-  const handleStop = async () => {
-    setLogServerError("");
-    try {
-      await logServerAPI.stop();
-      setLogStatus("idle");
-    } catch {
-      setLogServerError("Failed to stop log server.");
-    }
+  const updateFilters = (changes) => {
+    setFilters((current) => ({ ...current, ...changes }));
+    setPagination((current) => ({ ...current, page: 1 }));
   };
 
   const handleClose = async (id) => {
     await incidentsAPI.close(id);
-    fetchIncidents(debouncedFilters);
+    fetchIncidents(debouncedFilters, pagination.page, pagination.pageSize);
   };
   const handleIgnore = async (id) => {
     await incidentsAPI.ignore(id);
-    fetchIncidents(debouncedFilters);
+    fetchIncidents(debouncedFilters, pagination.page, pagination.pageSize);
   };
 
   const stats = {
-    total: incidents.length,
+    total: pagination.total,
     totalEvents: incidents.reduce((s, i) => s + i.count, 0),
     highFreq: incidents.filter((i) => i.count >= 5).length,
     analyzed: incidents.filter((i) => i.analysis).length,
@@ -169,8 +234,8 @@ function Dashboard() {
         </div>
 
         {/* Controls */}
-        <div className="soft-card p-5 mb-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="soft-card relative z-20 overflow-visible p-5 mb-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs text-google-muted mb-1.5">
                 Status
@@ -178,7 +243,7 @@ function Dashboard() {
               <select
                 value={filters.status}
                 onChange={(e) =>
-                  setFilters({ ...filters, status: e.target.value })
+                  updateFilters({ status: e.target.value })
                 }
                 className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted focus:ring-1 focus:ring-google-blue"
               >
@@ -200,101 +265,134 @@ function Dashboard() {
               <label className="block text-xs text-google-muted mb-1.5">
                 Severity
               </label>
-              <select
+              <SeveritySelect
                 value={filters.severity}
-                onChange={(e) =>
-                  setFilters({ ...filters, severity: e.target.value })
+                onChange={(severity) =>
+                  updateFilters({ severity })
                 }
-                className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted focus:ring-1 focus:ring-google-blue"
-              >
-                <option value="" className="bg-google-bg">
-                  All
-                </option>
-                <option value="critical" className="bg-google-bg">
-                  Critical
-                </option>
-                <option value="high" className="bg-google-bg">
-                  High
-                </option>
-                <option value="medium" className="bg-google-bg">
-                  Medium
-                </option>
-                <option value="low" className="bg-google-bg">
-                  Low
-                </option>
-              </select>
+              />
             </div>
             <div>
               <label className="block text-xs text-google-muted mb-1.5">
-                Search
+                Search incidents
               </label>
               <input
                 type="text"
-                value={filters.ticket_title}
+                value={filters.search}
                 onChange={(e) =>
-                  setFilters({ ...filters, ticket_title: e.target.value })
+                  updateFilters({ search: e.target.value })
                 }
-                placeholder="Search incident titles"
+                placeholder="Search incidents"
                 className="text-sm bg-white w-full px-3 py-2 border border-google-border rounded-lg text-google-muted placeholder:text-google-muted focus:ring-1 focus:ring-google-blue"
               />
             </div>
-            {datadogConfigured && (
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={handleStart}
-                  disabled={logStatus === "running"}
-                  className="flex-1 px-3 py-2 text-sm bg-google-blue text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-google-blue-dark disabled:bg-google-border disabled:cursor-not-allowed transition-colors"
-                >
-                  <Play size={13} /> Start
-                </button>
-                <button
-                  onClick={handleStop}
-                  disabled={logStatus !== "running"}
-                  className="flex-1 px-3 py-2 text-sm bg-google-red text-white rounded-lg flex items-center justify-center gap-1.5 hover:bg-red-700 disabled:bg-google-border disabled:cursor-not-allowed transition-colors"
-                >
-                  <Square size={13} /> Stop
-                </button>
-              </div>
-            )}
           </div>
-
-          {logServerError && (
-            <div className="flex items-start gap-3 p-3 bg-red-50 border border-google-red/30 rounded-lg">
-              <AlertCircle className="text-google-red shrink-0 mt-0.5" size={15} />
-              <p className="text-google-red text-xs">{logServerError}</p>
-            </div>
-          )}
         </div>
 
         {/* Incident list */}
-        {loading ? (
-          <div className="text-center py-12">
-            <span className="loader" />
-            <p className="text-google-muted text-sm mt-4">Loading incidents...</p>
+        <section className="relative z-0 rounded-2xl border border-google-border bg-google-subtle/90 p-4 sm:p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-google-muted">
+                {pagination.total} matching incidents
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <label className="flex items-center gap-2 text-xs text-google-muted">
+                Per page
+                <select
+                  value={pagination.pageSize}
+                  onChange={(event) =>
+                    setPagination((current) => ({
+                      ...current,
+                      page: 1,
+                      pageSize: Number(event.target.value),
+                    }))
+                  }
+                  className="rounded-lg border border-google-border bg-white px-2 py-1.5 text-xs text-google-text focus:ring-1 focus:ring-google-blue"
+                >
+                  {[5, 10, 20, 50].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <span className="min-w-20 text-center text-xs text-google-muted">
+                Page {pagination.totalPages ? pagination.page : 0} of{" "}
+                {pagination.totalPages}
+              </span>
+
+              <button
+                type="button"
+                aria-label="Previous page"
+                disabled={pagination.page <= 1}
+                onClick={() =>
+                  setPagination((current) => ({
+                    ...current,
+                    page: current.page - 1,
+                  }))
+                }
+                className="rounded-lg border border-google-border bg-white p-1.5 text-google-muted transition-colors hover:bg-google-hover hover:text-google-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="Next page"
+                disabled={
+                  pagination.totalPages === 0 ||
+                  pagination.page >= pagination.totalPages
+                }
+                onClick={() =>
+                  setPagination((current) => ({
+                    ...current,
+                    page: current.page + 1,
+                  }))
+                }
+                className="rounded-lg border border-google-border bg-white p-1.5 text-google-muted transition-colors hover:bg-google-hover hover:text-google-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
-        ) : incidents.length === 0 ? (
-          <div className="text-center py-16 rounded-lg border border-google-border">
-            <AlertTriangle className="text-google-muted mx-auto mb-3" size={32} />
-            <p className="text-google-muted text-sm">
-              {filters.status || filters.severity || filters.ticket_title
-                ? "No incidents match your filters"
-                : "No incidents yet — start log generation"}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {incidents.map((incident) => (
-              <IncidentCard
-                key={incident.id}
-                incident={incident}
-                analysis={incident.analysis}
-                modelInfo={modelLifecycle.runtime}
-                onClose={handleClose}
-                onIgnore={handleIgnore}
+
+          {loading ? (
+            <div className="rounded-xl border border-google-border bg-white py-12 text-center">
+              <span className="loader" />
+              <p className="mt-4 text-sm text-google-muted">
+                Loading incidents...
+              </p>
+            </div>
+          ) : incidents.length === 0 ? (
+            <div className="rounded-xl border border-google-border bg-white py-16 text-center">
+              <AlertTriangle
+                className="mx-auto mb-3 text-google-muted"
+                size={32}
               />
-            ))}
-          </div>
-        )}
+              <p className="text-sm text-google-muted">
+                {filters.status || filters.severity.length || filters.search
+                  ? "No incidents match your filters"
+                  : "No incidents yet"}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {incidents.map((incident) => (
+                <IncidentCard
+                  key={incident.id}
+                  incident={incident}
+                  analysis={incident.analysis}
+                  modelInfo={modelLifecycle.runtime}
+                  onClose={handleClose}
+                  onIgnore={handleIgnore}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
       </div>
       </div>

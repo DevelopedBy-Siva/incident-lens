@@ -24,6 +24,10 @@ class DatasetStorage(ABC):
     def load(self, storage_key: str) -> bytes:
         raise NotImplementedError
 
+    @abstractmethod
+    def delete(self, storage_key: str) -> None:
+        raise NotImplementedError
+
 
 class LocalDatasetStorage(DatasetStorage):
     def __init__(self, root: str | Path):
@@ -58,6 +62,11 @@ class LocalDatasetStorage(DatasetStorage):
 
     def load(self, storage_key: str) -> bytes:
         return self._resolve(storage_key).read_bytes()
+
+    def delete(self, storage_key: str) -> None:
+        target = self._resolve(storage_key)
+        if target.exists():
+            target.unlink()
 
     def _resolve(self, storage_key: str) -> Path:
         target = (self.root / PurePosixPath(storage_key)).resolve()

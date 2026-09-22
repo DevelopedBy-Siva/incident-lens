@@ -15,6 +15,7 @@ from app.training.artifact_metadata import (
     ArtifactMetadataWriter,
     configured_artifact_metadata_writer,
 )
+from app.training.dataset_serializer import JsonLinesDatasetSerializer
 from app.training.dataset_storage import DatasetStorage, configured_dataset_storage
 from app.training.evaluation import (
     BasicEvaluationService,
@@ -81,6 +82,7 @@ class TrainingWorker:
         self.evaluator = evaluator or BasicEvaluationService()
         self.artifact_writer = artifact_writer or configured_artifact_metadata_writer()
         self.training_profile = training_profile or configured_training_profile()
+        self.dataset_serializer = JsonLinesDatasetSerializer()
         self.projects = ProjectRepository(db)
         self.datasets = DatasetRepository(db)
         self.jobs = TrainingJobRepository(db)
@@ -128,6 +130,18 @@ class TrainingWorker:
             project = self._require_project(project_id)
             dataset = self._require_ready_dataset(project_id, job.dataset_id)
             dataset_content = self.dataset_storage.load(dataset.storage_key)
+            expected_record_count = dataset.record_count
+            selected_indices = (
+                job.selected_record_indices
+                if job.selected_record_indices is not None
+                else dataset.selected_record_indices
+            )
+            if selected_indices is not None:
+                records = self.dataset_serializer.deserialize(dataset_content)
+                selected = [records[index] for index in selected_indices]
+                dataset_content = self.dataset_serializer.serialize(selected)
+                expected_record_count = len(selected)
+                dataset._evaluation_record_count = expected_record_count
             base_model = configured_base_model()
             if project.base_model != base_model:
                 project.base_model = base_model
@@ -152,7 +166,7 @@ class TrainingWorker:
                         dataset_version=dataset.dataset_version,
                         base_model=base_model,
                         dataset_content=dataset_content,
-                        expected_record_count=dataset.record_count,
+                        expected_record_count=expected_record_count,
                         adapter_output_path=adapter_path,
                         profile=self.training_profile,
                     )

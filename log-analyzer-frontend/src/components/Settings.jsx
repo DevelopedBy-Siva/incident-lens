@@ -17,6 +17,7 @@ import {
 
 const HIDDEN_MARKER = "HIDDEN CREDENTIAL";
 const DEFAULT_LOG_QUERY = "status:(error OR warn OR critical)";
+const DEFAULT_DATADOG_SITE = "datadoghq.com";
 
 function SectionHeader({ title, description, configured, open, onToggle }) {
   return (
@@ -158,7 +159,7 @@ function Settings() {
   const [form, setForm] = useState({
     datadog_api_key: "",
     datadog_app_key: "",
-    datadog_site: "",
+    datadog_site: DEFAULT_DATADOG_SITE,
     datadog_query: DEFAULT_LOG_QUERY,
     datadog_service: "",
     user_email: "",
@@ -177,7 +178,7 @@ function Settings() {
         setForm({
           datadog_api_key: p.datadog_api_key || "",
           datadog_app_key: p.datadog_app_key || "",
-          datadog_site: p.datadog_site || "",
+          datadog_site: p.datadog_site || DEFAULT_DATADOG_SITE,
           datadog_query: p.datadog_query || DEFAULT_LOG_QUERY,
           datadog_service: p.datadog_service || "",
           user_email: p.user_email || "",

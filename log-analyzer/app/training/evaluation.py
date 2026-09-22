@@ -40,9 +40,12 @@ class BasicEvaluationService(EvaluationService):
         serialized_record_count = sum(
             1 for line in dataset_content.splitlines() if line.strip()
         )
+        expected_record_count = getattr(
+            dataset, "_evaluation_record_count", dataset.record_count
+        )
         dataset_available = bool(dataset_content)
-        dataset_non_empty = dataset.record_count > 0 and serialized_record_count > 0
-        record_count_matches = dataset.record_count == serialized_record_count
+        dataset_non_empty = expected_record_count > 0 and serialized_record_count > 0
+        record_count_matches = expected_record_count == serialized_record_count
         dataset_size_valid = dataset_non_empty and record_count_matches
         training_succeeded = training_result.succeeded
         training_completed = training_result.metrics.get("training_completed") is True
@@ -71,7 +74,7 @@ class BasicEvaluationService(EvaluationService):
             metrics={
                 "dataset_available": dataset_available,
                 "dataset_non_empty": dataset_non_empty,
-                "metadata_record_count": dataset.record_count,
+                "metadata_record_count": expected_record_count,
                 "serialized_record_count": serialized_record_count,
                 "record_count_matches": record_count_matches,
                 "dataset_size_valid": dataset_size_valid,

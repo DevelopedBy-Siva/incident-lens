@@ -84,6 +84,15 @@ class SuccessfulTestTrainingEngine(TrainingEngine):
         )
 
 
+class CapturingTrainingEngine(SuccessfulTestTrainingEngine):
+    def __init__(self):
+        self.request = None
+
+    def train(self, request: TrainingRequest) -> TrainingResult:
+        self.request = request
+        return super().train(request)
+
+
 class FailingArtifactWriter(LocalArtifactMetadataWriter):
     def write(self, project_id, artifact_version, metadata) -> None:
         raise OSError("artifact metadata unavailable")
@@ -115,6 +124,7 @@ class TrainingPipelineTests(unittest.TestCase):
         *,
         record_count: int = 1,
         content: bytes = b'{"input":{"incident":"x"},"expected_output":{"severity":"low"}}\n',
+        selected_record_indices: list[int] | None = None,
     ):
         key = storage.storage_key(self.project.id, "dataset-v1", "jsonl")
         storage.save(key, content)
@@ -122,7 +132,10 @@ class TrainingPipelineTests(unittest.TestCase):
             self.project.id, "dataset-v1", key
         )
         return self.management.mark_dataset_ready(
-            self.project.id, dataset.id, record_count
+            self.project.id,
+            dataset.id,
+            record_count,
+            selected_record_indices,
         )
 
     def test_evaluation_checks_losses_dataset_and_adapter_integrity(self):
@@ -219,6 +232,43 @@ class TrainingPipelineTests(unittest.TestCase):
 
                 self.db.refresh(dataset)
                 self.assertEqual(dataset.status, DatasetStatus.READY)
+
+    def test_worker_trains_only_selected_dataset_records(self):
+        records = [
+            {"input": {"incident": "first"}, "expected_output": {"severity": "low"}},
+            {"input": {"incident": "second"}, "expected_output": {"severity": "high"}},
+        ]
+        content = b"".join(
+            json.dumps(record, separators=(",", ":")).encode() + b"\n"
+            for record in records
+        )
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                dataset = self._ready_dataset(
+                    storage,
+                    record_count=2,
+                    content=content,
+                    selected_record_indices=[1],
+                )
+                job = self.management.create_training_job(self.project.id, dataset.id)
+                engine = CapturingTrainingEngine()
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=engine,
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                completed = worker.run(job.id, self.project.id)
+
+                self.assertEqual(completed.status, TrainingJobStatus.PASSED)
+                self.assertEqual(engine.request.expected_record_count, 1)
+                selected = [
+                    json.loads(line)
+                    for line in engine.request.dataset_content.splitlines()
+                ]
+                self.assertEqual(selected, [records[1]])
 
     def test_engine_failure_marks_job_failed_and_keeps_active_artifact(self):
         with tempfile.TemporaryDirectory() as dataset_directory:

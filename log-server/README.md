@@ -27,7 +27,8 @@ IncidentLens Log Source Connector
 ```
 
 The simulator has no environment configuration. The start request supplies its
-write-only Datadog API key, site, and service through request headers. The
+write-only Datadog API key and service through request headers. The optional
+site header defaults to `datadoghq.com`. The
 analyzer proxy fills these headers from the authenticated project's database
 configuration. Logs are always tagged as `env:prod`.
 
