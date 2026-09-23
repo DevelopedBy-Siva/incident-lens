@@ -110,7 +110,7 @@ class S3ArtifactMetadataWriter(LocalArtifactMetadataWriter):
     ):
         super().__init__(root)
         if not bucket:
-            raise ValueError("S3_BUCKET is required for production storage")
+            raise ValueError("S3_BUCKET is required for S3 artifact storage")
         if client is None:
             import boto3
 
@@ -184,10 +184,21 @@ class S3ArtifactMetadataWriter(LocalArtifactMetadataWriter):
 
 def configured_artifact_metadata_writer() -> ArtifactMetadataWriter:
     root = os.getenv("ARTIFACT_STORAGE_PATH", "artifacts")
-    if os.getenv("APP_ENV", "development").strip().lower() in {"prod", "production"}:
+    bucket = os.getenv("S3_BUCKET", "").strip()
+    if bucket:
         return S3ArtifactMetadataWriter(
             root=root,
-            bucket=os.getenv("S3_BUCKET", "").strip(),
+            bucket=bucket,
             prefix=os.getenv("S3_ARTIFACT_PREFIX", "artifacts"),
         )
     return LocalArtifactMetadataWriter(root)
+
+
+def configured_artifact_storage_location() -> str:
+    bucket = os.getenv("S3_BUCKET", "").strip()
+    if bucket:
+        prefix = os.getenv("S3_ARTIFACT_PREFIX", "artifacts").strip("/")
+        return f"s3://{bucket}/{prefix}" if prefix else f"s3://{bucket}"
+    return str(
+        Path(os.getenv("ARTIFACT_STORAGE_PATH", "artifacts")).expanduser().resolve()
+    )

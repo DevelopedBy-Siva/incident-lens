@@ -111,11 +111,8 @@ def delete_project(db, project_id: str) -> dict[str, int]:
     for artifact_version in artifact_versions:
         artifact_storage.remove(project_id, artifact_version)
 
-    # Also clear legacy local directories created before storage abstractions.
-    if os.getenv("APP_ENV", "development").strip().lower() not in {
-        "prod",
-        "production",
-    }:
+    # Also clear legacy local directories when filesystem storage is selected.
+    if not os.getenv("S3_BUCKET", "").strip():
         _remove_project_directory(
             Path(os.getenv("ARTIFACT_STORAGE_PATH", "artifacts")), project_id
         )

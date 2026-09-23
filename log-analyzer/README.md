@@ -46,7 +46,7 @@ and model artifacts are preserved.
 
 The Settings danger zone exposes this incident reset and permanent project
 deletion. Deleting a project also removes its datasets, training jobs, model
-artifacts, and local project storage.
+artifacts, and project-scoped objects from the configured storage backend.
 
 ## Local PostgreSQL
 

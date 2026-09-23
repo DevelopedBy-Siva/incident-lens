@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +15,7 @@ from app.control.model_management import ModelManagementService
 from app.control.models import Project
 from app.shared.database import get_db
 from app.shared.model_config import configured_runtime_settings
+from app.training.artifact_metadata import configured_artifact_storage_location
 from app.training.dataset_serializer import (
     DatasetValidationError,
     JsonLinesDatasetSerializer,
@@ -23,6 +23,7 @@ from app.training.dataset_serializer import (
 from app.training.dataset_storage import (
     DatasetAlreadyExistsError,
     configured_dataset_storage,
+    configured_dataset_storage_location,
 )
 from app.training.models import (
     DatasetStatus,
@@ -419,8 +420,8 @@ def get_model_runtime_status(
         active_artifact_id=artifact.id if artifact else None,
         active_artifact_version=artifact.artifact_version if artifact else None,
         adapter_path=artifact.adapter_path if artifact else None,
-        artifact_storage=os.getenv("ARTIFACT_STORAGE_PATH", "artifacts"),
-        dataset_storage=os.getenv("DATASET_STORAGE_PATH", "datasets"),
+        artifact_storage=configured_artifact_storage_location(),
+        dataset_storage=configured_dataset_storage_location(),
     )
 
 

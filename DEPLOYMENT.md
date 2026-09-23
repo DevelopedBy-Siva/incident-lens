@@ -69,9 +69,10 @@ EC2** manually from GitHub Actions. The workflow:
 The service is available at `http://EC2_HOST:8000`. Point the Vercel
 `REACT_APP_API_URL` at the public HTTPS backend URL once DNS/TLS is configured.
 
-`APP_ENV=prod` selects S3 automatically. Datasets are stored under `datasets/`,
-and trained adapters under `artifacts/`. Adapter and Hugging Face caches also
-use Docker volumes so ordinary deployments do not download them again.
+Setting `S3_BUCKET` selects S3 automatically. Datasets are stored under
+`datasets/`, and trained adapters under `artifacts/`. Local adapter and Hugging
+Face directories are working caches, so ordinary deployments do not need to
+download unchanged files again.
 
 ## Operations
 

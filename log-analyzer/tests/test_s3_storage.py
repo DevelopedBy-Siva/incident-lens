@@ -1,10 +1,22 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from app.training.artifact_metadata import S3ArtifactMetadataWriter
-from app.training.dataset_storage import S3DatasetStorage
+from app.training.artifact_metadata import (
+    LocalArtifactMetadataWriter,
+    S3ArtifactMetadataWriter,
+    configured_artifact_metadata_writer,
+    configured_artifact_storage_location,
+)
+from app.training.dataset_storage import (
+    LocalDatasetStorage,
+    S3DatasetStorage,
+    configured_dataset_storage,
+    configured_dataset_storage_location,
+)
 
 
 class _Body:
@@ -54,6 +66,45 @@ class FakeS3Client:
 
 
 class S3StorageTests(unittest.TestCase):
+    def test_bucket_configuration_selects_s3_for_datasets_and_artifacts(self):
+        client = FakeS3Client()
+        environment = {
+            "S3_BUCKET": "incident-lens-data",
+            "S3_DATASET_PREFIX": "project-datasets",
+            "S3_ARTIFACT_PREFIX": "project-adapters",
+        }
+        with patch.dict(os.environ, environment, clear=False):
+            with patch("boto3.client", return_value=client):
+                dataset_storage = configured_dataset_storage()
+                artifact_storage = configured_artifact_metadata_writer()
+            dataset_location = configured_dataset_storage_location()
+            artifact_location = configured_artifact_storage_location()
+
+        self.assertIsInstance(dataset_storage, S3DatasetStorage)
+        self.assertIsInstance(artifact_storage, S3ArtifactMetadataWriter)
+        self.assertEqual(
+            dataset_location,
+            "s3://incident-lens-data/project-datasets",
+        )
+        self.assertEqual(
+            artifact_location,
+            "s3://incident-lens-data/project-adapters",
+        )
+
+    def test_missing_bucket_uses_local_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            environment = {
+                "S3_BUCKET": "",
+                "DATASET_STORAGE_PATH": f"{directory}/datasets",
+                "ARTIFACT_STORAGE_PATH": f"{directory}/artifacts",
+            }
+            with patch.dict(os.environ, environment, clear=False):
+                dataset_storage = configured_dataset_storage()
+                artifact_storage = configured_artifact_metadata_writer()
+
+        self.assertIsInstance(dataset_storage, LocalDatasetStorage)
+        self.assertIsInstance(artifact_storage, LocalArtifactMetadataWriter)
+
     def test_dataset_round_trip(self):
         client = FakeS3Client()
         storage = S3DatasetStorage("bucket", "datasets", client)

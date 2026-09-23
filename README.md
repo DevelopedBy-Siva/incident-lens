@@ -29,225 +29,63 @@ IncidentLens combines:
 
 The model explains the incident. The policy engine controls the response.
 
-## Architecture
+## How it fits together
 
 ```text
-React dashboard
-      │
-      │ JWT-authenticated API calls
-      ▼
-FastAPI modular monolith
-      │
-      ├── Control Plane
-      │     Projects, settings, authentication, model lifecycle
-      │
-      ├── Data Plane
-      │     Datadog polling, parsing, normalization, clustering, evidence
-      │
-      ├── Serving Plane
-      │     Qwen3.5 4B, investigation tools, policy, actions, notifications
-      │
-      └── Training Plane
-            JSONL datasets, record review, LoRA training, artifacts
-      │
-      ├── PostgreSQL ── incidents, analyses, audit records, lifecycle state
-      └── Local storage ── versioned datasets and LoRA adapters
+Datadog Logs ──► IncidentLens API ──► PostgreSQL
+                       │
+                       ├──► Qwen3.5 4B + project LoRA adapter
+                       ├──► S3 datasets and adapters
+                       └──► Discord and email
+
+React dashboard ◄─────► IncidentLens API
 ```
 
-| Plane | Responsibility |
-| --- | --- |
-| **Control** | Project registration, authentication, settings, lifecycle operations, and maintenance |
-| **Data** | Datadog ingestion, log parsing, signature normalization, clustering, and evidence construction |
-| **Serving** | Local inference, tool-assisted investigation, root-cause reasoning, policy checks, actions, and notifications |
-| **Training** | Dataset import/build, record approval, LoRA fine-tuning, artifact validation, and activation |
+FastAPI owns project setup, ingestion, investigation, policy enforcement, training, and audit history. PostgreSQL stores application state. S3 is the durable store for versioned JSONL datasets and complete LoRA adapter directories.
 
 ## User setup flow
 
-IncidentLens is project-scoped. Credentials, incidents, datasets, adapters, and notifications belong to the authenticated project.
+Each project has its own credentials, incidents, datasets, adapter, and notification settings.
 
 ```text
-Open IncidentLens
-      │
-      ▼
 Register project
-  • project name
-  • password
-      │
       ▼
-Configure Datadog in Settings
-  • API key
-  • application key with logs_read_data
-  • Datadog site
-  • log query
-  • service filter
-      │
+Configure and verify Datadog
       ▼
-Verify connection
-  read-only credential and log-search check
-      │
+Upload dataset → review records → train adapter
       ▼
-Save project settings
-      │
-      ├──► Optional: add Discord webhooks and an email recipient
-      │
+Adapter becomes active
       ▼
-Open Training
-      │
-      ├──► Upload data/dataset_v1.jsonl to bootstrap the project
-      │          or
-      └──► Build a dataset later from analyzed incident history
-                    │
-                    ▼
-            Review records and select examples
-                    │
-                    ▼
-               Approve dataset
-                    │
-                    ▼
-             Run LoRA training job
-                    │
-                    ▼
-          Validate and register adapter
-                    │
-                    ▼
-       READY adapter is activated for the project
-                    │
-                    ▼
-Dashboard is ready for model-backed incident monitoring
+Monitor incidents in the dashboard
 ```
 
-The Datadog verification action does not save the submitted values. Saving settings is a separate step. The UI considers setup complete when the project has both a valid Datadog configuration and an active model artifact.
+Datadog setup requires an API key, an application key with `logs_read_data`, a site, a query, and a service filter. Verification performs a read-only check; the user must still save the settings. Discord webhooks and an email recipient are optional.
+
+To bootstrap model training, upload [`data/dataset_v1.jsonl`](data/dataset_v1.jsonl), review the records, approve the selection, and run training. The resulting READY adapter is activated automatically. Setup is complete when both Datadog and an active adapter are configured.
 
 ## IncidentLens application flow
 
-### 1. Ingestion and incident formation
-
 ```text
-Configured project
-      │
-      ▼ every polling interval
-Query one contiguous Datadog time window
-      │
-      ├── paginate until every matching log is fetched
-      └── advance the in-memory cursor only after success
-      │
+Datadog logs
       ▼
-Normalize each result into a provider-neutral envelope
-      │
+Normalize and cluster repeated errors
       ▼
-Group by source and environment
-      │
+Build incident evidence
       ▼
-Parse level, timestamp, message, and exception type
-      │
-      ├── INFO / DEBUG ──► ignore
-      └── WARN / ERROR / CRITICAL
-                        │
-                        ▼
-              Normalize volatile values
-        UUIDs, IDs, hosts, durations, memory sizes
-                        │
-                        ▼
-           Hash source + level + normalized message
-                        │
-                        ▼
-               Look for an open matching incident
-                    within the 2-minute cluster window
-                        │
-              ┌─────────┴─────────┐
-              ▼                   ▼
-        Match found            No match
-        increment count        create incident
-        retain up to           analyze immediately
-        10 samples
-              │
-              └── re-analyze when count reaches 5, 10, or 20
+Qwen3.5 4B + project adapter investigates
+      ▼
+Validate severity, disposition, root cause, and next steps
+      ▼
+Policy allows safe actions and blocks unsafe actions
+      ▼
+Save the audit trail and send configured notifications
 ```
 
-This reduces repeated log lines to one evolving incident while preserving representative evidence.
+The polling worker queries contiguous Datadog windows and processes warning, error, and critical events. Volatile values are removed before signatures are generated, so repeated messages join the same open incident within a two-minute window. New incidents are investigated immediately; growing incidents are reconsidered at counts `5`, `10`, and `20`.
 
-### 2. Evidence and model investigation
+The evidence bundle contains representative logs, recent related incidents, and any known causal link. The model can request recent logs, related incidents, or an incident timeline before returning structured analysis.
 
-```text
-New or threshold-triggered investigation
-      │
-      ▼
-Build bounded evidence
-  • up to 8 stored log samples
-  • up to 5 related open incidents from the last 15 minutes
-  • previously known root-cause link, when available
-      │
-      ▼
-Resolve project model
-  shared Qwen3.5 4B base + active project LoRA adapter
-      │
-      ▼
-Tool-assisted investigation loop (up to 4 rounds)
-      │
-      ├── get_recent_logs
-      ├── get_related_incidents
-      └── get_incident_timeline
-      │
-      ▼
-Parse and validate structured result
-  • severity
-  • disposition
-  • confidence
-  • summary and suspected root cause
-  • next steps
-  • ticket title and body
-      │
-      ├── invalid tool-loop output ──► single-shot model fallback
-      └── valid output ──────────────► persist analysis
-      │
-      ▼
-Compare a new incident with earlier incidents
-and store a causal link when the relationship is plausible
-```
-
-Critical patterns and severity/disposition consistency are checked after generation. Model or adapter failures do not fall through to a remote provider or an unadapted base model.
-
-### 3. Policy, actions, and audit trail
-
-The model does not directly choose an executable operation. The policy layer maps the validated disposition to default actions, applies safety constraints, and records both allowed and blocked results.
-
-```text
-Validated analysis
-      │
-      ▼
-Derive requested actions from disposition
-      │
-      ▼
-Policy checks
-  • incident is still open
-  • model confidence is at least 0.55
-  • no action was taken during the 20-minute cooldown
-  • low-count non-critical escalations are downgraded
-  • disposition meets the minimum floor for its severity
-      │
-      ▼
-Evaluate every action
-      │
-      ├── safe ─────────► allow
-      ├── conditional ──► check severity, confidence, and disposition
-      └── dangerous or unknown ──► block
-      │
-      ▼
-Execute only allowed actions
-      │
-      ├── enrich the incident
-      ├── suppress qualifying low-severity noise
-      └── route Discord or email notifications
-      │
-      ▼
-Persist InvestigationRun + ActionLog
-  evidence, tool calls, result, policy reason,
-  allowed actions, blocked actions, and actions taken
-```
-
-Safe actions include enrichment, incident summaries, evidence attachment, notifications, and verification checks. Infrastructure changes, restarts, database changes, secret rotation, deletion, and scaling are blocked. Unknown action names are also blocked.
-
-Automatic suppression is allowed only for low-severity `NO_ACTION` decisions with confidence of at least `0.80`.
+The model cannot execute operations directly. Policy checks confidence, severity, incident state, cooldowns, and action type. Enrichment, qualifying suppression, and configured notifications can run; infrastructure changes, restarts, database changes, secret rotation, deletion, scaling, and unknown actions are blocked. Evidence, tool calls, analysis, policy reasons, and action outcomes are saved for inspection.
 
 <table>
   <tr>
@@ -309,33 +147,17 @@ On upload, the backend validates every record and normalizes the dataset's `outp
 
 ## Model lifecycle
 
-```text
-Uploaded seed data or analyzed incident history
-      │
-      ▼
-Immutable versioned JSONL dataset
-      │
-      ▼
-Record review and selection
-      │
-      ▼
-QUEUED ──► RUNNING ──► EVALUATING ──► PASSED
-                 │             │
-                 └─────────────┴────► FAILED
-      │
-      ▼
-Versioned LoRA adapter + tokenizer metadata + file manifest
-      │
-      ▼
-READY artifact
-      │
-      ▼ automatic activation after a successful run
-Active project adapter
-```
+1. A user uploads seed data or builds a dataset from analyzed incidents.
+2. The user reviews the records and approves the examples to use.
+3. Training creates a project-specific LoRA adapter for Qwen3.5 4B.
+4. Integrity checks verify the adapter files and metadata.
+5. A successful adapter is uploaded to S3, registered as READY, and activated.
 
 Training applies the Qwen chat template and masks prompt tokens so loss is computed on the expected incident response. The default LoRA profile covers Qwen3.5's full-attention, linear-attention, and MLP projections with rank `8`, alpha `16`, dropout `0.05`, and a maximum sequence length of `1024`.
 
-Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged. The shared base model is loaded once, adapters are loaded lazily, and adapter selection and generation share a lock to prevent cross-project model use.
+Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged.
+
+Training needs a local working directory, and inference needs local model files. Those directories are caches, not the durable store: completed adapter files are uploaded to S3 and downloaded again when a cache is empty. Datasets are written directly to S3. If `S3_BUCKET` is not configured, the filesystem implementations remain available for local development and tests.
 
 ## Tech stack
 
@@ -359,6 +181,7 @@ Datasets and adapters are versioned rather than overwritten. A successful run ac
 - Node.js 18+
 - Docker with Docker Compose
 - Datadog API and application keys; the application key needs `logs_read_data`
+- A Hugging Face token with access to `Qwen/Qwen3.5-4B`
 - Network access to download the configured base model
 
 CPU execution is supported, but loading and training a 4B model is resource-intensive. A compatible accelerator is recommended.
@@ -405,7 +228,7 @@ npm ci
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000), register a project, configure Datadog under **Settings**, then upload and activate a model from **Training**. The backend API is available at [http://localhost:8000/docs](http://localhost:8000/docs).
+Open [http://localhost:3000](http://localhost:3000), register a project, configure Datadog under **Settings**, then upload a dataset and train an adapter under **Training**. The backend API is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
 ### 5. Stream sample logs (optional)
 
@@ -430,15 +253,22 @@ The complete template is in [`.env.example`](.env.example). The primary settings
 | `SECRET_KEY` | JWT signing key |
 | `CORS_ORIGINS` | Allowed dashboard origins |
 | `BASE_MODEL` | Shared model identifier; defaults to `Qwen/Qwen3.5-4B` |
+| `HF_TOKEN` | Hugging Face token used to download the base model |
 | `DEVICE` | PyTorch runtime device |
 | `DTYPE` | Model weight data type |
-| `DATASET_STORAGE_PATH` | Dataset storage root |
-| `ARTIFACT_STORAGE_PATH` | LoRA adapter storage root |
+| `AWS_REGION` | Region containing the S3 bucket |
+| `S3_BUCKET` | Private bucket for datasets and adapters; setting it enables S3 storage |
+| `S3_DATASET_PREFIX` | Dataset object prefix; defaults to `datasets` |
+| `S3_ARTIFACT_PREFIX` | Adapter object prefix; defaults to `artifacts` |
+| `DATASET_STORAGE_PATH` | Filesystem fallback used only when `S3_BUCKET` is empty |
+| `ARTIFACT_STORAGE_PATH` | Local training/inference cache and filesystem fallback |
 | `POLL_INTERVAL` | Datadog polling interval in seconds |
 | `DATADOG_LOOKBACK_SECONDS` | Initial log-search window in seconds |
 | `LOG_SERVER_URL` | Optional local simulator URL |
 
 Datadog application-observability variables (`DD_*`) are separate from the per-project credentials used to search logs.
+
+With S3 enabled, datasets use keys such as `datasets/projects/<project-id>/dataset-v1.jsonl`. Adapter directories are uploaded under `artifacts/<project-id>/adapter-vN/`, including weights, adapter configuration, tokenizer files, metadata, and the integrity manifest.
 
 ## Testing
 
