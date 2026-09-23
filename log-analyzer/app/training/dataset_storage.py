@@ -2,6 +2,8 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path, PurePosixPath
 
+from botocore.exceptions import ClientError
+
 
 class DatasetAlreadyExistsError(FileExistsError):
     pass
@@ -75,5 +77,72 @@ class LocalDatasetStorage(DatasetStorage):
         return target
 
 
+class S3DatasetStorage(DatasetStorage):
+    """Immutable dataset storage backed by a private S3 bucket."""
+
+    def __init__(self, bucket: str, prefix: str = "datasets", client=None):
+        if not bucket:
+            raise ValueError("S3_BUCKET is required for production storage")
+        if client is None:
+            import boto3
+
+            client = boto3.client(
+                "s3", region_name=os.getenv("AWS_REGION", "").strip() or None
+            )
+        self.client = client
+        self.bucket = bucket
+        self.prefix = prefix.strip("/")
+
+    def storage_key(
+        self, project_id: str, dataset_version: str, file_extension: str
+    ) -> str:
+        relative = str(
+            PurePosixPath("projects")
+            / project_id
+            / f"{dataset_version}.{file_extension}"
+        )
+        return str(PurePosixPath(self.prefix) / relative) if self.prefix else relative
+
+    def save(self, storage_key: str, content: bytes) -> None:
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=storage_key,
+                Body=content,
+                ContentType="application/x-ndjson",
+                IfNoneMatch="*",
+            )
+        except ClientError as exc:
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = exc.response.get("Error", {}).get("Code")
+            if status == 412 or code in {
+                "PreconditionFailed",
+                "ConditionalRequestConflict",
+            }:
+                raise DatasetAlreadyExistsError(
+                    f"Dataset already exists at {storage_key}"
+                ) from exc
+            raise
+
+    def load(self, storage_key: str) -> bytes:
+        response = self.client.get_object(Bucket=self.bucket, Key=storage_key)
+        return response["Body"].read()
+
+    def delete(self, storage_key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=storage_key)
+
+
+def _is_production() -> bool:
+    return os.getenv("APP_ENV", "development").strip().lower() in {
+        "prod",
+        "production",
+    }
+
+
 def configured_dataset_storage() -> DatasetStorage:
+    if _is_production():
+        return S3DatasetStorage(
+            bucket=os.getenv("S3_BUCKET", "").strip(),
+            prefix=os.getenv("S3_DATASET_PREFIX", "datasets"),
+        )
     return LocalDatasetStorage(os.getenv("DATASET_STORAGE_PATH", "datasets"))

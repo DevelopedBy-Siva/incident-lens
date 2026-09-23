@@ -10,7 +10,12 @@ load_dotenv()
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://log_user:password@localhost:5432/log_analyzer"
 )
-engine = create_engine(DATABASE_URL)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL.removeprefix("postgres://")
+
+# Neon may suspend idle compute and close old connections. These settings make
+# SQLAlchemy validate pooled connections and periodically replace them.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 

@@ -17,6 +17,7 @@ from app.shared.model_config import (
     configured_runtime_settings,
 )
 from app.shared.observability import trace_operation
+from app.training.artifact_metadata import configured_artifact_metadata_writer
 from app.training.models import ModelArtifact, ModelArtifactStatus
 from app.training.repositories import ModelArtifactRepository
 
@@ -77,14 +78,27 @@ class ArtifactResolver:
                 (warning,),
             )
 
-        metadata, metadata_warning = self._load_metadata(artifact)
+        adapter_path = artifact.adapter_path
+        if adapter_path:
+            try:
+                adapter_path = configured_artifact_metadata_writer().ensure_local(
+                    artifact.project_id,
+                    artifact.artifact_version,
+                    adapter_path,
+                )
+            except Exception as exc:  # noqa: BLE001 - expose storage failure as warning
+                return ArtifactResolution(
+                    None, (f"Artifact could not be restored from storage: {exc}",)
+                )
+
+        metadata, metadata_warning = self._load_metadata(artifact, adapter_path)
         warnings = (metadata_warning,) if metadata_warning else ()
         return ArtifactResolution(
             ResolvedArtifact(
                 id=artifact.id,
                 version=artifact.artifact_version,
                 base_model=artifact.base_model,
-                adapter_path=artifact.adapter_path,
+                adapter_path=adapter_path,
                 dataset_id=artifact.dataset_id,
                 evaluation_score=artifact.evaluation_score,
                 metadata=metadata,
@@ -95,11 +109,13 @@ class ArtifactResolver:
     @staticmethod
     def _load_metadata(
         artifact: ModelArtifact,
+        adapter_path: str | None = None,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        if not artifact.adapter_path:
+        adapter_path = adapter_path or artifact.adapter_path
+        if not adapter_path:
             return None, "Active artifact has no adapter path"
 
-        metadata_path = Path(artifact.adapter_path) / "metadata.json"
+        metadata_path = Path(adapter_path) / "metadata.json"
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except FileNotFoundError:

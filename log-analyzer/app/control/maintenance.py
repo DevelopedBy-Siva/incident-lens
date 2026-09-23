@@ -9,6 +9,8 @@ from app.control.models import Project
 from app.data.models import Incident
 from app.serving.models import ActionLog, Analysis, InvestigationRun
 from app.shared.database import SessionLocal
+from app.training.artifact_metadata import configured_artifact_metadata_writer
+from app.training.dataset_storage import configured_dataset_storage
 from app.training.models import Dataset, ModelArtifact, TrainingJob
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,19 @@ def delete_project(db, project_id: str) -> dict[str, int]:
     if project is None:
         raise LookupError("Project not found")
 
+    dataset_keys = [
+        row[0]
+        for row in db.query(Dataset.storage_key)
+        .filter(Dataset.project_id == project_id)
+        .all()
+    ]
+    artifact_versions = [
+        row[0]
+        for row in db.query(ModelArtifact.artifact_version)
+        .filter(ModelArtifact.project_id == project_id)
+        .all()
+    ]
+
     incident_ids = db.query(Incident.id).filter(Incident.project_id == project_id)
     counts = {
         "action_logs": db.query(ActionLog)
@@ -89,13 +104,25 @@ def delete_project(db, project_id: str) -> dict[str, int]:
     db.delete(project)
     db.commit()
 
-    _remove_project_directory(
-        Path(os.getenv("ARTIFACT_STORAGE_PATH", "artifacts")), project_id
-    )
-    _remove_project_directory(
-        Path(os.getenv("DATASET_STORAGE_PATH", "datasets")) / "projects",
-        project_id,
-    )
+    dataset_storage = configured_dataset_storage()
+    for storage_key in dataset_keys:
+        dataset_storage.delete(storage_key)
+    artifact_storage = configured_artifact_metadata_writer()
+    for artifact_version in artifact_versions:
+        artifact_storage.remove(project_id, artifact_version)
+
+    # Also clear legacy local directories created before storage abstractions.
+    if os.getenv("APP_ENV", "development").strip().lower() not in {
+        "prod",
+        "production",
+    }:
+        _remove_project_directory(
+            Path(os.getenv("ARTIFACT_STORAGE_PATH", "artifacts")), project_id
+        )
+        _remove_project_directory(
+            Path(os.getenv("DATASET_STORAGE_PATH", "datasets")) / "projects",
+            project_id,
+        )
     return counts
 
 

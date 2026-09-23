@@ -1,537 +1,487 @@
 # IncidentLens
 
-A policy-bound AIOps agent that turns noisy application logs into auditable incidents.
+**Turn noisy application logs into explainable incidents, policy-approved actions, and project-specific model improvements.**
 
-IncidentLens queries application logs from Datadog, clusters them into incidents,
-routes known failures through YAML runbooks, uses LLM-assisted investigation for
-ambiguous incidents, and gates every requested action through a backend policy
-engine.
+IncidentLens is a policy-bound AIOps platform for incident triage. It reads application logs from Datadog, groups repeated failures into incidents, investigates them with [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B), and applies deterministic safety rules before any action is executed. Reviewed incident data can be versioned and used to train a project-specific LoRA adapter.
 
----
+![IncidentLens dashboard](imgs/dashboard.png)
 
-## What It Does
+![IncidentLens incident investigation](imgs/incident.png)
 
-- Normalizes noisy log lines into stable signatures
-- Clusters repeated logs into incidents using time windows
-- Builds bounded evidence bundles for each incident
-- Matches known failures against deterministic runbooks
-- Uses an LLM for ambiguous incidents, cascade reasoning, and weak runbook tie-breaking
-- Allows low-risk actions such as enrichment, notifications, verification, and high-confidence suppression
-- Blocks high-impact actions such as restarts, deployments, infrastructure changes, database mutations, secret rotation, deletion, and cluster scaling
-- Stores incident state, policy decisions, and action outcomes in PostgreSQL
-- Sends Discord/email notifications
-- Sends application logs, APM traces, LLM invocation telemetry, and metrics to Datadog
+## The problem
 
----
+Application log streams are repetitive, high-volume, and full of values that change from one event to the next. Raw alerts reveal that something failed, but they rarely explain whether several errors belong to the same incident, whether one failure caused another, or what response is safe.
+
+An unconstrained model is not an execution boundary. It can produce a useful diagnosis while still understating severity, overreacting to a single event, or suggesting an unsafe remediation. IncidentLens keeps model reasoning and action authority separate.
+
+## The solution
+
+IncidentLens combines:
+
+- Datadog log ingestion with cursor-based polling and pagination
+- Message normalization and signature-based incident clustering
+- Evidence-grounded, tool-assisted investigation with Qwen3.5 4B
+- Structured severity, disposition, root-cause, summary, and ticket output
+- A deterministic policy engine that derives, allows, or blocks actions
+- A complete investigation and action audit trail in PostgreSQL
+- Human-reviewed JSONL datasets and project-specific LoRA adapters
+- Discord and email notification routing
+
+The model explains the incident. The policy engine controls the response.
 
 ## Architecture
 
 ```text
-Log Server / App Logs
-        |
-        v
-Datadog Logs
-        |
-        v
-Log Source Connector
-        |
-        v
-Parser + Signature Normalization
-        |
-        v
-Incident Clustering
-        |
-        v
-Evidence Bundle
-        |
-        v
-Runbook Match
-   |             |
-   | strong      | weak / ambiguous
-   v             v
-Runbook Path   LLM Investigation
-   |             |
-   +------> Policy Engine
-                  |
-                  v
-        Allowed + Blocked Actions
-                  |
-                  v
-        ActionLog + Notifications
+React dashboard
+      │
+      │ JWT-authenticated API calls
+      ▼
+FastAPI modular monolith
+      │
+      ├── Control Plane
+      │     Projects, settings, authentication, model lifecycle
+      │
+      ├── Data Plane
+      │     Datadog polling, parsing, normalization, clustering, evidence
+      │
+      ├── Serving Plane
+      │     Qwen3.5 4B, investigation tools, policy, actions, notifications
+      │
+      └── Training Plane
+            JSONL datasets, record review, LoRA training, artifacts
+      │
+      ├── PostgreSQL ── incidents, analyses, audit records, lifecycle state
+      └── Local storage ── versioned datasets and LoRA adapters
 ```
 
-Deployment:
+| Plane | Responsibility |
+| --- | --- |
+| **Control** | Project registration, authentication, settings, lifecycle operations, and maintenance |
+| **Data** | Datadog ingestion, log parsing, signature normalization, clustering, and evidence construction |
+| **Serving** | Local inference, tool-assisted investigation, root-cause reasoning, policy checks, actions, and notifications |
+| **Training** | Dataset import/build, record approval, LoRA fine-tuning, artifact validation, and activation |
+
+## User setup flow
+
+IncidentLens is project-scoped. Credentials, incidents, datasets, adapters, and notifications belong to the authenticated project.
 
 ```text
-React Dashboard        -> Vercel
-FastAPI Backend        -> Render
-Log Simulator          -> Render
-Incident State         -> PostgreSQL 16 (Docker)
-Raw Logs               -> Datadog Logs
-Model Inference        -> Local Qwen + project LoRA adapter
-Observability          -> Datadog Logs + APM + LLM Observability + Metrics
-Notifications          -> Discord / SMTP
+Open IncidentLens
+      │
+      ▼
+Register project
+  • project name
+  • password
+      │
+      ▼
+Configure Datadog in Settings
+  • API key
+  • application key with logs_read_data
+  • Datadog site
+  • log query
+  • service filter
+      │
+      ▼
+Verify connection
+  read-only credential and log-search check
+      │
+      ▼
+Save project settings
+      │
+      ├──► Optional: add Discord webhooks and an email recipient
+      │
+      ▼
+Open Training
+      │
+      ├──► Upload data/dataset_v1.jsonl to bootstrap the project
+      │          or
+      └──► Build a dataset later from analyzed incident history
+                    │
+                    ▼
+            Review records and select examples
+                    │
+                    ▼
+               Approve dataset
+                    │
+                    ▼
+             Run LoRA training job
+                    │
+                    ▼
+          Validate and register adapter
+                    │
+                    ▼
+       READY adapter is activated for the project
+                    │
+                    ▼
+Dashboard is ready for model-backed incident monitoring
 ```
 
----
+The Datadog verification action does not save the submitted values. Saving settings is a separate step. The UI considers setup complete when the project has both a valid Datadog configuration and an active model artifact.
 
-## Policy-Gated Automation
+## IncidentLens application flow
 
-IncidentLens separates reasoning from execution.
-
-Runbooks and LLM analysis may propose actions, but every action is checked by the policy engine before it can run.
-
-Allowed actions include:
-
-- `auto_enrich`
-- `create_incident_summary`
-- `attach_evidence_bundle`
-- `notify_oncall`
-- `send_discord_notification`
-- `send_email_notification`
-- `run_verification_check`
-- `auto_suppress`, only for low-severity, high-confidence `NO_ACTION` cases
-
-Blocked actions include:
-
-- `restart_service`
-- `deploy_code`
-- `rollback_release`
-- `change_infrastructure`
-- `modify_database_config`
-- `rotate_secrets`
-- `delete_data`
-- `scale_cluster`
-
-The LLM cannot directly execute remediation.
-
----
-
-## Versioned Training Datasets
-
-IncidentLens can export confirmed incident history as immutable, project-scoped
-JSON Lines datasets. An incident is initially eligible when it has a complete
-persisted analysis, is structurally valid, and has either stored log samples or
-a persisted investigation evidence snapshot.
-
-Each example contains:
-
-- Incident metadata and stored log samples
-- The latest persisted analysis
-- The latest investigation and evidence snapshot, when available
-- The latest policy/action outcome, when available
-- Expected severity, disposition, root cause, summary, and recorded recommended
-  actions
-
-The builder never asks an LLM for labels. Missing optional facts remain `null`,
-and malformed or incomplete incidents are excluded. Records are sorted and
-serialized deterministically using the `incident-training-example-v1` schema.
-
-Build a dataset synchronously with:
+### 1. Ingestion and incident formation
 
 ```text
-POST /api/datasets/build
+Configured project
+      │
+      ▼ every polling interval
+Query one contiguous Datadog time window
+      │
+      ├── paginate until every matching log is fetched
+      └── advance the in-memory cursor only after success
+      │
+      ▼
+Normalize each result into a provider-neutral envelope
+      │
+      ▼
+Group by source and environment
+      │
+      ▼
+Parse level, timestamp, message, and exception type
+      │
+      ├── INFO / DEBUG ──► ignore
+      └── WARN / ERROR / CRITICAL
+                        │
+                        ▼
+              Normalize volatile values
+        UUIDs, IDs, hosts, durations, memory sizes
+                        │
+                        ▼
+           Hash source + level + normalized message
+                        │
+                        ▼
+               Look for an open matching incident
+                    within the 2-minute cluster window
+                        │
+              ┌─────────┴─────────┐
+              ▼                   ▼
+        Match found            No match
+        increment count        create incident
+        retain up to           analyze immediately
+        10 samples
+              │
+              └── re-analyze when count reaches 5, 10, or 20
 ```
 
-Each successful build reserves a new version such as `dataset-v1` or
-`dataset-v2`, stores it without overwriting earlier files, and registers its
-storage key and record count in PostgreSQL. Local files default to `datasets/`;
-set `DATASET_STORAGE_PATH` to change the root. Storage is behind a dedicated
-interface so a future S3 backend does not require changes to the builder.
+This reduces repeated log lines to one evolving incident while preserving representative evidence.
 
-Datasets are immutable because future training jobs must be reproducible. A
-later training job will reference one dataset row and read its registered
-storage key; building a dataset does not create a training job or model artifact.
-
-### Training lifecycle
-
-A READY dataset can be queued and run synchronously through the Training Plane:
+### 2. Evidence and model investigation
 
 ```text
-POST /api/training-jobs
-POST /api/training-jobs/{id}/run
+New or threshold-triggered investigation
+      │
+      ▼
+Build bounded evidence
+  • up to 8 stored log samples
+  • up to 5 related open incidents from the last 15 minutes
+  • previously known root-cause link, when available
+      │
+      ▼
+Resolve project model
+  shared Qwen3.5 4B base + active project LoRA adapter
+      │
+      ▼
+Tool-assisted investigation loop (up to 4 rounds)
+      │
+      ├── get_recent_logs
+      ├── get_related_incidents
+      └── get_incident_timeline
+      │
+      ▼
+Parse and validate structured result
+  • severity
+  • disposition
+  • confidence
+  • summary and suspected root cause
+  • next steps
+  • ticket title and body
+      │
+      ├── invalid tool-loop output ──► single-shot model fallback
+      └── valid output ──────────────► persist analysis
+      │
+      ▼
+Compare a new incident with earlier incidents
+and store a causal link when the relationship is plausible
 ```
 
-The authenticated project is the job owner; the create request supplies the
-`dataset_id`. Jobs follow explicit transitions:
+Critical patterns and severity/disposition consistency are checked after generation. Model or adapter failures do not fall through to a remote provider or an unadapted base model.
+
+### 3. Policy, actions, and audit trail
+
+The model does not directly choose an executable operation. The policy layer maps the validated disposition to default actions, applies safety constraints, and records both allowed and blocked results.
 
 ```text
-success:            QUEUED -> RUNNING -> EVALUATING -> PASSED
-training failure:   QUEUED -> RUNNING -> FAILED
-evaluation failure: QUEUED -> RUNNING -> EVALUATING -> FAILED
+Validated analysis
+      │
+      ▼
+Derive requested actions from disposition
+      │
+      ▼
+Policy checks
+  • incident is still open
+  • model confidence is at least 0.55
+  • no action was taken during the 20-minute cooldown
+  • low-count non-critical escalations are downgraded
+  • disposition meets the minimum floor for its severity
+      │
+      ▼
+Evaluate every action
+      │
+      ├── safe ─────────► allow
+      ├── conditional ──► check severity, confidence, and disposition
+      └── dangerous or unknown ──► block
+      │
+      ▼
+Execute only allowed actions
+      │
+      ├── enrich the incident
+      ├── suppress qualifying low-severity noise
+      └── route Discord or email notifications
+      │
+      ▼
+Persist InvestigationRun + ActionLog
+  evidence, tool calls, result, policy reason,
+  allowed actions, blocked actions, and actions taken
 ```
 
-The training engine performs real supervised fine-tuning with Hugging Face
-Transformers and PEFT. Every project uses the same configurable shared base
-model, `Qwen/Qwen2.5-0.5B-Instruct` by default, and produces only a
-project-specific LoRA adapter. The base-model weights are never copied into a
-project artifact.
+Safe actions include enrichment, incident summaries, evidence attachment, notifications, and verification checks. Infrastructure changes, restarts, database changes, secret rotation, deletion, and scaling are blocked. Unknown action names are also blocked.
 
-The immutable Dataset Builder JSONL is consumed directly. Each `input` object
-becomes the user-side incident context and each `expected_output` object becomes
-the assistant completion. The trainer applies the Qwen chat template and masks
-prompt tokens so loss is calculated on the confirmed output rather than on the
-incident evidence.
+Automatic suppression is allowed only for low-severity `NO_ACTION` decisions with confidence of at least `0.80`.
 
-The default LoRA profile is:
+<table>
+  <tr>
+    <td><img src="imgs/discord.png" alt="IncidentLens Discord notification"></td>
+    <td><img src="imgs/email.png" alt="IncidentLens email notification"></td>
+  </tr>
+</table>
+
+## Training dataset
+
+[`data/dataset_v1.jsonl`](data/dataset_v1.jsonl) is the current seed dataset for project adapter training. It contains 1,984 supervised incident examples used to teach the project adapter.
+
+| Dataset property | Value |
+| --- | ---: |
+| Records | 1,984 |
+| Incident types | 30 |
+| Services | 35 |
+| Regions | 26 |
+| Log lines per record | 3–6, median 5 |
+| Records with related-incident context | 311 |
+
+### Label distribution
+
+| Field | Value | Records |
+| --- | --- | ---: |
+| Severity | High | 1,195 |
+| Severity | Medium | 462 |
+| Severity | Critical | 327 |
+| Disposition | `NEEDS_ONCALL` | 890 |
+| Disposition | `ESCALATE` | 552 |
+| Disposition | `NEEDS_DEV` | 542 |
+
+The dataset focuses on actionable incidents. Its 30 failure categories include database and cache exhaustion, message-queue backlog, payment timeouts, memory leaks, certificate failures, pod failures, search degradation, configuration errors, and model or adapter loading failures.
+
+Each line follows this shape:
 
 ```text
-rank:                        8
-alpha:                       16
-dropout:                     0.05
-epochs:                      1
-learning rate:               0.0001
-batch size:                  1
-gradient accumulation:       1
-maximum sequence length:     1024
-validation fraction:         0.10
+input
+├── logs[]
+├── service
+├── environment
+├── count
+├── related_incidents[]
+└── metadata
+    ├── region
+    ├── host
+    ├── trace_id
+    └── request_id
+
+output
+├── incident_type
+├── severity
+├── disposition
+├── summary
+└── recommended_actions[]
 ```
 
-The target modules are Qwen attention and MLP projections: `q_proj`, `k_proj`,
-`v_proj`, `o_proj`, `gate_proj`, `up_proj`, and `down_proj`. All profile values
-are configurable through the environment variables listed below.
+On upload, the backend validates every record and normalizes the dataset's `output` object to the internal `expected_output` schema. The dataset remains pending review until a user selects at least one record and approves it.
 
-Before training, the worker reserves an immutable
-`artifacts/<project>/<adapter-vN>/` directory. PEFT writes the real adapter and
-tokenizer metadata into it:
+## Model lifecycle
 
 ```text
-adapter_model.safetensors
-adapter_config.json
-tokenizer_config.json
-metadata.json
+Uploaded seed data or analyzed incident history
+      │
+      ▼
+Immutable versioned JSONL dataset
+      │
+      ▼
+Record review and selection
+      │
+      ▼
+QUEUED ──► RUNNING ──► EVALUATING ──► PASSED
+                 │             │
+                 └─────────────┴────► FAILED
+      │
+      ▼
+Versioned LoRA adapter + tokenizer metadata + file manifest
+      │
+      ▼
+READY artifact
+      │
+      ▼ automatic activation after a successful run
+Active project adapter
 ```
 
-Tokenizer implementations may write additional tokenizer files. The final
-metadata includes training duration, training and validation loss, dataset
-version, the complete LoRA profile, evaluation metrics, framework versions, and
-a SHA-256 manifest of generated adapter files. It explicitly distinguishes
-adapter weights from base-model weights.
+Training applies the Qwen chat template and masks prompt tokens so loss is computed on the expected incident response. The default LoRA profile covers Qwen3.5's full-attention, linear-attention, and MLP projections with rank `8`, alpha `16`, dropout `0.05`, and a maximum sequence length of `1024`.
 
-Evaluation checks dataset availability and record count, successful completion,
-finite training loss, finite validation loss when a validation split exists,
-and adapter integrity. An artifact is registered as READY and activated only
-after every check passes. Partial output is removed when training or evaluation
-fails; an adapter retained after a metadata-write failure is registered FAILED
-and is never activated.
+Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged. The shared base model is loaded once, adapters are loaded lazily, and adapter selection and generation share a lock to prevent cross-project model use.
 
-Artifact registration, project activation, and the final PASSED job transition
-are coordinated by the Training Worker. If training, evaluation, or metadata
-writing fails, the job becomes FAILED and the project's existing active
-artifact remains unchanged. Successful artifacts are activated and become the
-project's local inference adapter.
+## Tech stack
 
-The production backend uses portable Transformers + PEFT rather than Unsloth.
-Unsloth is not enabled because the current deployment contract does not
-guarantee a supported NVIDIA/CUDA environment. `TrainingEngine` remains the
-replacement boundary for adding an Unsloth or hosted training backend without
-changing jobs, evaluation, artifact registration, or activation.
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, React Router, Tailwind CSS, Recharts, Axios |
+| API | FastAPI, Pydantic, Uvicorn |
+| Persistence | PostgreSQL 16, SQLAlchemy |
+| Log source | Datadog Logs API |
+| Model | [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B) |
+| Model runtime | PyTorch, Transformers, PEFT |
+| Training | LoRA, Hugging Face Datasets, Safetensors |
+| Observability | Datadog APM, Logs, LLM Observability, and metrics |
+| Notifications | Discord webhooks and SMTP |
 
-### Model runtime
+## Local development
 
-All Serving Plane inference now enters through the Model Runtime:
+### Prerequisites
 
-```text
-Incident evidence
-      |
-      v
-Project -> active_artifact_id -> READY ModelArtifact
-      |
-      v
-Model Runtime
-      |-- Shared base model (loaded once)
-      |-- READY active artifact
-      |-- Adapter path and metadata
-      |-- Project adapter cache
-      v
-Local Qwen + active LoRA adapter
-      |
-      v
-Existing decision output
-```
+- Python 3.11+
+- Node.js 18+
+- Docker with Docker Compose
+- Datadog API and application keys; the application key needs `logs_read_data`
+- Network access to download the configured base model
 
-`resolve_project_model(project_id)` returns a runtime session that describes the
-project, shared base model, validated active artifact, adapter path, local
-runtime type, and runtime capabilities.
-An active artifact is accepted only when it belongs to the project, is READY,
-and was trained for the project's base model. Its `metadata.json` is loaded and
-checked against the database record; validation problems are exposed as session
-warnings and become explicit adapter-loading errors during inference.
+CPU execution is supported, but loading and training a 4B model is resource-intensive. A compatible accelerator is recommended.
 
-At application startup, the runtime loads the configured shared base model. A
-base-model loading failure prevents startup. On the first inference request for
-a project artifact, PEFT loads that adapter into the shared model under a unique
-name. Later requests reuse it. Adapter selection and generation share one lock,
-so concurrent project requests cannot generate with another project's adapter.
-When `Project.active_artifact_id` changes, the next request resolves and selects
-the new artifact automatically.
-
-The local provider uses the model's chat template for existing prompts and tool
-schemas. Generated text continues through the existing Pydantic parsing,
-validation, policy, action, notification, and audit paths. A missing, failed,
-incompatible, or unreadable adapter produces a local runtime error; there is no
-remote inference or base-model-only fallback.
-
----
-
-## Example Decisions
-
-### Allowed: Health-Check Noise
-
-```text
-Severity:          low
-Disposition:       NO_ACTION
-Requested actions: auto_enrich, auto_suppress
-Policy decision:   allowed
-Executed actions:  auto_enrich, auto_suppress
-```
-
-### Blocked: DB Pool Exhaustion
-
-```text
-Severity:        high
-Disposition:     NEEDS_ONCALL
-Allowed actions: notify_oncall, create_incident_summary, attach_evidence_bundle
-Blocked actions: restart_service, modify_database_config
-Reason:          high-impact remediation requires human approval
-```
-
----
-
-## Evaluation
-
-IncidentLens includes a labeled evaluation suite for runbook cases, LLM reasoning cases, misleading log-volume signals, low-frequency high-impact incidents, and policy edge cases.
-
-A case is counted as correctly triaged only when severity, disposition, and expected root cause or runbook match.
-
-```text
-Correct triage:              194/210 (92.4%)
-Unsafe automation:             2/210 (1.0%)
-False suppression:             2/210 (1.0%)
-Unsafe disposition:           16/210 (7.6%)
-Dangerous actions allowed:     0/210 (0.0%)
-Dangerous actions executed:    0/210 (0.0%)
-Runbook match accuracy:      178/190 (93.7%)
-Runbook sample coverage:       68/68
-```
-
-Action-policy fixture:
-
-```text
-Policy block accuracy:        2/2 (100.0%)
-Dangerous action block rate:  3/3 (100.0%)
-Policy allow accuracy:        2/2 (100.0%)
-```
-
-Run evaluations:
+### 1. Configure the project
 
 ```bash
-python log-analyzer/scripts/metrics_report.py triage-eval
-python log-analyzer/scripts/metrics_report.py triage-eval --dataset log-analyzer/evals/action_policy_cases.json
-python log-analyzer/scripts/check_runbook_coverage.py
+git clone https://github.com/DevelopedBy-Siva/incident-lens.git
+cd incident-lens
+cp .env.example .env
 ```
 
-## Screenshots
+The defaults in `.env.example` connect the backend to the bundled PostgreSQL service. Replace `SECRET_KEY` and add Datadog observability settings if you want to trace IncidentLens itself. Credentials used to read application logs are entered per project in the UI and stored in PostgreSQL.
 
-### Dashboard
-
-![Incident dashboard](./imgs/dashboard.png)
-
-### Incidents
-
-![Incidents view](./imgs/incident.png)
-
-### AI platform dashboard
-
-The **Models** page shows the shared base model, active adapter, evaluation
-scores, and immutable artifact history; any READY artifact can be activated.
-The **Training** page exposes the full dataset → training job → model artifact
-workflow and only polls while a job is active. Settings displays the read-only
-local runtime and dataset/artifact storage configuration. See the
-[frontend guide](./log-analyzer-frontend/README.md) for the UI workflow and API
-mapping.
-
-### Discord
-
-![Discord](./imgs/discord.png)
-
-### Email
-
-![Email](./imgs/email.png)
-
----
-
-## Tech Stack
-
-**Backend:** FastAPI, SQLAlchemy, PostgreSQL 16
-
-**Frontend:** React, Tailwind CSS, Vercel
-
-**Logs:** Datadog Logs API
-
-**LLM:** Local Qwen 2.5 Instruct, Transformers, PEFT, LoRA, LangChain
-
-**Notifications:** Discord, SMTP
-
-**Deployment:** Vercel, Render, Dockerized PostgreSQL
-
----
-
-## Quick Start
+### 2. Start PostgreSQL
 
 ```bash
-# PostgreSQL
 docker compose up -d postgres
+docker compose ps
+```
 
-# Backend
+### 3. Start the backend
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r log-analyzer/requirements.txt
-DD_LLMOBS_ENABLED=1 \
-DD_LLMOBS_AGENTLESS_ENABLED=1 \
-DD_LLMOBS_ML_APP=incident-lens \
-DD_SITE=datadoghq.com \
-DD_API_KEY=<your-rotated-api-key> \
-ddtrace-run python -m uvicorn app.main:app --port 8000 --app-dir log-analyzer
 
-# Log simulator
-pip install -r log-server/requirements.txt
-python -m uvicorn server:app --port 5001 --app-dir log-server
+ddtrace-run python -m uvicorn app.main:app \
+  --app-dir log-analyzer \
+  --host 0.0.0.0 \
+  --port 8000
+```
 
-# Frontend
+The backend loads the configured shared base model during startup and fails fast if the model or database cannot be initialized.
+
+### 4. Start the frontend
+
+In a second terminal:
+
+```bash
 cd log-analyzer-frontend
 npm ci
 npm start
 ```
 
-The first backend startup downloads and loads the configured shared base model;
-startup fails if that model cannot be loaded. Local LLM inference also requires
-the project to have a READY active artifact produced by the training lifecycle.
+Open [http://localhost:3000](http://localhost:3000), register a project, configure Datadog under **Settings**, then upload and activate a model from **Training**. The backend API is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
----
+### 5. Stream sample logs (optional)
 
-## Environment Variables
-
-```env
-POSTGRES_DB=incidentlens
-POSTGRES_USER=incidentlens
-POSTGRES_PASSWORD=incidentlens
-POSTGRES_PORT=5432
-DATABASE_URL=postgresql://incidentlens:incidentlens@localhost:5432/incidentlens
-
-# Analyzer polling cadence; Datadog read configuration is stored per project
-DATADOG_LOOKBACK_SECONDS=30
-POLL_INTERVAL=30
-
-DD_API_KEY=your_rotated_api_key
-DD_SITE=datadoghq.com
-DD_LLMOBS_ENABLED=1
-DD_LLMOBS_AGENTLESS_ENABLED=1
-DD_LLMOBS_ML_APP=incident-lens
-DD_TRACE_ENABLED=1
-DD_SERVICE=incident-lens
-DD_ENV=development
-
-MODEL_PROVIDER=local
-BASE_MODEL=Qwen/Qwen2.5-0.5B-Instruct
-DEVICE=cpu
-DTYPE=auto
-
-LORA_RANK=8
-LORA_ALPHA=16
-LORA_DROPOUT=0.05
-LORA_EPOCHS=1
-LORA_LEARNING_RATE=0.0001
-LORA_BATCH_SIZE=1
-LORA_GRADIENT_ACCUMULATION_STEPS=1
-LORA_MAX_SEQUENCE_LENGTH=1024
-LORA_VALIDATION_FRACTION=0.1
-LORA_SEED=42
-LORA_TARGET_MODULES=q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
-ARTIFACT_STORAGE_PATH=artifacts
-DATASET_STORAGE_PATH=datasets
-HF_TOKEN=optional_hugging_face_token
-
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-
-SMTP_HOST=smtp.example.com
-SMTP_USER=alerts@example.com
-SMTP_PASSWORD=your_password
-
-LOG_SERVER_URL=http://localhost:5001
-CORS_ORIGINS=http://localhost:3000
-```
-
-The analyzer's API key, application key, site, query, and service are configured
-per project on the Settings page and stored in PostgreSQL. There are no global
-credential or filter fallbacks. The application key must have Datadog's
-`logs_read_data` permission. The Verify button tests the entered values without
-saving them; Save Settings persists them. The analyzer always filters on
-`env:prod`.
-
-The Data Plane depends on the provider-neutral `LogSourceConnector` contract.
-Its Datadog implementation performs cursor-paginated searches over contiguous
-polling windows, converts each result to an internal log envelope, and only
-then hands plain log batches to the existing parser and incident pipeline.
-Project credentials, queries, and required service filters remain isolated
-during polling.
-
-The local-only log simulator exposes only start and stop. The analyzer forwards
-the current project's API key, site, and service to the start endpoint through
-headers; the simulator has no Datadog environment configuration. Swagger UI is
-available at `http://localhost:5001/docs`.
-
-### PostgreSQL with Docker
-
-The root `compose.yaml` runs PostgreSQL 16 with a persistent named volume and a
-health check. Copy `.env.example` to `.env`, change the development password if
-needed, and start only the database:
+The local simulator sends the included sample stream to Datadog so the complete ingestion path can be exercised.
 
 ```bash
-cp .env.example .env
-docker compose up -d postgres
-docker compose ps
+python3 -m venv .venv-log-server
+source .venv-log-server/bin/activate
+pip install -r log-server/requirements.txt
+python -m uvicorn server:app --app-dir log-server --port 5001
 ```
 
-The backend runs on the host and connects through `localhost:5432`. Stop the
-container with `docker compose stop postgres`. `docker compose down` removes
-the container and network but retains the named database volume unless `-v` is
-explicitly supplied.
+With `LOG_SERVER_URL=http://localhost:5001`, start and stop the stream from the dashboard.
 
-### Datadog LLM Observability
+## Configuration
 
-The backend image includes `ddtrace` and starts Uvicorn through `ddtrace-run`.
-Local development should use the same prefix shown in Quick Start. Because no
-Datadog Agent container is required, set `DD_LLMOBS_AGENTLESS_ENABLED=1` along
-with `DD_SITE`, `DD_API_KEY`, `DD_LLMOBS_ENABLED=1`, and
-`DD_LLMOBS_ML_APP=incident-lens` before starting the Python process.
+The complete template is in [`.env.example`](.env.example). The primary settings are:
 
-The analyzer's `DD_*` values instrument IncidentLens itself and are independent
-from per-project log-search credentials. Never commit any key to the repository.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection used for application and audit state |
+| `SECRET_KEY` | JWT signing key |
+| `CORS_ORIGINS` | Allowed dashboard origins |
+| `BASE_MODEL` | Shared model identifier; defaults to `Qwen/Qwen3.5-4B` |
+| `DEVICE` | PyTorch runtime device |
+| `DTYPE` | Model weight data type |
+| `DATASET_STORAGE_PATH` | Dataset storage root |
+| `ARTIFACT_STORAGE_PATH` | LoRA adapter storage root |
+| `POLL_INTERVAL` | Datadog polling interval in seconds |
+| `DATADOG_LOOKBACK_SECONDS` | Initial log-search window in seconds |
+| `LOG_SERVER_URL` | Optional local simulator URL |
 
-### Observability architecture
+Datadog application-observability variables (`DD_*`) are separate from the per-project credentials used to search logs.
 
-Datadog is the single observability platform for every application plane:
+## Testing
+
+```bash
+# Backend
+cd log-analyzer
+python -m pytest -q
+
+# Frontend build
+cd ../log-analyzer-frontend
+npm run build
+```
+
+## Repository layout
 
 ```text
-IncidentLens
-    |
-    v
-Datadog
-    |-- Logs
-    |-- APM
-    |-- LLM Observability
-    `-- Metrics
+incident-lens/
+├── data/
+│   └── dataset_v1.jsonl    Seed incident-training dataset
+├── log-analyzer/           FastAPI backend and Python test suite
+│   └── app/
+│       ├── control/        Project setup and lifecycle management
+│       ├── data/           Ingestion and incident formation
+│       ├── serving/        Investigation, policy, and actions
+│       └── training/       Datasets, LoRA training, and artifacts
+├── log-analyzer-frontend/  React dashboard
+├── log-server/             Optional Datadog log simulator
+├── imgs/                   Product screenshots
+└── compose.yaml            Local PostgreSQL
 ```
 
-Data Plane spans cover ingestion, normalization, parsing, clustering, and
-evidence generation. Serving Plane spans cover runtime resolution, base-model
-and adapter loading, local inference, decision validation, policy evaluation,
-and action execution. Training Plane spans cover dataset generation, training
-job lifecycle, LoRA training, evaluation, artifact creation, and activation.
-Control Plane spans cover project, dataset, and training-job creation plus model
-activation.
+## Known limitations
 
-Trace metadata is restricted to operational identifiers and outcomes such as
-`project_id`, `dataset_version`, `training_job_id`, `artifact_version`,
-`base_model`, `adapter_version`, `incident_id`, `decision_source`, and
-`policy_result`. Prompts, completions, API keys, application keys, passwords,
-tokens, and raw credentials are never attached to spans.
+- Datadog is currently the only implemented log-source connector.
+- The polling cursor is kept in process memory and resets when the backend restarts.
+- Model-backed investigation requires a READY active adapter for the project.
+- There is no remote-model or base-model-only inference fallback.
+- Training runs synchronously and is resource-intensive on CPU.
+- Polling and verification workers run inside the API process, so the current architecture assumes one backend instance.
+
+## What I learned
+
+- Safe automation needs an enforcement boundary outside the model.
+- Incident quality depends as much on normalization and evidence selection as it does on model capability.
+- Human-reviewed operational history can form a reproducible training loop when datasets and artifacts are immutable.
+- A model lifecycle is trustworthy only when failures cannot replace the last known-good artifact.

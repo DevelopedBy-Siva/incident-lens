@@ -7,7 +7,7 @@ import threading
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
@@ -19,7 +19,25 @@ from app.api import (
 )
 from app.control.maintenance import cleanup_all_data
 from app.serving.model_runtime import get_model_runtime
-from app.shared.database import init_db
+from app.shared.database import SessionLocal, init_db
+
+
+def _validate_production_config() -> None:
+    if os.getenv("APP_ENV", "development").strip().lower() not in {
+        "prod",
+        "production",
+    }:
+        return
+
+    required = ("DATABASE_URL", "CORS_ORIGINS", "SECRET_KEY", "S3_BUCKET")
+    missing = [name for name in required if not os.getenv(name, "").strip()]
+    if missing:
+        raise RuntimeError(
+            "Missing required production configuration: " + ", ".join(missing)
+        )
+    if os.environ["SECRET_KEY"] == "your-secret-key-change-in-production":
+        raise RuntimeError("SECRET_KEY must be changed in production")
+
 
 load_dotenv()
 
@@ -56,6 +74,7 @@ def start_verifier():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting IncidentLens...")
+    _validate_production_config()
     init_db()
     get_model_runtime().initialize()
     print("[MODEL] Shared local base model loaded")
@@ -106,3 +125,18 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe that confirms the external database is reachable."""
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ready"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
+    finally:
+        db.close()

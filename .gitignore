@@ -135,6 +135,7 @@ celerybeat.pid
 # Local secrets and runtime configuration
 /.env
 .env
+.env.production
 .venv
 env/
 venv/

@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 
-DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+DEFAULT_BASE_MODEL = "Qwen/Qwen3.5-4B"
 DEFAULT_MODEL_PROVIDER = "local"
 DEFAULT_MODEL_DEVICE = "cpu"
 DEFAULT_MODEL_DTYPE = "auto"

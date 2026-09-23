@@ -1,0 +1,17 @@
+services:
+  log-analyzer:
+    build:
+      context: ./log-analyzer
+    env_file:
+      - .env.production
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - incidentlens-artifacts:/app/data/artifacts
+      - incidentlens-huggingface:/root/.cache/huggingface
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  incidentlens-artifacts:
+  incidentlens-huggingface:

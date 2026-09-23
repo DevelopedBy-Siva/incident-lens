@@ -66,11 +66,11 @@ class DatadogObservabilityTests(unittest.TestCase):
             patch.dict(os.environ, {"DD_LLMOBS_ENABLED": "1"}),
             observability.trace_llm_operation(
                 "local_inference",
-                model_name="Qwen/Qwen2.5-0.5B-Instruct",
+                model_name="Qwen/Qwen3.5-4B",
                 metadata={
                     "project_id": "project-1",
                     "incident_id": "incident-1",
-                    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+                    "base_model": "Qwen/Qwen3.5-4B",
                     "api_key": "must-not-appear",
                     "raw_prompt": "must-not-appear",
                 },

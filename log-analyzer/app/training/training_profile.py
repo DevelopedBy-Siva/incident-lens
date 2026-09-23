@@ -20,6 +20,11 @@ class LoraTrainingProfile:
         "k_proj",
         "v_proj",
         "o_proj",
+        "in_proj_qkv",
+        "in_proj_z",
+        "in_proj_b",
+        "in_proj_a",
+        "out_proj",
         "gate_proj",
         "up_proj",
         "down_proj",
@@ -58,7 +63,10 @@ def configured_training_profile() -> LoraTrainingProfile:
         module.strip()
         for module in os.getenv(
             "LORA_TARGET_MODULES",
-            "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+            (
+                "q_proj,k_proj,v_proj,o_proj,in_proj_qkv,in_proj_z,"
+                "in_proj_b,in_proj_a,out_proj,gate_proj,up_proj,down_proj"
+            ),
         ).split(",")
         if module.strip()
     )

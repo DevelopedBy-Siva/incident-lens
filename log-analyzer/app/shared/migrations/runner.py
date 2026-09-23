@@ -11,6 +11,7 @@ from app.shared.migrations.versions import (
     v0009_dataset_record_selection,
     v0010_trained_dataset_status,
     v0011_training_job_progress,
+    v0012_qwen35_base_model,
 )
 
 MIGRATIONS = (
@@ -24,6 +25,7 @@ MIGRATIONS = (
     v0009_dataset_record_selection,
     v0010_trained_dataset_status,
     v0011_training_job_progress,
+    v0012_qwen35_base_model,
 )
 
 
