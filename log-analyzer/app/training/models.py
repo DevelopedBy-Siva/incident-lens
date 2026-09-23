@@ -120,6 +120,7 @@ class TrainingJob(Base):
     artifact_id = Column(
         String, ForeignKey("model_artifacts.id"), nullable=True, index=True
     )
+    ec2_instance_id = Column(String, nullable=True)  # EC2 instance ID if training uses remote GPU
     selected_record_indices = Column(JSON, nullable=True)
     progress_current_step = Column(Integer, nullable=True)
     progress_total_steps = Column(Integer, nullable=True)

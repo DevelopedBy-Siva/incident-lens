@@ -153,7 +153,42 @@ On upload, the backend validates every record and normalizes the dataset's `outp
 4. Integrity checks verify the adapter files and metadata.
 5. A successful adapter is uploaded to S3, registered as READY, and activated.
 
+### Training execution modes
+
+IncidentLens supports two training execution modes:
+
+#### Local/Synchronous (Development Mode)
+
+**Default behavior:** Training runs on the application server, blocking until completion.
+
+- **When:** `TRAINING_EC2_ENABLED=false` (default)
+- **Resources:** GPU/CPU on the same EC2 instance as the application
+- **Duration:** 5–15 minutes depending on dataset size and hardware
+- **Use case:** Local development, small datasets, testing
+
 Training applies the Qwen chat template and masks prompt tokens so loss is computed on the expected incident response. The default LoRA profile covers Qwen3.5's full-attention, linear-attention, and MLP projections with rank `8`, alpha `16`, dropout `0.05`, and a maximum sequence length of `1024`.
+
+#### EC2 Remote/Asynchronous (Production Mode)
+
+**Scalable alternative:** Training runs on a temporary GPU-enabled EC2 instance (g6.xlarge), returning immediately with status `RUNNING`.
+
+- **When:** `TRAINING_EC2_ENABLED=true`
+- **Resources:** Temporary g6.xlarge GPU instance launched on-demand
+- **Duration:** Instance boots (~2 min), trains (~5–15 min), terminates (~1 min)
+- **Cost:** Only GPU usage during training, no idle instance costs
+- **Use case:** Production deployments, large datasets, frequent retraining
+- **Response:** API returns `202 Accepted` with running job; training completes asynchronously
+- **Monitoring:** Poll `GET /training-jobs/{job_id}` to track progress and completion
+- **Status updates:** Bootstrap script updates job status via direct database connection
+
+**Architecture:**
+1. Application receives training request, validates dataset, creates configuration
+2. Launches temporary g6.xlarge EC2 instance with training configuration in User Data
+3. Returns immediately with job status `RUNNING` and instance ID (202 Accepted)
+4. Temporary instance boots and runs `/opt/incident-lens/bootstrap-training.py`
+5. Bootstrap script downloads dataset from S3, runs QLoRA fine-tuning, uploads artifacts
+6. Training job status updated to `PASSED` or `FAILED` in database
+7. Instance terminates automatically after completion
 
 Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged.
 
@@ -266,6 +301,25 @@ The complete template is in [`.env.example`](.env.example). The primary settings
 | `DATADOG_LOOKBACK_SECONDS` | Initial log-search window in seconds |
 | `LOG_SERVER_URL` | Optional local simulator URL |
 
+### EC2 GPU Training Configuration (Production)
+
+To enable asynchronous training on temporary GPU instances, set these variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `TRAINING_EC2_ENABLED` | Enable EC2 remote training; defaults to `false` |
+| `TRAINING_EC2_AMI_ID` | **Required.** Pre-built training AMI with PyTorch, Transformers, PEFT installed |
+| `TRAINING_EC2_INSTANCE_TYPE` | GPU instance type; defaults to `g6.xlarge` (85 GB GPU memory) |
+| `TRAINING_EC2_IAM_INSTANCE_PROFILE` | **Required.** IAM instance profile name with S3 and PostgreSQL access |
+| `TRAINING_EC2_SUBNET_ID` | VPC subnet for instance; uses default if not specified |
+| `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs; uses default if not specified |
+| `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training; defaults to 3600 |
+| `TRAINING_EC2_DETAILED_MONITORING` | Enable CloudWatch detailed monitoring; defaults to `false` |
+| `TRAINING_EC2_TERMINATE_ON_COMPLETION` | Auto-terminate instance after completion; defaults to `true` |
+| `TRAINING_EC2_ASSOCIATE_PUBLIC_IP` | Assign public IP; defaults to `false` (recommended for security) |
+
+The application must have AWS credentials (via IAM role or environment variables) to launch EC2 instances and manage them.
+
 Datadog application-observability variables (`DD_*`) are separate from the per-project credentials used to search logs.
 
 With S3 enabled, datasets use keys such as `datasets/projects/<project-id>/dataset-v1.jsonl`. Adapter directories are uploaded under `artifacts/<project-id>/adapter-vN/`, including weights, adapter configuration, tokenizer files, metadata, and the integrity manifest.
@@ -306,7 +360,8 @@ incident-lens/
 - The polling cursor is kept in process memory and resets when the backend restarts.
 - Model-backed investigation requires a READY active adapter for the project.
 - There is no remote-model or base-model-only inference fallback.
-- Training runs synchronously and is resource-intensive on CPU.
+- Local training runs synchronously and is resource-intensive on CPU; use EC2 mode for production.
+- EC2 training requires a pre-built AMI and IAM instance profile configuration.
 - Polling and verification workers run inside the API process, so the current architecture assumes one backend instance.
 
 ## What I learned

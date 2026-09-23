@@ -133,6 +133,7 @@ class S3DatasetStorage(DatasetStorage):
 
 
 def configured_dataset_storage() -> DatasetStorage:
+    """Return the configured primary storage (local or S3 based on environment)."""
     bucket = os.getenv("S3_BUCKET", "").strip()
     if bucket:
         return S3DatasetStorage(
@@ -140,6 +141,22 @@ def configured_dataset_storage() -> DatasetStorage:
             prefix=os.getenv("S3_DATASET_PREFIX", "datasets"),
         )
     return LocalDatasetStorage(os.getenv("DATASET_STORAGE_PATH", "datasets"))
+
+
+def configured_local_dataset_storage() -> LocalDatasetStorage:
+    """Always return local storage, regardless of environment configuration."""
+    return LocalDatasetStorage(os.getenv("DATASET_STORAGE_PATH", "datasets"))
+
+
+def configured_s3_dataset_storage() -> S3DatasetStorage | None:
+    """Return S3 storage if configured, otherwise None."""
+    bucket = os.getenv("S3_BUCKET", "").strip()
+    if bucket:
+        return S3DatasetStorage(
+            bucket=bucket,
+            prefix=os.getenv("S3_DATASET_PREFIX", "datasets"),
+        )
+    return None
 
 
 def configured_dataset_storage_location() -> str:

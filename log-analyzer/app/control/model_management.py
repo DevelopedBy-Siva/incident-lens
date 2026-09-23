@@ -16,6 +16,10 @@ from app.training.repositories import (
     ModelArtifactRepository,
     TrainingJobRepository,
 )
+from app.training.dataset_storage import (
+    configured_local_dataset_storage,
+    configured_s3_dataset_storage,
+)
 
 
 class ModelManagementService:
@@ -70,6 +74,10 @@ class ModelManagementService:
         dataset = self._require_dataset(project_id, dataset_id)
         self._require_validating_dataset(dataset)
         dataset.selected_record_indices = selected_record_indices
+        
+        # Migrate dataset from local storage to S3 if configured
+        self._migrate_dataset_to_s3_if_configured(dataset)
+        
         return self._commit(
             self.datasets.set_status(
                 dataset, DatasetStatus.READY, record_count=record_count
@@ -198,3 +206,28 @@ class ModelManagementService:
         except Exception:
             self.db.rollback()
             raise
+
+    def _migrate_dataset_to_s3_if_configured(self, dataset: Dataset) -> None:
+        """Migrate dataset from local storage to S3 if S3 is configured."""
+        s3_storage = configured_s3_dataset_storage()
+        if s3_storage is None:
+            # S3 not configured, keep in local storage
+            return
+        
+        local_storage = configured_local_dataset_storage()
+        
+        try:
+            # Load content from local storage
+            content = local_storage.load(dataset.storage_key)
+            
+            # Save to S3
+            s3_storage.save(dataset.storage_key, content)
+            
+            # Delete from local storage after successful upload
+            local_storage.delete(dataset.storage_key)
+        except Exception as e:
+            # If migration fails, keep the dataset in local storage
+            # and raise the error to inform the caller
+            raise ValueError(
+                f"Failed to migrate dataset {dataset.id} to S3: {str(e)}"
+            ) from e

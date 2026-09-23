@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -8,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.control.models import Project
 from app.control.repositories import ProjectRepository
+from app.shared.database import SessionLocal
 from app.shared.model_config import configured_base_model
 from app.shared.observability import trace_operation
 from app.training.artifact_metadata import (
@@ -17,11 +20,16 @@ from app.training.artifact_metadata import (
 )
 from app.training.dataset_serializer import JsonLinesDatasetSerializer
 from app.training.dataset_storage import DatasetStorage, configured_dataset_storage
+from app.training.ec2_orchestrator import (
+    EC2TrainingOrchestrator,
+    configured_ec2_training_config,
+)
 from app.training.evaluation import (
     BasicEvaluationService,
     EvaluationResult,
     EvaluationService,
 )
+from app.training.job_config import create_training_job_config
 from app.training.models import (
     Dataset,
     DatasetStatus,
@@ -63,7 +71,16 @@ class TrainingPipelineError(RuntimeError):
 
 
 class TrainingWorker:
-    """Synchronously execute queued training jobs and their lifecycle."""
+    """Execute queued training jobs locally or on temporary EC2 GPU instances.
+    
+    Supports two execution modes:
+    1. Local/Synchronous: Runs training on the current application server (development)
+    2. EC2 Remote: Launches temporary GPU instances and delegates training (production)
+    
+    The execution mode is determined by TRAINING_EC2_ENABLED environment variable.
+    When disabled, behaves as before (local synchronous execution).
+    When enabled, launches a temporary g6.xlarge instance and returns immediately with RUNNING status.
+    """
 
     ARTIFACT_VERSION_RESERVATION_ATTEMPTS = 3
 
@@ -75,6 +92,7 @@ class TrainingWorker:
         evaluator: EvaluationService | None = None,
         artifact_writer: ArtifactMetadataWriter | None = None,
         training_profile: LoraTrainingProfile | None = None,
+        ec2_orchestrator: EC2TrainingOrchestrator | None = None,
     ):
         self.db = db
         self.dataset_storage = dataset_storage or configured_dataset_storage()
@@ -87,6 +105,14 @@ class TrainingWorker:
         self.datasets = DatasetRepository(db)
         self.jobs = TrainingJobRepository(db)
         self.artifacts = ModelArtifactRepository(db)
+        
+        # EC2 orchestrator setup
+        ec2_config = configured_ec2_training_config()
+        if ec2_config and ec2_orchestrator is None:
+            self.ec2_orchestrator = EC2TrainingOrchestrator(ec2_config)
+        else:
+            self.ec2_orchestrator = ec2_orchestrator
+        self.use_ec2_remote = ec2_config is not None
 
     def run_next(self, project_id: str | None = None) -> TrainingJob | None:
         job = self.jobs.next_queued(project_id)
@@ -101,9 +127,13 @@ class TrainingWorker:
             metadata={
                 "project_id": project_id,
                 "training_job_id": job_id,
+                "execution_mode": "ec2_remote" if self.use_ec2_remote else "local",
             },
         ) as span:
-            job = self._run(job_id, project_id)
+            if self.use_ec2_remote:
+                job = self._run_ec2_remote(job_id, project_id)
+            else:
+                job = self._run_local(job_id, project_id)
             span.tags(
                 {
                     "dataset_id": job.dataset_id,
@@ -114,7 +144,129 @@ class TrainingWorker:
             )
             return job
 
-    def _run(self, job_id: str, project_id: str) -> TrainingJob:
+    def run(self, job_id: str, project_id: str) -> TrainingJob:
+        with trace_operation(
+            "training_job_lifecycle",
+            plane="training",
+            metadata={
+                "project_id": project_id,
+                "training_job_id": job_id,
+                "execution_mode": "ec2_remote" if self.use_ec2_remote else "local",
+            },
+        ) as span:
+            if self.use_ec2_remote:
+                job = self._run_ec2_remote(job_id, project_id)
+            else:
+                job = self._run_local(job_id, project_id)
+            span.tags(
+                {
+                    "dataset_id": job.dataset_id,
+                    "artifact_id": job.artifact_id,
+                    "status": job.status.value,
+                    "result": job.status.value,
+                }
+            )
+            return job
+
+    def _run_ec2_remote(self, job_id: str, project_id: str) -> TrainingJob:
+        """Launch a temporary EC2 GPU instance for training and return with RUNNING status.
+        
+        This method:
+        1. Validates the job and dataset
+        2. Prepares training configuration
+        3. Launches a temporary g6.xlarge instance with User Data
+        4. Returns the job with RUNNING status (training proceeds asynchronously)
+        
+        The EC2 instance will:
+        - Download the dataset from S3
+        - Run fine-tuning
+        - Upload artifacts to S3
+        - Update the job status via API
+        - Terminate automatically on completion/failure
+        
+        Args:
+            job_id: Training job ID
+            project_id: Project ID
+        
+        Returns:
+            TrainingJob with RUNNING status and instance_id metadata
+        
+        Raises:
+            TrainingJobNotFoundError: If job not found
+            TrainingJobStateError: If job not in QUEUED state
+            TrainingPipelineError: If configuration/launch fails
+        """
+        job = self.jobs.get_for_project(job_id, project_id)
+        if not job:
+            raise TrainingJobNotFoundError("Training job not found")
+
+        # Atomically transition from QUEUED to RUNNING
+        job = self.jobs.reserve(job_id, project_id, datetime.utcnow())
+        if not job:
+            raise TrainingJobStateError("Only QUEUED training jobs can be run")
+        self._commit(job)
+
+        try:
+            project = self._require_project(project_id)
+            dataset = self._require_trainable_dataset(project_id, job.dataset_id)
+            base_model = configured_base_model()
+            
+            # Update project base model if needed
+            if project.base_model != base_model:
+                project.base_model = base_model
+                self._commit(project)
+
+            # Create training configuration for EC2 instance
+            s3_bucket = os.getenv("S3_BUCKET", "").strip()
+            if not s3_bucket:
+                raise TrainingPipelineError("S3_BUCKET not configured for EC2 training")
+
+            training_config = create_training_job_config(
+                job_id=job_id,
+                project_id=project_id,
+                dataset_id=dataset.id,
+                dataset_storage_key=dataset.storage_key,
+                s3_bucket=s3_bucket,
+                database_url=os.getenv("DATABASE_URL", "").strip(),
+                base_model=base_model,
+                training_profile=self.training_profile,
+                selected_record_indices=job.selected_record_indices
+                or dataset.selected_record_indices,
+                huggingface_token=os.getenv("HF_TOKEN", "").strip() or None,
+            )
+
+            # Launch temporary EC2 instance
+            instance_id = self.ec2_orchestrator.launch_training_instance(
+                job_id=job_id,
+                project_id=project_id,
+                dataset_id=dataset.id,
+                dataset_storage_key=dataset.storage_key,
+                database_url=os.getenv("DATABASE_URL", "").strip(),
+                training_config_json=training_config.to_json(),
+            )
+
+            # Store instance ID in job metadata for monitoring
+            job.ec2_instance_id = instance_id
+            self._commit(job)
+
+            logger.info(
+                f"EC2 training instance {instance_id} launched for job {job_id} "
+                f"(project={project_id}). Job status: RUNNING"
+            )
+            return job
+
+        except Exception as exc:
+            logger.error(f"Failed to launch EC2 training instance for job {job_id}: {exc}")
+            # Transition job back to QUEUED or mark as FAILED
+            self._fail(job_id, project_id, None)
+            raise
+
+    def _run_local(self, job_id: str, project_id: str) -> TrainingJob:
+        """Run training synchronously on the local application server (development mode).
+        
+        This is the original execution path that trains models locally before returning.
+        """
+        return self._run(job_id, project_id)
         job = self.jobs.get_for_project(job_id, project_id)
         if not job:
             raise TrainingJobNotFoundError("Training job not found")

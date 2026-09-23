@@ -6,7 +6,11 @@ from app.control.repositories import ProjectRepository
 from app.shared.observability import trace_operation
 from app.training.dataset_builder import DatasetBuilder, DatasetEligibilityRules
 from app.training.dataset_serializer import JsonLinesDatasetSerializer
-from app.training.dataset_storage import DatasetStorage, configured_dataset_storage
+from app.training.dataset_storage import (
+    DatasetStorage,
+    configured_dataset_storage,
+    configured_local_dataset_storage,
+)
 from app.training.models import Dataset
 from app.training.repositories import DatasetRepository, DatasetSourceRepository
 
@@ -28,7 +32,8 @@ class DatasetBuildCommand:
         eligibility_rules: DatasetEligibilityRules | None = None,
     ):
         self.db = db
-        self.storage = storage or configured_dataset_storage()
+        # Always use local storage during dataset creation and review
+        self.storage = storage or configured_local_dataset_storage()
         self.serializer = serializer or JsonLinesDatasetSerializer()
         self.builder = DatasetBuilder(
             DatasetSourceRepository(db), rules=eligibility_rules

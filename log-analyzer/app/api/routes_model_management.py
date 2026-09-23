@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -67,6 +68,7 @@ class TrainingJobResponse(BaseModel):
     dataset_id: str
     status: TrainingJobStatus
     artifact_id: str | None
+    ec2_instance_id: str | None  # EC2 instance ID if training uses remote GPU
     selected_record_indices: list[int] | None
     progress_current_step: int | None
     progress_total_steps: int | None
@@ -269,12 +271,15 @@ def approve_dataset(
             status_code=422, detail="Dataset record selection is out of range"
         )
 
-    return ModelManagementService(db).mark_dataset_ready(
-        project.id,
-        dataset.id,
-        dataset.record_count,
-        sorted(selected_indices),
-    )
+    try:
+        return ModelManagementService(db).mark_dataset_ready(
+            project.id,
+            dataset.id,
+            dataset.record_count,
+            sorted(selected_indices),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.delete("/datasets/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -371,17 +376,38 @@ def get_training_job(
     return job
 
 
-@router.post(
-    "/training-jobs/{job_id}/run",
-    response_model=TrainingJobResponse,
-)
+@router.post("/training-jobs/{job_id}/run")
 def run_training_job(
     job_id: str,
     project: Project = Depends(get_current_project),
     db: Session = Depends(get_db),
 ):
+    """Execute a training job.
+    
+    Returns:
+    - 200 OK with completed job if local/synchronous execution (development mode)
+    - 202 Accepted with running job if EC2 remote execution (production mode)
+    
+    The response status code indicates the execution mode:
+    - 200: Job execution started and completed immediately (local mode)
+    - 202: Job execution delegated to EC2 GPU instance (remote mode, async)
+    """
     try:
-        return TrainingWorker(db).run(job_id, project.id)
+        worker = TrainingWorker(db)
+        job = worker.run(job_id, project.id)
+        job_response = TrainingJobResponse.model_validate(job)
+        
+        # Determine response status based on execution mode
+        if worker.use_ec2_remote and job.status == TrainingJobStatus.RUNNING:
+            # EC2 remote mode: return 202 Accepted with running job
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content=job_response.model_dump(),
+            )
+        else:
+            # Local mode: return 200 OK with completed job
+            return job_response
+            
     except TrainingJobNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except TrainingJobStateError as exc:
