@@ -183,12 +183,22 @@ Training applies the Qwen chat template and masks prompt tokens so loss is compu
 
 **Architecture:**
 1. Application receives training request, validates dataset, creates configuration
-2. Launches temporary g6.xlarge EC2 instance with training configuration in User Data
-3. Returns immediately with job status `RUNNING` and instance ID (202 Accepted)
-4. Temporary instance boots and runs `/opt/incident-lens/bootstrap-training.py`
-5. Bootstrap script downloads dataset from S3, runs QLoRA fine-tuning, uploads artifacts
-6. Training job status updated to `PASSED` or `FAILED` in database
-7. Instance terminates automatically after completion
+2. Determines current Git commit SHA (or uses configured SHA from environment)
+3. Launches temporary g6.xlarge EC2 instance with training configuration in User Data
+4. Returns immediately with job status `RUNNING` and instance ID (202 Accepted)
+5. Temporary instance boots and runs `/opt/incident-lens/bootstrap-training.py` from AMI
+6. Bootstrap script clones repository from Git and checks out the specified commit SHA
+7. Bootstrap activates pre-built training environment and configures Python path
+8. Bootstrap downloads dataset from S3, runs QLoRA fine-tuning, uploads artifacts
+9. Training job status updated to `PASSED` or `FAILED` in database
+10. Instance terminates automatically after completion
+
+**Key Design:**
+- Training AMI contains stable GPU drivers, Python environment (`/home/ubuntu/training-env`), and bootstrap script
+- AMI does **not** contain application source code
+- Application code is cloned fresh at runtime and pinned to a Git commit SHA
+- This ensures training uses code matching the application version that launched the job
+- AMI can be updated for GPU/Python dependencies without rebuilding for code changes
 
 Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged.
 

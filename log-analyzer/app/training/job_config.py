@@ -33,6 +33,10 @@ class TrainingJobConfig:
     # Base model configuration
     base_model: str
     
+    # Git repository configuration (for runtime code cloning)
+    git_repository_url: str
+    git_commit_sha: str
+    
     # LoRA training hyperparameters
     lora_rank: int
     lora_alpha: int
@@ -76,6 +80,8 @@ def create_training_job_config(
     s3_bucket: str,
     database_url: str,
     base_model: str,
+    git_repository_url: str,
+    git_commit_sha: str,
     training_profile: LoraTrainingProfile,
     selected_record_indices: list[int] | None = None,
     huggingface_token: str | None = None,
@@ -90,6 +96,8 @@ def create_training_job_config(
         s3_bucket: S3 bucket name
         database_url: Database connection URL
         base_model: Base model name/path
+        git_repository_url: Git repository URL to clone
+        git_commit_sha: Git commit SHA to checkout
         training_profile: LoRA training profile with hyperparameters
         selected_record_indices: Optional list of record indices to train on
         huggingface_token: Optional HuggingFace API token
@@ -105,6 +113,8 @@ def create_training_job_config(
         s3_bucket=s3_bucket,
         database_url=database_url,
         base_model=base_model,
+        git_repository_url=git_repository_url,
+        git_commit_sha=git_commit_sha,
         lora_rank=training_profile.rank,
         lora_alpha=training_profile.alpha,
         lora_dropout=training_profile.dropout,

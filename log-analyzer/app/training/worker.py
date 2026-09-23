@@ -221,6 +221,14 @@ class TrainingWorker:
             if not s3_bucket:
                 raise TrainingPipelineError("S3_BUCKET not configured for EC2 training")
 
+            # Get Git repository URL and current commit SHA
+            git_repository_url = os.getenv(
+                "GIT_REPOSITORY_URL",
+                "https://github.com/DevelopedBy-Siva/incident-lens.git"
+            ).strip()
+            
+            git_commit_sha = self._get_current_git_commit()
+
             training_config = create_training_job_config(
                 job_id=job_id,
                 project_id=project_id,
@@ -229,6 +237,8 @@ class TrainingWorker:
                 s3_bucket=s3_bucket,
                 database_url=os.getenv("DATABASE_URL", "").strip(),
                 base_model=base_model,
+                git_repository_url=git_repository_url,
+                git_commit_sha=git_commit_sha,
                 training_profile=self.training_profile,
                 selected_record_indices=job.selected_record_indices
                 or dataset.selected_record_indices,
@@ -260,6 +270,55 @@ class TrainingWorker:
             # Transition job back to QUEUED or mark as FAILED
             self._fail(job_id, project_id, None)
             raise
+
+    def _get_current_git_commit(self) -> str:
+        """Get the current Git commit SHA of the running application.
+        
+        Returns:
+            Git commit SHA (40-character hex string)
+            
+        Raises:
+            TrainingPipelineError: If unable to determine Git commit
+        """
+        try:
+            import subprocess
+            
+            # Get current working directory (should be the log-analyzer directory)
+            cwd = Path(__file__).parent.parent.parent
+            
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            
+            commit_sha = result.stdout.strip()
+            
+            if not commit_sha or len(commit_sha) != 40:
+                raise TrainingPipelineError(
+                    f"Invalid Git commit SHA: {commit_sha}"
+                )
+            
+            logger.info(f"Current Git commit: {commit_sha}")
+            return commit_sha
+            
+        except subprocess.CalledProcessError as exc:
+            # Fallback: if not in a Git repository (e.g., deployed without .git),
+            # use environment variable or raise error
+            fallback_commit = os.getenv("GIT_COMMIT_SHA", "").strip()
+            if fallback_commit:
+                logger.warning(
+                    f"Git command failed, using GIT_COMMIT_SHA environment variable: {fallback_commit}"
+                )
+                return fallback_commit
+            
+            raise TrainingPipelineError(
+                f"Unable to determine Git commit SHA. Ensure application is deployed "
+                f"from a Git repository or set GIT_COMMIT_SHA environment variable. "
+                f"Error: {exc.stderr if exc.stderr else str(exc)}"
+            ) from exc
 
     def _run_local(self, job_id: str, project_id: str) -> TrainingJob:
         """Run training synchronously on the local application server (development mode).

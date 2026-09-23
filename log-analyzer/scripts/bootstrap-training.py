@@ -4,24 +4,27 @@ EC2 Training Bootstrap Script
 Runs on temporary GPU EC2 instances to orchestrate the complete training pipeline.
 
 Entry point for the training process on GPU instances. This script:
-1. Loads configuration from EC2 User Data
-2. Downloads dataset from S3
-3. Runs QLoRA fine-tuning using local training engine
-4. Uploads artifacts to S3
-5. Updates training job status via API
-6. Terminates the instance (or signals orchestrator)
+1. Clones the repository and checks out the specified Git commit
+2. Sets up Python path and activates the training environment
+3. Loads configuration from EC2 User Data
+4. Downloads dataset from S3
+5. Runs QLoRA fine-tuning using local training engine
+6. Uploads artifacts to S3
+7. Updates training job status via API
+8. Terminates the instance (or signals orchestrator)
+
+The training AMI contains stable GPU/Python dependencies in /home/ubuntu/training-env,
+while application code is cloned fresh at runtime and pinned to a specific Git commit.
 """
 
-import asyncio
 import json
 import logging
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-
-import requests
 
 # Configure logging to go to syslog and stdout
 logging.basicConfig(
@@ -71,9 +74,15 @@ class TrainingBootstrap:
     def __init__(self):
         """Initialize bootstrap by loading configuration."""
         self.config = self._load_config()
+        # Extract training_config from nested structure for easier access
+        if "training_config" in self.config:
+            training_config = self.config["training_config"]
+            # Merge training_config into root for backward compatibility
+            self.config.update(training_config)
         self.s3_client = None
         self.db_session = None
         self.working_dir = None
+        self.repo_dir = None
 
     def _load_config(self) -> dict[str, Any]:
         """Load training configuration from EC2 User Data file.
@@ -104,6 +113,91 @@ class TrainingBootstrap:
         except Exception as exc:
             raise ConfigurationError(f"Failed to read config file: {exc}") from exc
 
+    def _clone_repository(self) -> None:
+        """Clone the application repository and checkout the specified Git commit.
+        
+        Clones from the configured repository URL and checks out the Git commit
+        specified in the configuration. This ensures training uses code that matches
+        the application version that launched the job.
+        
+        Raises:
+            ConfigurationError: If repository URL or Git commit not configured
+            TrainingBootstrapError: If git operations fail
+        """
+        repo_url = self.config.get("git_repository_url")
+        git_commit = self.config.get("git_commit_sha")
+
+        if not repo_url:
+            raise ConfigurationError("git_repository_url not configured")
+        
+        if not git_commit:
+            raise ConfigurationError("git_commit_sha not configured")
+
+        # Create temporary directory for repository
+        self.repo_dir = Path(tempfile.mkdtemp(prefix="incident-lens-repo-"))
+        
+        logger.info(f"Cloning repository: {repo_url}")
+        
+        try:
+            # Clone repository
+            subprocess.run(
+                ["git", "clone", "--quiet", repo_url, str(self.repo_dir)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            
+            logger.info(f"Checking out commit: {git_commit}")
+            
+            # Checkout specific commit
+            subprocess.run(
+                ["git", "checkout", "--quiet", git_commit],
+                cwd=str(self.repo_dir),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            
+            logger.info(f"Repository ready at {self.repo_dir}")
+            
+        except subprocess.CalledProcessError as exc:
+            error_msg = exc.stderr if exc.stderr else str(exc)
+            raise TrainingBootstrapError(
+                f"Failed to clone/checkout repository: {error_msg}"
+            ) from exc
+        except Exception as exc:
+            raise TrainingBootstrapError(
+                f"Unexpected error during repository setup: {exc}"
+            ) from exc
+
+    def _setup_python_path(self) -> None:
+        """Configure Python path to import modules from cloned repository.
+        
+        Adds the cloned log-analyzer directory to sys.path and PYTHONPATH
+        so training engine modules can be imported.
+        """
+        if not self.repo_dir:
+            raise TrainingBootstrapError("Repository not cloned")
+        
+        log_analyzer_path = self.repo_dir / "log-analyzer"
+        
+        if not log_analyzer_path.exists():
+            raise TrainingBootstrapError(
+                f"log-analyzer directory not found in repository at {log_analyzer_path}"
+            )
+        
+        # Add to sys.path for current process
+        sys.path.insert(0, str(log_analyzer_path))
+        
+        # Also set PYTHONPATH for subprocess compatibility
+        current_pythonpath = os.environ.get("PYTHONPATH", "")
+        if current_pythonpath:
+            os.environ["PYTHONPATH"] = f"{log_analyzer_path}:{current_pythonpath}"
+        else:
+            os.environ["PYTHONPATH"] = str(log_analyzer_path)
+        
+        logger.info(f"Python path configured: {log_analyzer_path}")
+
     def run(self) -> int:
         """Execute the complete training pipeline.
         
@@ -115,6 +209,12 @@ class TrainingBootstrap:
                 f"Starting training for job {self.config['job_id']} "
                 f"(project={self.config['project_id']})"
             )
+
+            # Clone repository and checkout specified commit
+            self._clone_repository()
+
+            # Setup Python path for cloned repository
+            self._setup_python_path()
 
             # Setup working directory
             self._setup_working_directory()
@@ -474,7 +574,15 @@ class TrainingBootstrap:
                 shutil.rmtree(self.working_dir)
                 logger.info("Temporary working directory cleaned up")
         except Exception as exc:
-            logger.warning(f"Cleanup failed: {exc}")
+            logger.warning(f"Cleanup of working directory failed: {exc}")
+        
+        try:
+            if self.repo_dir and self.repo_dir.exists():
+                import shutil
+                shutil.rmtree(self.repo_dir)
+                logger.info("Repository directory cleaned up")
+        except Exception as exc:
+            logger.warning(f"Cleanup of repository directory failed: {exc}")
 
 
 def main() -> int:

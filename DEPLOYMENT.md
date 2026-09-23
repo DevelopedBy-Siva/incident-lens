@@ -37,20 +37,28 @@ For on-demand GPU training via temporary instances, complete these additional st
 
 #### 1. Create Training AMI
 
-Create a pre-built AMI with PyTorch, Transformers, and PEFT already installed to speed up instance launch:
+Create a pre-built AMI with PyTorch, Transformers, PEFT, and Git already installed to speed up instance launch.
+
+**Important:** The training AMI contains stable GPU/Python dependencies in a virtual environment, 
+but **does not** contain application source code. Application code is cloned from the Git repository 
+at instance startup and pinned to a specific commit SHA, ensuring training uses code that matches 
+the application version that launched the job.
 
 ```bash
 # On a temporary GPU-enabled EC2 instance (e.g., g6.xlarge):
-sudo apt update && sudo apt install -y python3 python3-pip python3-venv
-sudo pip3 install torch transformers peft safetensors datasets accelerate boto3 sqlalchemy psycopg2-binary
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+
+# Create training virtual environment at /home/ubuntu/training-env
+python3 -m venv /home/ubuntu/training-env
+source /home/ubuntu/training-env/bin/activate
+pip install torch transformers peft safetensors datasets accelerate boto3 sqlalchemy psycopg2-binary
 
 # Copy bootstrap script to /opt/incident-lens
+# This script clones the repository at runtime and runs training
 sudo mkdir -p /opt/incident-lens
-sudo cp scripts/bootstrap-training.py /opt/incident-lens/
+sudo curl -o /opt/incident-lens/bootstrap-training.py \
+  https://raw.githubusercontent.com/DevelopedBy-Siva/incident-lens/main/log-analyzer/scripts/bootstrap-training.py
 sudo chmod +x /opt/incident-lens/bootstrap-training.py
-
-# Configure systemd or similar to auto-run bootstrap script at startup:
-# (or include it in a startup service that runs post-boot)
 
 # Create and save AMI from this instance
 # Example in AWS console or CLI:
@@ -58,6 +66,18 @@ sudo chmod +x /opt/incident-lens/bootstrap-training.py
 ```
 
 Save the resulting AMI ID (e.g., `ami-0123456789abcdef0`) and configure it in `TRAINING_EC2_AMI_ID`.
+
+**What the AMI contains:**
+- Pre-installed GPU drivers and CUDA
+- Python 3 with virtual environment at `/home/ubuntu/training-env`
+- PyTorch, Transformers, PEFT, and training dependencies
+- Bootstrap script at `/opt/incident-lens/bootstrap-training.py`
+- Git for cloning repository at runtime
+
+**What the AMI does NOT contain:**
+- Application source code (cloned fresh at startup)
+- Training datasets (downloaded from S3 at runtime)
+- Trained model adapters (uploaded to S3 after training)
 
 #### 2. Create IAM Instance Profile
 
@@ -145,6 +165,8 @@ Optional secrets for EC2 GPU training:
 | `TRAINING_EC2_SUBNET_ID` | VPC subnet ID for training instances (optional, uses default) |
 | `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs (optional, uses default) |
 | `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training; defaults to 3600 |
+| `GIT_REPOSITORY_URL` | Git repository URL to clone (defaults to `https://github.com/DevelopedBy-Siva/incident-lens.git`) |
+| `GIT_COMMIT_SHA` | Git commit SHA to use (optional; auto-detected from deployment if not set) |
 | `EC2_DEPLOY_PATH` | Custom path; defaults to `/home/<user>/incident-lens` |
 
 `EC2_SSH_KEY` is the content of the `.pem` file downloaded when the EC2 key
@@ -194,7 +216,26 @@ curl --fail http://localhost:8000/ready
 
 ### GPU Training Operations
 
-If EC2 GPU training is enabled, monitor training jobs via the dashboard or API:
+If EC2 GPU training is enabled, monitor training jobs via the dashboard or API.
+
+**Training Instance Lifecycle:**
+
+Each training instance follows this lifecycle:
+1. Application receives training request and determines current Git commit SHA
+2. Launches temporary GPU instance with training configuration in User Data
+3. Instance boots and runs `/opt/incident-lens/bootstrap-training.py` from the AMI
+4. Bootstrap script clones the repository and checks out the specified Git commit
+5. Bootstrap activates pre-built training environment and sets up Python path
+6. Bootstrap downloads dataset from S3, runs QLoRA fine-tuning, uploads artifacts
+7. Training job status updated to `PASSED` or `FAILED` in database
+8. Instance terminates automatically after completion
+
+**Key Architectural Points:**
+- **AMI is stable:** Contains GPU drivers, Python environment, and bootstrap script only
+- **Code is dynamic:** Application code is cloned from Git at runtime, pinned to commit SHA
+- **No source code in AMI:** Training always uses code matching the application version
+- **Reproducible training:** Same commit SHA always produces same training behavior
+- **Independent updates:** AMI can be updated for GPU/Python dependencies without code changes
 
 **Track training job status:**
 ```bash

@@ -330,12 +330,23 @@ CONFIGEOF
 
 echo "[TRAINING] Configuration prepared at /tmp/incident-lens-training-config.json"
 
-# Execute training bootstrap script
-# The script is expected to be at /opt/incident-lens/bootstrap-training.py
+# Activate pre-built training environment
+if [ -d /home/ubuntu/training-env ]; then
+    echo "[TRAINING] Activating training environment"
+    source /home/ubuntu/training-env/bin/activate
+else
+    echo "[TRAINING] WARNING: Training environment not found at /home/ubuntu/training-env"
+fi
+
+# Execute training bootstrap script from AMI
+# The bootstrap script at /opt/incident-lens/bootstrap-training.py will:
+# 1. Clone the repository
+# 2. Checkout the specified Git commit
+# 3. Setup Python path
+# 4. Run the training pipeline
 if [ -f /opt/incident-lens/bootstrap-training.py ]; then
     echo "[TRAINING] Starting training bootstrap"
-    cd /opt/incident-lens
-    python bootstrap-training.py
+    python /opt/incident-lens/bootstrap-training.py
     BOOTSTRAP_EXIT=$?
     echo "[TRAINING] Bootstrap exited with code $BOOTSTRAP_EXIT"
 else

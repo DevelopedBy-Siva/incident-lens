@@ -278,6 +278,8 @@ class TrainingJobConfigTests(unittest.TestCase):
             s3_bucket="incident-lens-data",
             database_url="postgresql://localhost/db",
             base_model="Qwen/Qwen3.5-4B",
+            git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+            git_commit_sha="abc123def456789012345678901234567890abcd",
             lora_rank=8,
             lora_alpha=16,
             lora_dropout=0.05,
@@ -298,6 +300,8 @@ class TrainingJobConfigTests(unittest.TestCase):
         self.assertEqual(data["project_id"], "project-1")
         self.assertEqual(data["lora_rank"], 8)
         self.assertEqual(data["lora_target_modules"], ["q_proj", "k_proj"])
+        self.assertEqual(data["git_repository_url"], "https://github.com/DevelopedBy-Siva/incident-lens.git")
+        self.assertEqual(data["git_commit_sha"], "abc123def456789012345678901234567890abcd")
 
     def test_config_deserialization(self):
         """Test deserializing configuration from JSON."""
@@ -310,6 +314,8 @@ class TrainingJobConfigTests(unittest.TestCase):
                 "s3_bucket": "incident-lens-data",
                 "database_url": "postgresql://localhost/db",
                 "base_model": "Qwen/Qwen3.5-4B",
+                "git_repository_url": "https://github.com/DevelopedBy-Siva/incident-lens.git",
+                "git_commit_sha": "abc123def456789012345678901234567890abcd",
                 "lora_rank": 8,
                 "lora_alpha": 16,
                 "lora_dropout": 0.05,
@@ -331,6 +337,8 @@ class TrainingJobConfigTests(unittest.TestCase):
         self.assertEqual(config.job_id, "job-1")
         self.assertEqual(config.project_id, "project-1")
         self.assertEqual(config.lora_rank, 8)
+        self.assertEqual(config.git_repository_url, "https://github.com/DevelopedBy-Siva/incident-lens.git")
+        self.assertEqual(config.git_commit_sha, "abc123def456789012345678901234567890abcd")
 
     def test_config_from_profile(self):
         """Test creating configuration from training profile."""
@@ -356,12 +364,16 @@ class TrainingJobConfigTests(unittest.TestCase):
             s3_bucket="incident-lens-data",
             database_url="postgresql://localhost/db",
             base_model="Qwen/Qwen3.5-4B",
+            git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+            git_commit_sha="abc123def456789012345678901234567890abcd",
             training_profile=profile,
         )
 
         self.assertEqual(config.lora_rank, 8)
         self.assertEqual(config.lora_alpha, 16)
         self.assertEqual(config.lora_epochs, 1)
+        self.assertEqual(config.git_repository_url, "https://github.com/DevelopedBy-Siva/incident-lens.git")
+        self.assertEqual(config.git_commit_sha, "abc123def456789012345678901234567890abcd")
 
 
 class TrainingWorkerModeTests(unittest.TestCase):
