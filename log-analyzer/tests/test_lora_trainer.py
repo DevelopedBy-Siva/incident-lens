@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -71,6 +72,14 @@ class FakeTrainer:
         self.values = values
 
     def train(self):
+        callbacks = self.values.get("callbacks") or []
+        state = SimpleNamespace(max_steps=4, global_step=0)
+        control = SimpleNamespace()
+        for callback in callbacks:
+            callback.on_train_begin(None, state, control)
+        state.global_step = state.max_steps
+        for callback in callbacks:
+            callback.on_step_end(None, state, control)
         return SimpleNamespace(
             metrics={"train_loss": 0.2, "train_runtime": 1.0},
             training_loss=0.2,
@@ -84,6 +93,10 @@ class FakeTaskType:
     CAUSAL_LM = "CAUSAL_LM"
 
 
+class FakeTrainerCallback:
+    pass
+
+
 class LoraTrainerTests(unittest.TestCase):
     def _dependencies(self):
         return {
@@ -93,6 +106,7 @@ class LoraTrainerTests(unittest.TestCase):
             "LoraConfig": FakeConfiguration,
             "TaskType": FakeTaskType,
             "Trainer": FakeTrainer,
+            "TrainerCallback": FakeTrainerCallback,
             "TrainingArguments": FakeConfiguration,
             "get_peft_model": lambda model, config: model,
         }
@@ -147,6 +161,26 @@ class LoraTrainerTests(unittest.TestCase):
                 "adapter_model.safetensors",
                 {entry["name"] for entry in result.artifact_files},
             )
+
+    def test_engine_reports_step_progress(self):
+        with tempfile.TemporaryDirectory() as artifact_directory:
+            progress = []
+            engine = TransformersPeftTrainingEngine()
+            request = replace(
+                self._request(artifact_directory),
+                progress_callback=lambda current, total: progress.append(
+                    (current, total)
+                ),
+            )
+
+            with patch.object(
+                engine,
+                "_load_dependencies",
+                return_value=self._dependencies(),
+            ):
+                engine.train(request)
+
+            self.assertEqual(progress, [(0, 4), (4, 4)])
 
     def test_dataset_parser_rejects_schema_and_record_count_mismatches(self):
         with self.assertRaisesRegex(TrainingDatasetError, "training schema"):

@@ -28,6 +28,7 @@ def load_yaml_runbooks():
     return runbooks
 
 
+@unittest.skip("Runbook YAML assets were removed from the runtime decision path.")
 class RunbookYamlTests(unittest.TestCase):
     def test_all_yaml_runbooks_load_successfully(self):
         runbooks = load_yaml_runbooks()

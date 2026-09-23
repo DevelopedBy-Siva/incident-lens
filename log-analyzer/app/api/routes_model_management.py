@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime
 from typing import Any
@@ -68,6 +67,9 @@ class TrainingJobResponse(BaseModel):
     status: TrainingJobStatus
     artifact_id: str | None
     selected_record_indices: list[int] | None
+    progress_current_step: int | None
+    progress_total_steps: int | None
+    progress_updated_at: datetime | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -214,24 +216,26 @@ def download_dataset(
     dataset = DatasetRepository(db).get_for_project(dataset_id, project.id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    if dataset.status not in {DatasetStatus.VALIDATING, DatasetStatus.READY}:
+    if dataset.status not in {
+        DatasetStatus.VALIDATING,
+        DatasetStatus.READY,
+        DatasetStatus.TRAINED,
+    }:
         raise HTTPException(status_code=409, detail="Dataset is not available")
     try:
-        records = JsonLinesDatasetSerializer().deserialize(
-            configured_dataset_storage().load(dataset.storage_key)
-        )
+        content = configured_dataset_storage().load(dataset.storage_key)
+        JsonLinesDatasetSerializer().deserialize(content)
     except (FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(
             status_code=409, detail="Dataset contents are not available"
         ) from exc
 
-    content = json.dumps(records, ensure_ascii=False, indent=2).encode("utf-8")
     return Response(
         content=content,
-        media_type="application/json",
+        media_type="application/x-ndjson",
         headers={
             "Content-Disposition": (
-                f'attachment; filename="{dataset.dataset_version}.json"'
+                f'attachment; filename="{dataset.dataset_version}.jsonl"'
             )
         },
     )
@@ -331,8 +335,8 @@ def create_training_job(
     dataset = DatasetRepository(db).get_for_project(request.dataset_id, project.id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    if dataset.status != DatasetStatus.READY:
-        raise HTTPException(status_code=409, detail="Dataset is not READY")
+    if dataset.status not in {DatasetStatus.READY, DatasetStatus.TRAINED}:
+        raise HTTPException(status_code=409, detail="Dataset is not ready for training")
 
     selected_indices = request.selected_record_indices
     if selected_indices is not None:

@@ -25,6 +25,23 @@ class JsonLinesDatasetSerializer:
         ]
         return ("\n".join(lines) + "\n").encode("utf-8")
 
+    def normalize(self, examples: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert supported legacy records to the current training schema."""
+        normalized = []
+        for example in examples:
+            if (
+                isinstance(example, dict)
+                and "expected_output" not in example
+                and isinstance(example.get("output"), dict)
+            ):
+                output = example["output"]
+                example = {
+                    key: value for key, value in example.items() if key != "output"
+                }
+                example["expected_output"] = output
+            normalized.append(example)
+        return normalized
+
     def validate(self, examples: Sequence[dict[str, Any]]) -> None:
         if not examples:
             raise DatasetValidationError("Dataset must contain at least one record")
@@ -39,26 +56,33 @@ class JsonLinesDatasetSerializer:
                     f"Record {index} requires input and expected_output objects"
                 )
 
-            incident = input_data.get("incident")
             logs = input_data.get("logs")
-            if not isinstance(incident, dict):
-                raise DatasetValidationError(
-                    f"Record {index} requires an input.incident object"
-                )
-            for field in ("id", "source", "signature"):
-                if not self._non_empty_string(incident.get(field)):
+            incident = input_data.get("incident")
+            if incident is not None:
+                if not isinstance(incident, dict):
                     raise DatasetValidationError(
-                        f"Record {index} requires input.incident.{field}"
+                        f"Record {index} requires an input.incident object"
                     )
+                for field in ("id", "source", "signature"):
+                    if not self._non_empty_string(incident.get(field)):
+                        raise DatasetValidationError(
+                            f"Record {index} requires input.incident.{field}"
+                        )
+                if not isinstance(input_data.get("evidence"), dict):
+                    raise DatasetValidationError(
+                        f"Record {index} requires an input.evidence object"
+                    )
+            else:
+                for field in ("service", "environment"):
+                    if not self._non_empty_string(input_data.get(field)):
+                        raise DatasetValidationError(
+                            f"Record {index} requires input.{field}"
+                        )
             if not isinstance(logs, list) or not all(
                 isinstance(line, str) for line in logs
             ):
                 raise DatasetValidationError(
                     f"Record {index} requires input.logs as a list of strings"
-                )
-            if not isinstance(input_data.get("evidence"), dict):
-                raise DatasetValidationError(
-                    f"Record {index} requires an input.evidence object"
                 )
             if not isinstance(input_data.get("metadata"), dict):
                 raise DatasetValidationError(

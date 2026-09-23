@@ -22,6 +22,7 @@ from app.shared.database import Base
 class DatasetStatus(str, Enum):
     VALIDATING = "VALIDATING"
     READY = "READY"
+    TRAINED = "TRAINED"
     FAILED = "FAILED"
 
 
@@ -120,6 +121,9 @@ class TrainingJob(Base):
         String, ForeignKey("model_artifacts.id"), nullable=True, index=True
     )
     selected_record_indices = Column(JSON, nullable=True)
+    progress_current_step = Column(Integer, nullable=True)
+    progress_total_steps = Column(Integer, nullable=True)
+    progress_updated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

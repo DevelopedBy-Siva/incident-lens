@@ -105,6 +105,7 @@ class DatasetImportCommand(DatasetBuildCommand):
         if not ProjectRepository(self.db).get(project_id):
             raise ValueError("Project not found")
 
+        examples = self.serializer.normalize(examples)
         self.serializer.validate(examples)
         serialized = self.serializer.serialize(examples)
         dataset = self._reserve_version(project_id)

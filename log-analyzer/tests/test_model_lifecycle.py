@@ -22,6 +22,9 @@ from app.shared.migrations.versions.v0006_datadog_log_source import (
 from app.shared.migrations.versions.v0007_remove_datadog_environment import (
     upgrade as upgrade_v7,
 )
+from app.shared.migrations.versions.v0010_trained_dataset_status import (
+    upgrade as upgrade_v10,
+)
 from app.training.models import (
     DatasetStatus,
     ModelArtifactStatus,
@@ -415,6 +418,62 @@ class ModelLifecycleMigrationTests(unittest.TestCase):
                 text("SELECT record_count FROM datasets WHERE id = 'dataset-1'")
             ).scalar_one()
         self.assertEqual(count, 0)
+        engine.dispose()
+
+    def test_trained_status_migration_backfills_successful_datasets(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE projects (id VARCHAR PRIMARY KEY)"))
+            connection.execute(
+                text(
+                    "CREATE TABLE datasets ("
+                    "id VARCHAR PRIMARY KEY, project_id VARCHAR NOT NULL, "
+                    "dataset_version VARCHAR NOT NULL, storage_key VARCHAR NOT NULL, "
+                    "record_count INTEGER NOT NULL DEFAULT 0, "
+                    "selected_record_indices JSON, "
+                    "status VARCHAR(10) NOT NULL DEFAULT 'VALIDATING', "
+                    "created_at DATETIME NOT NULL, "
+                    "CONSTRAINT dataset_status CHECK "
+                    "(status IN ('VALIDATING', 'READY', 'FAILED'))"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE training_jobs ("
+                    "id VARCHAR PRIMARY KEY, dataset_id VARCHAR NOT NULL, "
+                    "status VARCHAR NOT NULL)"
+                )
+            )
+            connection.execute(text("INSERT INTO projects VALUES ('project-1')"))
+            connection.execute(
+                text(
+                    "INSERT INTO datasets VALUES ("
+                    "'dataset-1', 'project-1', 'dataset-v1', 'dataset-v1.jsonl', "
+                    "1, NULL, 'READY', CURRENT_TIMESTAMP)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO training_jobs VALUES "
+                    "('job-1', 'dataset-1', 'PASSED')"
+                )
+            )
+
+            upgrade_v10(connection)
+
+        with engine.connect() as connection:
+            status = connection.execute(
+                text("SELECT status FROM datasets WHERE id = 'dataset-1'")
+            ).scalar_one()
+            self.assertEqual(status, "TRAINED")
+            connection.execute(
+                text(
+                    "INSERT INTO datasets VALUES ("
+                    "'dataset-2', 'project-1', 'dataset-v2', 'dataset-v2.jsonl', "
+                    "1, NULL, 'TRAINED', CURRENT_TIMESTAMP)"
+                )
+            )
         engine.dispose()
 
 

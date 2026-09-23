@@ -31,6 +31,19 @@ class _ListDataset:
         return self.records[index]
 
 
+def _progress_callback_class(base_callback, report):
+    class ProgressCallback(base_callback):
+        def on_train_begin(self, args, state, control, **kwargs):
+            report(0, state.max_steps)
+            return control
+
+        def on_step_end(self, args, state, control, **kwargs):
+            report(state.global_step, state.max_steps)
+            return control
+
+    return ProgressCallback
+
+
 class TransformersPeftTrainingEngine(TrainingEngine):
     """Train and persist a real PEFT LoRA adapter with Transformers."""
 
@@ -118,6 +131,12 @@ class TransformersPeftTrainingEngine(TrainingEngine):
             padding=True,
             label_pad_token_id=-100,
         )
+        callbacks = None
+        if request.progress_callback is not None:
+            progress_callback = _progress_callback_class(
+                dependencies["TrainerCallback"], request.progress_callback
+            )
+            callbacks = [progress_callback()]
         trainer = dependencies["Trainer"](
             model=model,
             args=training_arguments,
@@ -127,6 +146,7 @@ class TransformersPeftTrainingEngine(TrainingEngine):
             ),
             data_collator=data_collator,
             processing_class=tokenizer,
+            callbacks=callbacks,
         )
 
         train_output = trainer.train()
@@ -168,15 +188,17 @@ class TransformersPeftTrainingEngine(TrainingEngine):
     @staticmethod
     def _load_dependencies() -> dict[str, Any]:
         try:
-            from datasets import Dataset as HuggingFaceDataset
             from peft import LoraConfig, TaskType, get_peft_model
             from transformers import (
                 AutoModelForCausalLM,
                 AutoTokenizer,
                 DataCollatorForSeq2Seq,
                 Trainer,
+                TrainerCallback,
                 TrainingArguments,
             )
+
+            from datasets import Dataset as HuggingFaceDataset
         except ImportError as exc:
             raise RuntimeError(
                 "LoRA training dependencies are unavailable; install the backend "
@@ -191,6 +213,7 @@ class TransformersPeftTrainingEngine(TrainingEngine):
             "TaskType": TaskType,
             "Trainer": Trainer,
             "TrainingArguments": TrainingArguments,
+            "TrainerCallback": TrainerCallback,
             "get_peft_model": get_peft_model,
         }
 

@@ -173,6 +173,30 @@ class DatasetBuilderTests(unittest.TestCase):
         self.assertTrue(first.endswith(b"\n"))
         self.assertEqual(json.loads(first), examples[0])
 
+    def test_serializer_normalizes_legacy_jsonl_records(self):
+        serializer = JsonLinesDatasetSerializer()
+        legacy = {
+            "input": {
+                "logs": ["ERROR connection pool exhausted"],
+                "environment": "prod",
+                "service": "checkout",
+                "metadata": {"region": "us-west-2"},
+            },
+            "output": {
+                "incident_type": "database_connection_failure",
+                "severity": "high",
+                "disposition": "NEEDS_ONCALL",
+                "summary": "The database connection pool was exhausted.",
+                "recommended_actions": ["notify_oncall"],
+            },
+        }
+
+        normalized = serializer.normalize([legacy])
+        serializer.validate(normalized)
+
+        self.assertNotIn("output", normalized[0])
+        self.assertEqual(normalized[0]["expected_output"], legacy["output"])
+
     def test_local_storage_never_overwrites_a_dataset(self):
         with tempfile.TemporaryDirectory() as directory:
             storage = LocalDatasetStorage(directory)
@@ -302,10 +326,19 @@ class DatasetBuilderTests(unittest.TestCase):
 
                 download_response = client.get(f"/api/datasets/{first['id']}/download")
                 self.assertEqual(download_response.status_code, 200)
-                self.assertEqual(download_response.json(), [records[0]["data"]])
+                downloaded_records = [
+                    json.loads(line)
+                    for line in download_response.text.splitlines()
+                    if line.strip()
+                ]
+                self.assertEqual(downloaded_records, [records[0]["data"]])
                 self.assertIn(
-                    "dataset-v1.json",
+                    "dataset-v1.jsonl",
                     download_response.headers["content-disposition"],
+                )
+                self.assertEqual(
+                    download_response.headers["content-type"],
+                    "application/x-ndjson",
                 )
 
                 job_response = client.post(

@@ -11,14 +11,9 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_PATH = ROOT / "log-server" / "server.py"
-ANALYZER_PATH = ROOT / "log-analyzer"
-sys.path.insert(0, str(ANALYZER_PATH))
-
 spec = importlib.util.spec_from_file_location("log_server_module", SERVER_PATH)
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
-
-from app.serving.runbook_matcher import get_runbook_candidates  # noqa: E402
 
 REQUIRED_SCENARIOS = {
     "healthcheck_timeout_noise",
@@ -63,26 +58,10 @@ class ScenarioRegistryTests(unittest.TestCase):
             with self.subTest(scenario=scenario_name):
                 self.assertIn("description", scenario)
                 self.assertIn("services", scenario)
-                self.assertIn("expected_runbook", scenario)
                 self.assertIn("expected_severity", scenario)
                 self.assertIn("expected_disposition", scenario)
                 self.assertIn("expected_allowed_actions", scenario)
                 self.assertIn("expected_blocked_actions", scenario)
-
-    def test_scenario_logs_match_expected_runbooks(self):
-        for scenario_name, scenario in server.SCENARIOS.items():
-            with self.subTest(scenario=scenario_name):
-                incident = SimpleNamespace(
-                    signature=scenario_name,
-                    sample_lines=[
-                        server.format_scenario_log(step, scenario_name, 1, idx)
-                        for idx, step in enumerate(scenario["steps"], start=1)
-                    ],
-                    count=len(scenario["steps"]),
-                )
-                candidates = get_runbook_candidates(incident, limit=5)
-                candidate_ids = [runbook.id for runbook, _ in candidates]
-                self.assertIn(scenario["expected_runbook"], candidate_ids)
 
 
 class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):

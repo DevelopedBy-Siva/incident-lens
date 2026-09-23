@@ -231,7 +231,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 )
 
                 self.db.refresh(dataset)
-                self.assertEqual(dataset.status, DatasetStatus.READY)
+                self.assertEqual(dataset.status, DatasetStatus.TRAINED)
 
     def test_worker_trains_only_selected_dataset_records(self):
         records = [
@@ -374,7 +374,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 with self.assertRaises(TrainingJobStateError):
                     worker.run(job.id, self.project.id)
 
-    def test_successive_jobs_version_artifacts_and_activate_latest(self):
+    def test_successive_jobs_reuse_trained_dataset_and_activate_latest(self):
         with tempfile.TemporaryDirectory() as dataset_directory:
             with tempfile.TemporaryDirectory() as artifact_directory:
                 storage = LocalDatasetStorage(dataset_directory)
@@ -390,6 +390,9 @@ class TrainingPipelineTests(unittest.TestCase):
                     self.project.id, dataset.id
                 )
                 first = worker.run(first_job.id, self.project.id)
+                self.db.refresh(dataset)
+                self.assertEqual(dataset.status, DatasetStatus.TRAINED)
+
                 second_job = self.management.create_training_job(
                     self.project.id, dataset.id
                 )

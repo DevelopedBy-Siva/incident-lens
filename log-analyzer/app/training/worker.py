@@ -128,7 +128,7 @@ class TrainingWorker:
         artifact_version = None
         try:
             project = self._require_project(project_id)
-            dataset = self._require_ready_dataset(project_id, job.dataset_id)
+            dataset = self._require_trainable_dataset(project_id, job.dataset_id)
             dataset_content = self.dataset_storage.load(dataset.storage_key)
             expected_record_count = dataset.record_count
             selected_indices = (
@@ -169,6 +169,9 @@ class TrainingWorker:
                         expected_record_count=expected_record_count,
                         adapter_output_path=adapter_path,
                         profile=self.training_profile,
+                        progress_callback=lambda current, total: self._save_progress(
+                            job, current, total
+                        ),
                     )
                 )
                 training_span.tags(
@@ -250,7 +253,7 @@ class TrainingWorker:
                     ),
                 )
                 artifact_span.tag("result", "created")
-            return self._activate_and_complete(project, job, artifact)
+            return self._activate_and_complete(project, dataset, job, artifact)
         except Exception as exc:  # noqa: BLE001 - lifecycle failures must mark the job
             logger.warning("Training job %s failed: %s", job_id, exc)
             if artifact is None and artifact_version is not None:
@@ -296,6 +299,7 @@ class TrainingWorker:
     def _activate_and_complete(
         self,
         project: Project,
+        dataset: Dataset,
         job: TrainingJob,
         artifact: ModelArtifact,
     ) -> TrainingJob:
@@ -312,6 +316,7 @@ class TrainingWorker:
             },
         ) as span:
             self.projects.set_active_artifact(project, artifact.id)
+            self.datasets.set_status(dataset, DatasetStatus.TRAINED)
             self.jobs.transition(
                 job,
                 TrainingJobStatus.PASSED,
@@ -357,10 +362,31 @@ class TrainingWorker:
             raise TrainingPipelineError("Project not found")
         return project
 
-    def _require_ready_dataset(self, project_id: str, dataset_id: str) -> Dataset:
+    def _save_progress(
+        self, job: TrainingJob, current_step: int, total_steps: int
+    ) -> None:
+        update_interval = max(1, total_steps // 200)
+        if current_step not in {0, total_steps} and current_step % update_interval:
+            return
+        try:
+            self.jobs.set_progress(
+                job,
+                current_step,
+                total_steps,
+                datetime.utcnow(),
+            )
+            self.db.commit()
+        except Exception:  # noqa: BLE001 - telemetry must not fail training
+            self.db.rollback()
+            logger.warning("Could not persist progress for training job %s", job.id)
+
+    def _require_trainable_dataset(self, project_id: str, dataset_id: str) -> Dataset:
         dataset = self.datasets.get_for_project(dataset_id, project_id)
-        if not dataset or dataset.status != DatasetStatus.READY:
-            raise TrainingPipelineError("Training job dataset is not READY")
+        if not dataset or dataset.status not in {
+            DatasetStatus.READY,
+            DatasetStatus.TRAINED,
+        }:
+            raise TrainingPipelineError("Training job dataset is not trainable")
         return dataset
 
     def _artifact_metadata(

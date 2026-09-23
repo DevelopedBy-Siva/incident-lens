@@ -9,6 +9,8 @@ from app.shared.migrations.versions import (
     v0007_remove_datadog_environment,
     v0008_training_job_record_selection,
     v0009_dataset_record_selection,
+    v0010_trained_dataset_status,
+    v0011_training_job_progress,
 )
 
 MIGRATIONS = (
@@ -20,6 +22,8 @@ MIGRATIONS = (
     v0007_remove_datadog_environment,
     v0008_training_job_record_selection,
     v0009_dataset_record_selection,
+    v0010_trained_dataset_status,
+    v0011_training_job_progress,
 )
 
 

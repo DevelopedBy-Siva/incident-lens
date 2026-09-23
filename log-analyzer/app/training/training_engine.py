@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,7 @@ class TrainingRequest:
     expected_record_count: int
     adapter_output_path: str
     profile: LoraTrainingProfile
+    progress_callback: Callable[[int, int], None] | None = None
 
 
 @dataclass(frozen=True)

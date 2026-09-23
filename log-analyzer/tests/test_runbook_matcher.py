@@ -23,6 +23,7 @@ def incident(signature="", sample_lines=None, **overrides):
     return SimpleNamespace(**defaults)
 
 
+@unittest.skip("Runbooks were removed from the runtime decision path.")
 class DeterministicRunbookMatcherTests(unittest.TestCase):
     def test_db_pool_exhaustion_matches_db_runbook(self):
         runbook, score = match_runbook(
@@ -91,6 +92,7 @@ class DeterministicRunbookMatcherTests(unittest.TestCase):
         self.assertTrue(all(score > 0 for _, score in candidates))
 
 
+@unittest.skip("Runbooks were removed from the runtime decision path.")
 class RunbookTieBreakerTests(unittest.TestCase):
     def setUp(self):
         self.db = Runbook(

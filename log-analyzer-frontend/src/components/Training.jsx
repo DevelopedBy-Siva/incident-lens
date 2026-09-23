@@ -31,6 +31,16 @@ import {
   StatusBadge,
 } from "./modelLifecycle/ModelUi";
 
+function formatDuration(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "—";
+  const seconds = Math.round(totalSeconds);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
 function WorkflowStep({ icon: Icon, title, description, active }) {
   return (
     <div
@@ -332,19 +342,20 @@ function Training() {
     };
   }, []);
 
-  const readyDatasets = useMemo(
-    () => datasets.filter((dataset) => dataset.status === "READY"),
+  const trainableDatasets = useMemo(
+    () =>
+      datasets.filter((dataset) => ["READY", "TRAINED"].includes(dataset.status)),
     [datasets],
   );
 
   useEffect(() => {
     if (
-      readyDatasets.length > 0 &&
-      !readyDatasets.some((dataset) => dataset.id === selectedDataset)
+      trainableDatasets.length > 0 &&
+      !trainableDatasets.some((dataset) => dataset.id === selectedDataset)
     ) {
-      setSelectedDataset(readyDatasets[0].id);
+      setSelectedDataset(trainableDatasets[0].id);
     }
-  }, [readyDatasets, selectedDataset]);
+  }, [trainableDatasets, selectedDataset]);
 
   const artifactById = useMemo(
     () =>
@@ -492,11 +503,31 @@ function Training() {
     setActionError("");
     setMessage("");
     try {
-      const parsed = JSON.parse(await file.text());
-      const records = Array.isArray(parsed) ? parsed : parsed?.records;
-      if (!Array.isArray(records)) {
-        throw new Error("The JSON file must contain an array of dataset records.");
-      }
+      const lines = (await file.text()).split(/\r?\n/);
+      const records = lines.flatMap((line, index) => {
+        if (!line.trim()) return [];
+        try {
+          const record = JSON.parse(line);
+          if (!record || Array.isArray(record) || typeof record !== "object") {
+            throw new Error("must be a JSON object");
+          }
+          if (
+            !("expected_output" in record) &&
+            record.output &&
+            !Array.isArray(record.output) &&
+            typeof record.output === "object"
+          ) {
+            const { output, ...rest } = record;
+            return [{ ...rest, expected_output: output }];
+          }
+          return [record];
+        } catch (error) {
+          throw new Error(
+            `Invalid JSONL record on line ${index + 1}: ${error.message}`,
+          );
+        }
+      });
+      if (records.length === 0) throw new Error("The JSONL file is empty.");
       const response = await modelLifecycleAPI.uploadDataset(records);
       invalidateModelLifecycleCache();
       await refresh(true);
@@ -504,7 +535,7 @@ function Training() {
     } catch (requestError) {
       setActionError(
         requestError instanceof SyntaxError || !requestError.response
-          ? requestError.message || "Could not read the JSON file."
+          ? requestError.message || "Could not read the JSONL file."
           : errorMessage(requestError, "Could not upload this dataset."),
       );
     } finally {
@@ -519,7 +550,7 @@ function Training() {
       const url = URL.createObjectURL(response.data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${dataset.dataset_version}.json`;
+      link.download = `${dataset.dataset_version}.jsonl`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -628,7 +659,7 @@ function Training() {
               <input
                 ref={uploadInputRef}
                 type="file"
-                accept="application/json,.json"
+                accept=".jsonl,application/x-ndjson,application/jsonl"
                 onChange={uploadDataset}
                 className="hidden"
               />
@@ -643,7 +674,7 @@ function Training() {
                 ) : (
                   <Upload size={13} />
                 )}
-                {uploadingDataset ? "Uploading..." : "Upload JSON"}
+                {uploadingDataset ? "Uploading..." : "Upload JSONL"}
               </button>
               <button
                 type="button"
@@ -736,7 +767,9 @@ function Training() {
                                 setOpenDatasetMenu(null);
                                 openDataset(dataset);
                               }}
-                              disabled={dataset.status === "FAILED"}
+                              disabled={["FAILED", "TRAINED"].includes(
+                                dataset.status,
+                              )}
                               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-google-text hover:bg-google-hover disabled:cursor-not-allowed disabled:text-google-muted"
                             >
                               <Eye size={14} /> Review
@@ -750,7 +783,7 @@ function Training() {
                               disabled={dataset.status === "FAILED"}
                               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-google-text hover:bg-google-hover disabled:cursor-not-allowed disabled:text-google-muted"
                             >
-                              <Download size={14} /> Download JSON
+                              <Download size={14} /> Download JSONL
                             </button>
                             <button
                               type="button"
@@ -787,13 +820,13 @@ function Training() {
               <select
                 value={selectedDataset}
                 onChange={(event) => setSelectedDataset(event.target.value)}
-                disabled={createBusy || readyDatasets.length === 0}
+                disabled={createBusy || trainableDatasets.length === 0}
                 className="min-w-52 px-3 py-2 bg-google-bg border border-google-border rounded-lg text-xs text-google-text disabled:text-google-muted"
               >
-                {readyDatasets.length === 0 && (
+                {trainableDatasets.length === 0 && (
                   <option value="">No datasets ready for training</option>
                 )}
-                {readyDatasets.map((dataset) => (
+                {trainableDatasets.map((dataset) => (
                   <option key={dataset.id} value={dataset.id}>
                     {dataset.dataset_version} ·{" "}
                     {dataset.selected_record_indices?.length ?? dataset.record_count}{" "}
@@ -827,6 +860,26 @@ function Training() {
               {jobs.map((job) => {
                 const dataset = datasetById[job.dataset_id];
                 const artifact = artifactById[job.artifact_id];
+                const active = ["RUNNING", "EVALUATING"].includes(job.status);
+                const elapsedSeconds = job.started_at
+                  ? (new Date(job.finished_at || Date.now()).getTime() -
+                      new Date(job.started_at).getTime()) /
+                    1000
+                  : null;
+                const hasProgress =
+                  job.progress_total_steps > 0 &&
+                  job.progress_current_step !== null;
+                const progressPercent = hasProgress
+                  ? Math.min(
+                      100,
+                      (job.progress_current_step / job.progress_total_steps) * 100,
+                    )
+                  : 0;
+                const remainingSeconds =
+                  active && hasProgress && job.progress_current_step > 0
+                    ? (elapsedSeconds / job.progress_current_step) *
+                      (job.progress_total_steps - job.progress_current_step)
+                    : null;
                 return (
                   <div
                     key={job.id}
@@ -840,6 +893,38 @@ function Training() {
                             {job.id}
                           </span>
                         </div>
+                        {(active || hasProgress) && (
+                          <div className="mb-4 max-w-3xl">
+                            {hasProgress && (
+                              <div className="mb-2 h-2 overflow-hidden rounded-full bg-google-chip">
+                                <div
+                                  className="h-full rounded-full bg-google-blue transition-[width] duration-500"
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-google-muted">
+                              {hasProgress && (
+                                <span>
+                                  {progressPercent.toFixed(1)}% · step{" "}
+                                  {job.progress_current_step.toLocaleString()} of{" "}
+                                  {job.progress_total_steps.toLocaleString()}
+                                </span>
+                              )}
+                              {elapsedSeconds !== null && (
+                                <span>Elapsed {formatDuration(elapsedSeconds)}</span>
+                              )}
+                              {remainingSeconds !== null && (
+                                <span>
+                                  About {formatDuration(remainingSeconds)} remaining
+                                </span>
+                              )}
+                              {active && !hasProgress && (
+                                <span>Step progress unavailable for this run</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
                           <div>
                             <span className="text-google-muted">Dataset</span>

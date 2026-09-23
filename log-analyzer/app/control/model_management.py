@@ -107,8 +107,8 @@ class ModelManagementService:
             dataset = self.datasets.get_for_project(dataset_id, project_id)
             if not dataset:
                 raise ValueError("Dataset does not belong to project")
-            if dataset.status != DatasetStatus.READY:
-                raise ValueError("Training jobs require a READY dataset")
+            if dataset.status not in {DatasetStatus.READY, DatasetStatus.TRAINED}:
+                raise ValueError("Training jobs require a READY or TRAINED dataset")
             job = TrainingJob(
                 project_id=project_id,
                 dataset_id=dataset_id,
@@ -131,8 +131,8 @@ class ModelManagementService:
         dataset = self.datasets.get_for_project(dataset_id, project_id)
         if not dataset:
             raise ValueError("Dataset does not belong to project")
-        if dataset.status != DatasetStatus.READY:
-            raise ValueError("Model artifacts require a READY dataset")
+        if dataset.status not in {DatasetStatus.READY, DatasetStatus.TRAINED}:
+            raise ValueError("Model artifacts require a READY or TRAINED dataset")
         artifact = ModelArtifact(
             project_id=project_id,
             artifact_version=artifact_version,

@@ -2,6 +2,7 @@ import React from "react";
 
 const STATUS_STYLES = {
   READY: "bg-green-500/15 text-google-green border-google-green/30",
+  TRAINED: "bg-purple-500/15 text-purple-700 border-purple-300/30",
   PASSED: "bg-green-500/15 text-google-green border-google-green/30",
   RUNNING: "bg-google-blue/15 text-google-blue border-google-blue/30",
   EVALUATING: "bg-google-blue/10 text-google-blue border-google-blue/30",

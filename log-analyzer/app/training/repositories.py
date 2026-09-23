@@ -223,6 +223,18 @@ class TrainingJobRepository:
             job.finished_at = finished_at
         return job
 
+    def set_progress(
+        self,
+        job: TrainingJob,
+        current_step: int,
+        total_steps: int,
+        updated_at: datetime,
+    ) -> TrainingJob:
+        job.progress_current_step = current_step
+        job.progress_total_steps = total_steps
+        job.progress_updated_at = updated_at
+        return job
+
 
 class ModelArtifactRepository:
     """Persistence operations for model artifact metadata."""
