@@ -73,22 +73,6 @@ class EvidenceBundle:
         else:
             parts.append("  (none)")
 
-        parts.append("\n=== Matched runbook ===")
-        if self.runbook_id:
-            parts.append(
-                f"  Name:  {self.runbook_name}  (score={self.runbook_score:.2f})"
-            )
-            if self.runbook_selection_source:
-                parts.append(f"  Selection source: {self.runbook_selection_source}")
-            if self.runbook_steps:
-                parts.append("  Steps:")
-                for i, step in enumerate(self.runbook_steps[:6], 1):
-                    parts.append(f"    {i}. {step}")
-        else:
-            parts.append("  (no runbook matched above threshold)")
-            if self.candidate_runbooks:
-                parts.append(f"  Candidates: {', '.join(self.candidate_runbooks)}")
-
         if self.root_cause_id:
             parts.append("\n=== Known root cause ===")
             parts.append(f"  Incident: {self.root_cause_id}")

@@ -1,9 +1,8 @@
 import asyncio
-import logging
 import random
-from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -26,6 +25,8 @@ SUPPORTED_DATADOG_SITES = {
     "ddog-gov.com",
     "us2.ddog-gov.com",
 }
+
+DATA_LOG_PATH = Path(__file__).resolve().parent / "data" / "data.log"
 
 
 @dataclass(frozen=True)
@@ -1126,46 +1127,20 @@ async def _run_scenario(scenario_name: str, repeat: int = 1, speed: float = 1.0)
     print(f"[SCENARIO] '{scenario_name}' complete")
 
 
-class CustomFormatter(logging.Formatter):
-    def format(self, record):
-        timestamp = datetime.fromtimestamp(record.created).isoformat()
-        return f"[{timestamp}] {record.levelname}: {record.getMessage()}"
-
-
-class InMemoryHandler(logging.Handler):
-    def __init__(self, buffer):
-        super().__init__()
-        self.buffer = buffer
-
-    def emit(self, record):
-        self.buffer.append(self.format(record))
-
-
 class LogGenerator:
     def __init__(self):
         self._stop_event = asyncio.Event()
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
-        self.log_buffer = deque(maxlen=50)
         self.stats = {
-            "logs_generated": 0,
+            "logs_loaded": 0,
             "logs_shipped": 0,
-            "batches_pushed": 0,
+            "lines_read": 0,
             "push_errors": 0,
         }
         self.last_push_at: str | None = None
         self.last_error: str | None = None
         self.datadog_config: DatadogWriteConfig | None = None
-        self.logger = self._setup_logger()
-
-    def _setup_logger(self):
-        logger = logging.getLogger("log-generator")
-        logger.setLevel(logging.INFO)
-        logger.handlers = []
-        handler = InMemoryHandler(self.log_buffer)
-        handler.setFormatter(CustomFormatter())
-        logger.addHandler(handler)
-        return logger
 
     @property
     def running(self) -> bool:
@@ -1191,14 +1166,11 @@ class LogGenerator:
                 self._run(
                     duration=duration,
                     interval_seconds=max(interval_seconds, 0.01),
-                    batch_size=max(1, batch_size),
-                    error_rate=min(max(error_rate, 0.0), 1.0),
-                    slow_rate=min(max(slow_rate, 0.0), 1.0),
                 )
             )
             print(
-                f"[LOG-SERVER] Started — {duration}s, interval={interval_seconds}s, "
-                f"batch_size={batch_size}, error_rate={error_rate:.2f}, slow_rate={slow_rate:.2f}"
+                f"[LOG-SERVER] Started file stream — {DATA_LOG_PATH}, "
+                f"duration={duration}s, interval={interval_seconds}s"
             )
             return True, "started"
 
@@ -1218,22 +1190,36 @@ class LogGenerator:
         self,
         duration: int = 300,
         interval_seconds: float = 3.0,
-        batch_size: int = 1,
-        error_rate: float = ERROR_RATE,
-        slow_rate: float = SLOW_REQUEST_RATE,
     ):
         print(
-            f"[LOG-SERVER] Running for {duration}s at interval={interval_seconds}s "
-            f"batch_size={batch_size}"
+            f"[LOG-SERVER] Streaming {DATA_LOG_PATH} for up to {duration}s "
+            f"at interval={interval_seconds}s"
         )
+        if not DATA_LOG_PATH.exists():
+            self.last_error = f"Log file not found: {DATA_LOG_PATH}"
+            self.stats["push_errors"] += 1
+            print(f"[LOG-SERVER] {self.last_error}")
+            return
+
+        lines = [
+            line.strip()
+            for line in DATA_LOG_PATH.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.stats["logs_loaded"] = len(lines)
         start_time = asyncio.get_event_loop().time()
         try:
-            while not self._stop_event.is_set():
+            for line_number, line in enumerate(lines, start=1):
+                if self._stop_event.is_set():
+                    break
                 if asyncio.get_event_loop().time() - start_time >= duration:
                     break
-                self._generate_logs(batch_size, error_rate, slow_rate)
-                if self.log_buffer:
-                    await self._flush_to_datadog()
+
+                self.stats["lines_read"] = line_number
+                success = await self._send_line(line)
+                if not success:
+                    break
+
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(), timeout=interval_seconds
@@ -1241,65 +1227,30 @@ class LogGenerator:
                 except asyncio.TimeoutError:
                     pass
 
-            if self.log_buffer:
-                await self._flush_to_datadog()
-
             print(f"[LOG-SERVER] Finished. Stats: {self.stats}")
         except asyncio.CancelledError:
             print("[LOG-SERVER] Task cancelled")
 
-    def _generate_logs(
-        self,
-        count: int,
-        error_rate: float = ERROR_RATE,
-        slow_rate: float = SLOW_REQUEST_RATE,
-    ):
-        for _ in range(count):
-            self.stats["logs_generated"] += 1
-            rand = random.random()
-            if rand < error_rate:
-                self.logger.error(random.choice(ERROR_GENERATORS)())
-            elif rand < error_rate + slow_rate:
-                svc = random.choice(["checkout", "search", "auth", "upload", "report"])
-                delay = random.uniform(2, 8)
-                self.logger.warning(
-                    f"SlowRequestWarning: {svc} endpoint took {delay:.2f}s — SLA breach"
-                )
-            else:
-                endpoints = [
-                    "GET /api/users/{} 200 12ms",
-                    "POST /api/orders/{} 201 45ms",
-                    "GET /api/products/{} 200 8ms",
-                    "PUT /api/cart/{} 200 23ms",
-                    "GET /health 200 1ms",
-                ]
-                self.logger.info(
-                    random.choice(endpoints).format(random.randint(1000, 9999))
-                )
-
-    async def _flush_to_datadog(self):
-        if not self.log_buffer:
-            return
-
-        logs = list(self.log_buffer)
-        self.log_buffer.clear()
-
+    async def _send_line(self, line: str) -> bool:
         if self.datadog_config is None:
             self.last_error = "Datadog configuration missing"
             self.stats["push_errors"] += 1
-            self.log_buffer.extendleft(reversed(logs))
-            return
+            return False
 
-        success = await push_to_datadog(logs, self.datadog_config)
+        success = await push_to_datadog(
+            [line],
+            self.datadog_config,
+            extra_tags={"log_source": "data_log"},
+        )
         if success:
-            self.stats["logs_shipped"] += len(logs)
-            self.stats["batches_pushed"] += 1
+            self.stats["logs_shipped"] += 1
             self.last_push_at = datetime.now(timezone.utc).isoformat()
-            print(f"[LOG-SERVER] Sent {len(logs)} logs to Datadog")
+            print(f"[LOG-SERVER] Sent line {self.stats['lines_read']}: {line[:90]}...")
+            return True
         else:
             self.stats["push_errors"] += 1
             self.last_error = "Datadog send failed"
-            self.log_buffer.extendleft(reversed(logs))
+            return False
 
 
 log_generator: LogGenerator | None = None
@@ -1343,11 +1294,10 @@ async def start_generation(
         "message": msg,
         "status": "running" if log_generator.running else "idle",
         "transport": "datadog",
+        "source": "file",
+        "file": str(DATA_LOG_PATH),
         "duration_seconds": duration,
         "interval_seconds": interval_seconds,
-        "batch_size": batch_size,
-        "error_rate": error_rate,
-        "slow_rate": slow_rate,
     }
 
 

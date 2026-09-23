@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -140,6 +141,38 @@ class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config.site, "datadoghq.com")
         self.assertEqual(config.service, "project-api")
         self.assertEqual(response["status"], "running")
+
+    async def test_file_streamer_sends_data_log_lines_to_datadog(self):
+        with TemporaryDirectory() as directory:
+            log_path = Path(directory) / "data.log"
+            log_path.write_text("INFO first line\nERROR second line\n", encoding="utf-8")
+            config = server.DatadogWriteConfig(
+                api_key="api-secret",
+                site="datadoghq.com",
+                service="project-api",
+            )
+            generator = server.LogGenerator()
+
+            with (
+                patch.object(server, "DATA_LOG_PATH", log_path),
+                patch.object(
+                    server, "push_to_datadog", new=AsyncMock(return_value=True)
+                ) as push,
+            ):
+                started, message = await generator.start(
+                    datadog_config=config,
+                    duration=10,
+                    interval_seconds=0.01,
+                )
+                await generator._task
+
+            self.assertTrue(started)
+            self.assertEqual(message, "started")
+            self.assertEqual(generator.stats["logs_loaded"], 2)
+            self.assertEqual(generator.stats["logs_shipped"], 2)
+            self.assertEqual(push.await_count, 2)
+            self.assertEqual(push.await_args_list[0].args[0], ["INFO first line"])
+            self.assertEqual(push.await_args_list[1].args[0], ["ERROR second line"])
 
 
 if __name__ == "__main__":

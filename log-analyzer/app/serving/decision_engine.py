@@ -114,13 +114,11 @@ You will receive:
 2. An evidence bundle containing:
    - Sample log lines from this incident
    - Other open incidents currently firing in the same system
-   - A matched runbook with recommended steps (if found)
    - A known root cause link (if already established)
 
 Use ALL of this evidence when deciding severity and disposition.
 Key reasoning rules:
 - If multiple related incidents are firing together, treat this as a potential cascade — raise severity
-- If a runbook matched with high score, bias toward its disposition and steps
 - If a root cause is already known, reflect that in the summary
 - If count is low (< 3) and no related incidents, prefer OBSERVE over ESCALATE
 

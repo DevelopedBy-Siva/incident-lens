@@ -168,6 +168,7 @@ class TransformersPeftTrainingEngine(TrainingEngine):
     @staticmethod
     def _load_dependencies() -> dict[str, Any]:
         try:
+            from datasets import Dataset as HuggingFaceDataset
             from peft import LoraConfig, TaskType, get_peft_model
             from transformers import (
                 AutoModelForCausalLM,
@@ -185,6 +186,7 @@ class TransformersPeftTrainingEngine(TrainingEngine):
             "AutoModelForCausalLM": AutoModelForCausalLM,
             "AutoTokenizer": AutoTokenizer,
             "DataCollatorForSeq2Seq": DataCollatorForSeq2Seq,
+            "HuggingFaceDataset": HuggingFaceDataset,
             "LoraConfig": LoraConfig,
             "TaskType": TaskType,
             "Trainer": Trainer,

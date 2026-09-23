@@ -62,26 +62,6 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_runbook",
-            "description": (
-                "Retrieve the full steps of a runbook by its id. "
-                "Use when you have matched a runbook and need its detailed remediation steps."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "runbook_id": {
-                        "type": "string",
-                        "description": "The runbook id (e.g. 'db_connection_timeout')",
-                    }
-                },
-                "required": ["runbook_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "get_incident_timeline",
             "description": (
                 "Get a time-ordered list of all incidents in this project from the "
@@ -117,8 +97,6 @@ class ToolExecutor:
                 return self._get_recent_logs(int(args.get("minutes", 10)))
             elif tool_name == "get_related_incidents":
                 return self._get_related_incidents(int(args.get("minutes", 15)))
-            elif tool_name == "get_runbook":
-                return self._get_runbook(args.get("runbook_id", ""))
             elif tool_name == "get_incident_timeline":
                 return self._get_incident_timeline(int(args.get("minutes", 15)))
             else:
@@ -187,25 +165,6 @@ class ToolExecutor:
         finally:
             db.close()
 
-    def _get_runbook(self, runbook_id: str) -> str:
-        from app.serving.runbook_loader import get_runbooks
-
-        runbooks = get_runbooks()
-        for rb in runbooks:
-            if rb.id == runbook_id:
-                return json.dumps(
-                    {
-                        "id": rb.id,
-                        "name": rb.name,
-                        "description": rb.description,
-                        "default_severity": rb.default_severity,
-                        "disposition": rb.disposition,
-                        "steps": rb.steps,
-                        "observe_threshold": rb.observe_threshold,
-                    }
-                )
-        return json.dumps({"error": f"Runbook '{runbook_id}' not found"})
-
     def _get_incident_timeline(self, minutes: int) -> str:
         from datetime import datetime, timedelta
 
@@ -251,9 +210,8 @@ Use them strategically — you have at most {max_iter} rounds.
 Investigation strategy:
 1. If you see a DB/connection error, call get_related_incidents to detect cascades
 2. If you need more log context, call get_recent_logs
-3. If a runbook ID was suggested, call get_runbook for its steps
-4. If timing of incidents matters, call get_incident_timeline
-5. When you have enough evidence, produce your final JSON analysis
+3. If timing of incidents matters, call get_incident_timeline
+4. When you have enough evidence, produce your final JSON analysis
 
 CRITICAL: After your investigation, you MUST output a JSON object (no markdown, no prose) with:
 {{

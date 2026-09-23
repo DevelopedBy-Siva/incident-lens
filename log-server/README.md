@@ -1,20 +1,19 @@
 # Log Server
 
-A small FastAPI service that generates realistic application logs and sends
-them to Datadog Logs.
+A small FastAPI service that streams realistic application logs from
+`data/data.log` to Datadog Logs.
 
 ## What it does
 
-- Generates info, warning, and error logs in memory
-- Simulates production issues such as database timeouts, OOM failures, and
-  authentication cascades
+- Reads one log line at a time from `data/data.log`
+- Preserves the mix of info, warning, and error logs from the file
 - Sends logs directly to the Datadog HTTP intake API
 - Preserves the structured text format consumed by the IncidentLens parser
 
 ## Data flow
 
 ```text
-Log generator
+data/data.log
       |
       v
 Datadog HTTP intake
@@ -26,7 +25,7 @@ Datadog Logs
 IncidentLens Log Source Connector
 ```
 
-The simulator has no environment configuration. The start request supplies its
+The streamer has no environment configuration. The start request supplies its
 write-only Datadog API key and service through request headers. The optional
 site header defaults to `datadoghq.com`. The
 analyzer proxy fills these headers from the authenticated project's database
@@ -45,13 +44,13 @@ uvicorn server:app --host 0.0.0.0 --port 5001 --reload
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| POST | `/api/start` | Start log generation |
+| POST | `/api/start` | Start streaming `data/data.log` |
 | POST | `/api/stop` | Stop generation |
 
-Start the generator:
+Start the file streamer:
 
 ```bash
-curl -X POST "http://localhost:5001/api/start?duration=60" \
+curl -X POST "http://localhost:5001/api/start?duration=60&interval_seconds=0.25" \
   -H "X-Datadog-API-Key: your-write-api-key" \
   -H "X-Datadog-Site: datadoghq.com" \
   -H "X-Datadog-Service: project-1-api"

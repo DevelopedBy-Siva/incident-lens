@@ -6,7 +6,7 @@ pyyaml==6.0.1
 langchain==0.1.0
 python-dotenv==1.0.0
 httpx<0.28
-requests==2.31.0
+requests>=2.32.2,<3
 psycopg2-binary==2.9.9
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
@@ -17,4 +17,5 @@ torch>=2.4,<3
 transformers==5.17.0
 peft==0.21.0
 accelerate>=1.0,<2
+datasets>=2.15,<5
 safetensors>=0.4,<1

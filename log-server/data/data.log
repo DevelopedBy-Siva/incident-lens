@@ -1,0 +1,1000 @@
+2026-09-22T14:03:13.475Z INFO datadog-agent flush metrics count=2198 host=session-service-8c7d6f9b4-d8c41
+2026-09-22T14:03:14.531Z INFO k8s event namespace=prod Pod webhook-dispatcher-8c7d6f9b4-w9h79 started container webhook-dispatcher
+2026-09-22T14:03:23.959Z INFO [reporting-service] GET /api/v1/cart 201 duration=201.5ms trace=4541596921356f5f region=ap-southeast-2
+2026-09-22T14:03:29.905Z INFO deployment media-processor rollout status: 3/1 replicas updated to v5.15.5
+2026-09-22T14:03:30.042Z INFO worker image-resize batch=955 completed items=378 duration=18.3s
+2026-09-22T14:03:38.416Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=1.7s
+2026-09-22T14:03:39.220Z INFO [analytics-ingest] heartbeat ok host=analytics-ingest-5f6c9b7d8-a8y46 uptime=511834s
+2026-09-22T14:03:40.196Z INFO [inventory-service] redis GET key=session:7924 HIT latency=2.1ms
+2026-09-22T14:03:46.958Z INFO otel span exported service.name=billing-service span_id=71e62ba7 duration=58.2ms
+2026-09-22T14:03:56.050Z INFO deployment search-api rollout status: 5/3 replicas updated to v3.15.20
+2026-09-22T14:04:00.748Z INFO [inventory-service] query SELECT * FROM invoices WHERE id=? rows=21 duration=31.9ms
+2026-09-22T14:04:05.813Z INFO deployment session-service rollout status: 1/2 replicas updated to v2.2.5
+2026-09-22T14:04:11.612Z INFO worker report-export batch=394 completed items=140 duration=3.8s
+2026-09-22T14:04:11.865Z WARN [notification-worker] kafka consumer lag increasing topic=inventory-updates partition=3 lag=17958
+2026-09-22T14:04:15.273Z INFO k8s event namespace=prod HorizontalPodAutoscaler notification-worker status: current CPU utilization 61%
+2026-09-22T14:04:16.432Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=129.8ms tokens=322
+2026-09-22T14:04:18.846Z INFO [payments-gateway] webhook delivered url=https://partner-15.example.com/hooks status=200 attempt=1
+2026-09-22T14:04:23.364Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=9.4s
+2026-09-22T14:04:32.449Z INFO [billing-service] webhook delivered url=https://partner-6.example.com/hooks status=200 attempt=1
+2026-09-22T14:04:35.493Z INFO k8s event namespace=prod Readiness probe succeeded for pod cart-service-5c8b9d7f6-x4y57
+2026-09-22T14:04:37.782Z INFO k8s event namespace=prod Readiness probe succeeded for pod inventory-service-9f5d7c6b8-c9f51
+2026-09-22T14:04:40.692Z INFO [billing-service] POST /api/v1/orders 200 duration=101.9ms trace=76108707c14545cf region=us-east-2
+2026-09-22T14:04:41.865Z WARN [notification-worker] kafka consumer lag topic=inventory-updates lag=51586
+2026-09-22T14:04:42.050Z INFO otel span exported service.name=webhook-dispatcher span_id=c298875e duration=30.2ms
+2026-09-22T14:04:43.668Z INFO deployment user-profile-api rollout status: 6/2 replicas updated to v7.11.4
+2026-09-22T14:04:44.584Z INFO [webhook-dispatcher] query SELECT * FROM invoices WHERE id=? rows=7 duration=5.5ms
+2026-09-22T14:04:47.487Z INFO [analytics-ingest] GET /api/v1/checkout 204 duration=187.9ms trace=5c3d8ef589626212 region=us-west-2
+2026-09-22T14:04:47.988Z INFO otel span exported service.name=cart-service span_id=788114a5 duration=69.7ms
+2026-09-22T14:04:48.642Z INFO [analytics-ingest] GET /metrics 304 duration=21.9ms trace=5936356a5c568507 region=ap-northeast-1
+2026-09-22T14:04:49.572Z INFO deployment gateway-edge rollout status: 1/3 replicas updated to v9.1.20
+2026-09-22T14:04:53.200Z INFO [session-service] heartbeat ok host=session-service-4b9c6d8f7-a4n25 uptime=436732s
+2026-09-22T14:04:55.723Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=38.6ms tokens=615
+2026-09-22T14:04:57.694Z INFO otel span exported service.name=payments-gateway span_id=076d3dd3 duration=57.6ms
+2026-09-22T14:05:00.059Z INFO [reporting-service] webhook delivered url=https://partner-8.example.com/hooks status=200 attempt=1
+2026-09-22T14:05:04.564Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=47.4ms tokens=697
+2026-09-22T14:05:04.570Z WARN [notification-worker] kafka consumer lag topic=inventory-updates lag=82613
+2026-09-22T14:05:08.393Z INFO datadog-agent flush metrics count=2139 host=checkout-service-7b58d96d84-j4y92
+2026-09-22T14:05:21.865Z ERROR [notification-worker] consumer group rebalance triggered group=notification-worker-consumers
+2026-09-22T14:05:23.599Z INFO [auth-service] POST /api/v1/cart 304 duration=92.7ms trace=3bbe8b709a726d5b region=eu-west-1
+2026-09-22T14:05:24.253Z WARN [notification-worker] kafka consumer lag topic=inventory-updates lag=51586
+2026-09-22T14:05:30.199Z INFO deployment analytics-ingest rollout status: 2/5 replicas updated to v4.13.18
+2026-09-22T14:05:46.064Z INFO k8s event namespace=prod Pod user-profile-api-8c7d6f9b4-m6j42 started container user-profile-api
+2026-09-22T14:05:47.724Z ERROR [notification-worker] consumer group rebalance triggered group=notification-worker-consumers
+2026-09-22T14:05:49.688Z ERROR [notification-worker] worker image-resize batch=123 failed: unhandled exception
+Traceback (most recent call last):
+  File "/app/worker/image_resize.py", line 113, in process_batch
+    result = process_item(item)
+KeyError: 'customer_id'
+2026-09-22T14:05:51.865Z WARN [notification-worker] kafka consumer lag topic=inventory-updates lag=82613
+2026-09-22T14:05:57.688Z WARN [notification-worker] batch=307 requeued attempt=2
+2026-09-22T14:06:04.056Z INFO [inventory-service] redis GET key=inventory_count:2213 HIT latency=1.4ms
+2026-09-22T14:06:06.466Z INFO worker payout-batch batch=464 completed items=431 duration=8.5s
+2026-09-22T14:06:09.170Z INFO [cart-service] query SELECT * FROM orders WHERE id=? rows=1 duration=40.1ms
+2026-09-22T14:06:09.549Z INFO datadog-agent flush metrics count=3389 host=media-processor-9f5d7c6b8-w4y87
+2026-09-22T14:06:09.688Z INFO [notification-worker] batch=670 completed after fix items=279
+2026-09-22T14:06:13.080Z INFO [search-api] query SELECT * FROM users WHERE id=? rows=12 duration=33.8ms
+2026-09-22T14:06:16.341Z INFO [auth-service] redis GET key=search_results:7032 HIT latency=0.7ms
+2026-09-22T14:06:20.538Z INFO [inventory-service] POST /metrics 200 duration=42.9ms trace=6624fe90b8c5f6ab region=us-east-1
+2026-09-22T14:06:22.365Z INFO [user-profile-api] webhook delivered url=https://partner-2.example.com/hooks status=200 attempt=1
+2026-09-22T14:06:27.364Z INFO k8s event namespace=prod Pod reporting-service-7b58d96d84-j5x51 started container reporting-service
+2026-09-22T14:06:38.982Z INFO worker report-export batch=399 completed items=340 duration=16.4s
+2026-09-22T14:06:41.865Z INFO [notification-worker] scaled consumer replicas from 4 to 6
+2026-09-22T14:06:50.592Z INFO k8s event namespace=prod Pod orders-api-6d9f4c8b5c-a2f65 started container orders-api
+2026-09-22T14:06:52.529Z INFO worker report-export batch=797 completed items=385 duration=1.9s
+2026-09-22T14:06:53.933Z INFO [invoice-worker] heartbeat ok host=invoice-worker-6f7b8d9c5-v4j55 uptime=353358s
+2026-09-22T14:06:56.432Z INFO [notification-worker] redis GET key=session:5914 HIT latency=2.8ms
+2026-09-22T14:07:02.521Z INFO datadog-agent flush metrics count=2137 host=payments-gateway-8b5d7c9f6-d5h77
+2026-09-22T14:07:03.420Z ERROR [notification-worker] consumer group rebalance triggered group=notification-worker-consumers
+2026-09-22T14:07:04.305Z INFO worker email-batch batch=342 completed items=32 duration=2.4s
+2026-09-22T14:07:04.824Z INFO [checkout-service] redis GET key=cart:4465 HIT latency=1.7ms
+2026-09-22T14:07:08.960Z INFO deployment gateway-edge rollout status: 1/2 replicas updated to v6.0.14
+2026-09-22T14:07:09.492Z INFO k8s event namespace=prod Pod auth-service-7d6c9b8f5-m3c87 Scheduled on node ip-10-200-241-152.ap-northeast-1.compute.internal
+2026-09-22T14:07:15.063Z INFO [media-processor] redis GET key=pricing:2480 HIT latency=0.8ms
+2026-09-22T14:07:20.724Z INFO [reporting-service] POST /api/v1/recommendations 200 duration=231.6ms trace=3adc5e6f2a6f26b9 region=us-west-2
+2026-09-22T14:07:21.491Z INFO [payments-gateway] redis GET key=cart:1925 HIT latency=0.4ms
+2026-09-22T14:07:22.980Z WARN [notification-worker] kafka consumer lag topic=inventory-updates lag=51586
+2026-09-22T14:07:27.593Z INFO [search-api] heartbeat ok host=search-api-5c8b9d7f6-w8r38 uptime=120999s
+2026-09-22T14:07:29.485Z INFO [gateway-edge] GET /api/v1/orders 200 duration=43.0ms trace=919bcc2a6897378a region=us-east-2
+2026-09-22T14:07:30.134Z INFO datadog-agent flush metrics count=3596 host=session-service-7d6c9b8f5-w9p18
+2026-09-22T14:07:30.396Z INFO [invoice-worker] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:07:31.451Z INFO deployment search-api rollout status: 5/4 replicas updated to v9.14.5
+2026-09-22T14:07:37.113Z INFO [user-profile-api] query SELECT * FROM sessions WHERE id=? rows=25 duration=2.2ms
+2026-09-22T14:07:40.673Z WARN [notification-worker] kafka consumer lag increasing topic=inventory-updates partition=3 lag=17958
+2026-09-22T14:07:43.287Z INFO [billing-service] query SELECT * FROM orders WHERE id=? rows=12 duration=4.2ms
+2026-09-22T14:07:43.614Z INFO worker invoice-sync batch=196 completed items=268 duration=7.9s
+2026-09-22T14:07:44.967Z WARN [notification-worker] kafka consumer lag increasing topic=inventory-updates partition=3 lag=17958
+2026-09-22T14:07:51.791Z ERROR [webhook-dispatcher] x509: certificate has expired or is not yet valid for payments.example.com
+2026-09-22T14:07:51.865Z INFO [notification-worker] kafka consumer lag draining topic=inventory-updates lag=1756
+2026-09-22T14:07:53.791Z ERROR [webhook-dispatcher] TLS handshake error from 41.199.8.101:59398: remote error: tls: bad certificate
+2026-09-22T14:07:55.195Z INFO [payments-gateway] GET /api/v1/shipping/quote 204 duration=203.2ms trace=301866e78aecd206 region=us-east-2
+2026-09-22T14:07:57.543Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=3.5s
+2026-09-22T14:07:59.415Z INFO [ml-inference] query SELECT * FROM invoices WHERE id=? rows=37 duration=24.7ms
+2026-09-22T14:08:00.791Z ERROR nginx SSL_do_handshake() failed (SSL: error:0A000086:SSL routines::certificate verify failed)
+2026-09-22T14:08:02.549Z INFO k8s event namespace=prod Pod notification-worker-8c7d6f9b4-f3m83 started container notification-worker
+2026-09-22T14:08:03.740Z INFO [webhook-dispatcher] redis GET key=session:4525 HIT latency=2.4ms
+2026-09-22T14:08:04.868Z INFO [recommendation-service] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:08:11.791Z WARN [webhook-dispatcher] client connections failing cert_expiry=payments.example.com
+2026-09-22T14:08:17.091Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=62.0ms tokens=823
+2026-09-22T14:08:28.477Z ERROR [webhook-dispatcher] TLS handshake error from 41.199.8.101:59398: remote error: tls: bad certificate
+2026-09-22T14:08:31.791Z INFO ops renewed and deployed certificate for payments.example.com via cert-manager
+2026-09-22T14:08:32.330Z INFO worker payout-batch batch=961 completed items=132 duration=15.4s
+2026-09-22T14:08:32.849Z INFO worker email-batch batch=425 completed items=23 duration=17.4s
+2026-09-22T14:08:42.294Z INFO [notification-worker] query SELECT * FROM inventory WHERE id=? rows=11 duration=4.0ms
+2026-09-22T14:08:44.699Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=43.4ms tokens=71
+2026-09-22T14:08:45.930Z INFO k8s event namespace=prod Pod analytics-ingest-8c7d6f9b4-e5r58 started container analytics-ingest
+2026-09-22T14:08:46.791Z INFO [webhook-dispatcher] TLS handshake succeeded, certificate valid until 2027-12-01
+2026-09-22T14:08:55.983Z INFO [checkout-service] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:08:56.045Z ERROR [webhook-dispatcher] TLS handshake error from 41.199.8.101:59398: remote error: tls: bad certificate
+2026-09-22T14:08:57.369Z INFO [recommendation-service] webhook delivered url=https://partner-17.example.com/hooks status=200 attempt=1
+2026-09-22T14:08:57.906Z INFO [checkout-service] heartbeat ok host=checkout-service-6d9f4c8b5c-s5n47 uptime=341117s
+2026-09-22T14:09:05.592Z INFO [reporting-service] heartbeat ok host=reporting-service-7b58d96d84-n8z58 uptime=319298s
+2026-09-22T14:09:07.429Z INFO [shipping-service] webhook delivered url=https://partner-17.example.com/hooks status=200 attempt=1
+2026-09-22T14:09:07.474Z INFO [billing-service] redis GET key=session:9773 HIT latency=0.4ms
+2026-09-22T14:09:10.769Z INFO worker email-batch batch=233 completed items=412 duration=13.3s
+2026-09-22T14:09:15.603Z WARN [webhook-dispatcher] client connections failing cert_expiry=payments.example.com
+2026-09-22T14:09:18.299Z INFO [billing-service] query SELECT * FROM orders WHERE id=? rows=37 duration=17.0ms
+2026-09-22T14:09:19.224Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=60.0ms tokens=832
+2026-09-22T14:09:22.476Z INFO [session-service] redis GET key=pricing:8243 HIT latency=1.2ms
+2026-09-22T14:09:23.344Z INFO [gateway-edge] query SELECT * FROM payments WHERE id=? rows=27 duration=31.8ms
+2026-09-22T14:09:25.115Z INFO [auth-service] query SELECT * FROM sessions WHERE id=? rows=37 duration=29.9ms
+2026-09-22T14:09:31.200Z INFO worker payout-batch batch=358 completed items=350 duration=0.7s
+2026-09-22T14:09:35.575Z INFO [reporting-service] redis GET key=search_results:4794 HIT latency=0.7ms
+2026-09-22T14:09:38.866Z INFO [search-api] redis GET key=user_profile:9786 HIT latency=2.2ms
+2026-09-22T14:09:48.289Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=28.2ms tokens=306
+2026-09-22T14:09:48.410Z WARN k8s event namespace=prod Pod reporting-service-8b5d7c9f6-a9q75 memory usage 89% of limit
+2026-09-22T14:09:54.410Z ERROR k8s event namespace=prod Pod reporting-service-8b5d7c9f6-a9q75 container reporting-service OOMKilled, exit code 137
+2026-09-22T14:09:55.410Z ERROR [reporting-service] worker process killed signal=SIGKILL host=reporting-service-8b5d7c9f6-a9q75
+2026-09-22T14:09:56.564Z INFO [ml-inference] PUT /api/v1/inventory 201 duration=229.8ms trace=f5de11fcf7bfa58d region=us-east-1
+2026-09-22T14:10:00.410Z WARN k8s event namespace=prod Pod reporting-service-8b5d7c9f6-a9q75 restarted by ReplicaSet controller
+2026-09-22T14:10:04.194Z INFO [media-processor] webhook delivered url=https://partner-16.example.com/hooks status=200 attempt=1
+2026-09-22T14:10:06.410Z INFO ops increased memory limit for reporting-service to 8Gi
+2026-09-22T14:10:07.169Z INFO [reporting-service] webhook delivered url=https://partner-11.example.com/hooks status=200 attempt=1
+2026-09-22T14:10:11.658Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=140.6ms tokens=861
+2026-09-22T14:10:12.398Z INFO [analytics-ingest] PUT /api/v1/payments/charge 304 duration=102.2ms trace=3d3d20b52d89b7a6 region=eu-central-1
+2026-09-22T14:10:13.843Z INFO [cart-service] query SELECT * FROM payments WHERE id=? rows=4 duration=10.7ms
+2026-09-22T14:10:20.778Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=10.6s
+2026-09-22T14:10:23.410Z INFO k8s event namespace=prod Pod reporting-service-8b5d7c9f6-s9s11 Running, memory usage stable 44%
+2026-09-22T14:10:25.071Z INFO [auth-service] webhook delivered url=https://partner-3.example.com/hooks status=200 attempt=1
+2026-09-22T14:10:27.673Z INFO deployment analytics-ingest rollout status: 3/4 replicas updated to v6.5.9
+2026-09-22T14:10:33.711Z INFO worker report-export batch=778 completed items=68 duration=17.8s
+2026-09-22T14:10:42.832Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=160.3ms tokens=169
+2026-09-22T14:10:43.049Z INFO deployment cart-service rollout status: 3/1 replicas updated to v8.26.0
+2026-09-22T14:10:48.254Z INFO deployment cart-service rollout status: 4/1 replicas updated to v8.39.5
+2026-09-22T14:10:52.076Z INFO [gateway-edge] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:11:01.541Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=82.3ms tokens=876
+2026-09-22T14:11:03.214Z INFO [checkout-service] query SELECT * FROM invoices WHERE id=? rows=38 duration=16.3ms
+2026-09-22T14:11:05.954Z INFO datadog-agent flush metrics count=2920 host=cart-service-6d9f4c8b5c-d5r90
+2026-09-22T14:11:12.591Z INFO [inventory-service] heartbeat ok host=inventory-service-9f5d7c6b8-c6r23 uptime=390000s
+2026-09-22T14:11:15.733Z INFO [analytics-ingest] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:11:21.446Z INFO worker report-export batch=371 completed items=417 duration=3.5s
+2026-09-22T14:11:23.333Z ERROR [user-profile-api] could not connect to server: Connection refused host=db-primary.us-west-2.rds.amazonaws.com port=5432
+2026-09-22T14:11:26.333Z ERROR [user-profile-api] psycopg2.OperationalError: connection to server at "db-primary.us-west-2.rds.amazonaws.com" failed
+2026-09-22T14:11:30.333Z WARN [user-profile-api] falling back to read replica replica-1
+2026-09-22T14:11:30.681Z INFO k8s event namespace=prod Pod auth-service-8c7d6f9b4-s2v94 started container auth-service
+2026-09-22T14:11:30.908Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=9.3s
+2026-09-22T14:11:34.093Z INFO [payments-gateway] PUT /healthz 201 duration=214.8ms trace=17a099a5c26c5159 region=ap-northeast-1
+2026-09-22T14:11:35.333Z ERROR [user-profile-api] GET /api/v1/users/me 500 duration=1774.2ms trace=e00e5647e88a209a
+2026-09-22T14:11:41.775Z INFO otel span exported service.name=orders-api span_id=6970b24e duration=62.5ms
+2026-09-22T14:11:43.333Z INFO [user-profile-api] database connectivity restored host=db-primary.us-west-2.rds.amazonaws.com
+2026-09-22T14:11:46.700Z INFO [billing-service] PUT /api/v1/orders 200 duration=166.2ms trace=3f70e49682cbd91b region=ap-northeast-1
+2026-09-22T14:12:40.806Z INFO [recommendation-service] redis GET key=search_results:1785 HIT latency=1.5ms
+2026-09-22T14:12:49.201Z INFO [media-processor] POST /api/v1/search 200 duration=235.7ms trace=8491411cdc8fc2b2 region=us-east-1
+2026-09-22T14:12:54.180Z INFO deployment cart-service rollout status: 4/2 replicas updated to v8.2.18
+2026-09-22T14:13:04.227Z INFO [checkout-service] heartbeat ok host=checkout-service-9f5d7c6b8-f8t20 uptime=887394s
+2026-09-22T14:13:08.454Z INFO worker email-batch batch=839 completed items=249 duration=3.4s
+2026-09-22T14:13:09.263Z INFO otel span exported service.name=notification-worker span_id=615156f7 duration=13.2ms
+2026-09-22T14:13:16.320Z INFO [ml-inference] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:13:19.273Z INFO [auth-service] redis GET key=session:2164 HIT latency=1.5ms
+2026-09-22T14:13:22.857Z INFO otel span exported service.name=analytics-ingest span_id=7a1a0eed duration=27.6ms
+2026-09-22T14:13:25.250Z WARN [recommendation-service] redis OOM command not allowed when used memory > 'maxmemory'
+2026-09-22T14:13:29.250Z ERROR [recommendation-service] redis.exceptions.ResponseError: OOM command not allowed when used memory > 'maxmemory'.
+2026-09-22T14:13:34.250Z WARN [recommendation-service] eviction policy noeviction blocking writes, keyspace=cart
+2026-09-22T14:13:40.250Z ERROR [recommendation-service] SET session:41049 failed: OOM
+2026-09-22T14:13:41.811Z INFO otel span exported service.name=gateway-edge span_id=7dece145 duration=33.6ms
+2026-09-22T14:13:46.904Z INFO k8s event namespace=prod Pod media-processor-9f5d7c6b8-d3g40 Scheduled on node ip-10-8-221-199.us-east-2.compute.internal
+2026-09-22T14:13:55.250Z WARN redis-ops scaling cache cluster cache-cluster-1 to 6 nodes
+2026-09-22T14:13:57.725Z INFO otel span exported service.name=cart-service span_id=2de84834 duration=30.7ms
+2026-09-22T14:13:58.287Z INFO [reporting-service] webhook delivered url=https://partner-4.example.com/hooks status=200 attempt=1
+2026-09-22T14:14:08.445Z INFO k8s event namespace=prod Pod search-api-7b58d96d84-q4g89 started container search-api
+2026-09-22T14:14:14.659Z INFO deployment webhook-dispatcher rollout status: 5/2 replicas updated to v1.14.4
+2026-09-22T14:14:14.794Z INFO deployment analytics-ingest rollout status: 1/5 replicas updated to v2.20.3
+2026-09-22T14:14:20.250Z INFO [recommendation-service] redis memory usage stabilized used_memory=70%
+2026-09-22T14:14:22.615Z INFO [webhook-dispatcher] query SELECT * FROM users WHERE id=? rows=35 duration=39.5ms
+2026-09-22T14:14:23.535Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=43.9ms tokens=430
+2026-09-22T14:14:23.670Z INFO [ml-inference] webhook delivered url=https://partner-3.example.com/hooks status=200 attempt=1
+2026-09-22T14:14:28.910Z INFO otel span exported service.name=session-service span_id=7ea7cb6d duration=76.3ms
+2026-09-22T14:14:31.057Z INFO worker invoice-sync batch=864 completed items=229 duration=3.6s
+2026-09-22T14:14:34.404Z INFO datadog-agent flush metrics count=263 host=analytics-ingest-6d9f4c8b5c-x2g70
+2026-09-22T14:14:44.987Z INFO [invoice-worker] webhook delivered url=https://partner-9.example.com/hooks status=200 attempt=1
+2026-09-22T14:14:53.494Z INFO datadog-agent flush metrics count=1611 host=ml-inference-7d6c9b8f5-d6z91
+2026-09-22T14:14:54.095Z INFO [notification-worker] webhook delivered url=https://partner-10.example.com/hooks status=200 attempt=1
+2026-09-22T14:14:56.099Z INFO [billing-service] webhook delivered url=https://partner-16.example.com/hooks status=200 attempt=1
+2026-09-22T14:14:58.711Z INFO worker image-resize batch=828 completed items=210 duration=3.9s
+2026-09-22T14:15:00.268Z INFO worker invoice-sync batch=674 completed items=398 duration=9.9s
+2026-09-22T14:15:01.296Z INFO [ml-inference] webhook delivered url=https://partner-1.example.com/hooks status=200 attempt=1
+2026-09-22T14:15:04.081Z INFO otel span exported service.name=search-api span_id=545d1cc4 duration=1.2ms
+2026-09-22T14:15:06.258Z INFO [notification-worker] query SELECT * FROM users WHERE id=? rows=21 duration=3.0ms
+2026-09-22T14:15:07.384Z INFO worker invoice-sync batch=663 completed items=130 duration=14.2s
+2026-09-22T14:15:09.354Z INFO deployment payments-gateway rollout status: 6/2 replicas updated to v4.14.12
+2026-09-22T14:15:23.152Z INFO datadog-agent flush metrics count=3845 host=notification-worker-5c8b9d7f6-c4b12
+2026-09-22T14:15:24.927Z INFO [analytics-ingest] heartbeat ok host=analytics-ingest-4b9c6d8f7-s7h86 uptime=672770s
+2026-09-22T14:15:27.218Z INFO worker image-resize batch=452 completed items=142 duration=9.1s
+2026-09-22T14:15:32.650Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=4.5s
+2026-09-22T14:15:33.610Z INFO deployment auth-service rollout started image=auth-service:v8.1.18
+2026-09-22T14:15:34.937Z INFO [gateway-edge] redis GET key=session:2967 HIT latency=2.0ms
+2026-09-22T14:15:36.528Z INFO deployment session-service rollout status: 4/6 replicas updated to v3.25.5
+2026-09-22T14:15:38.698Z INFO [media-processor] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:15:39.249Z INFO [media-processor] heartbeat ok host=media-processor-6f7b8d9c5-h5t30 uptime=452543s
+2026-09-22T14:15:39.742Z INFO [media-processor] heartbeat ok host=media-processor-5f6c9b7d8-g4n72 uptime=921681s
+2026-09-22T14:15:40.653Z INFO datadog-agent flush metrics count=2456 host=media-processor-4b9c6d8f7-d3x84
+2026-09-22T14:15:41.610Z WARN k8s event namespace=prod ReplicaSet auth-service-8c7d6f9b4 has failed progress deadline
+2026-09-22T14:15:48.610Z ERROR deployment auth-service rollout: 2/8 pods ready, deadline exceeded
+2026-09-22T14:15:49.838Z INFO [session-service] POST /metrics 201 duration=215.2ms trace=37c96b630d133feb region=eu-central-1
+2026-09-22T14:15:50.587Z INFO [payments-gateway] webhook delivered url=https://partner-2.example.com/hooks status=200 attempt=1
+2026-09-22T14:15:53.610Z ERROR [auth-service] readiness probe failed: connection refused on port 9000
+2026-09-22T14:16:01.986Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=9.7s
+2026-09-22T14:16:07.948Z INFO worker image-resize batch=639 completed items=42 duration=17.9s
+2026-09-22T14:16:08.610Z WARN deployment auth-service rolling back to previous revision
+2026-09-22T14:16:11.722Z INFO worker image-resize batch=428 completed items=124 duration=4.3s
+2026-09-22T14:16:14.394Z INFO otel span exported service.name=orders-api span_id=6a6f9aad duration=16.4ms
+2026-09-22T14:16:19.262Z INFO datadog-agent flush metrics count=3666 host=search-api-7b58d96d84-n7h59
+2026-09-22T14:16:27.681Z INFO worker image-resize batch=249 completed items=486 duration=8.0s
+2026-09-22T14:16:28.610Z INFO deployment auth-service rollback complete, 6/7 pods ready
+2026-09-22T14:16:35.715Z INFO [billing-service] heartbeat ok host=billing-service-5c8b9d7f6-e8v57 uptime=499735s
+2026-09-22T14:16:39.466Z INFO k8s event namespace=prod Scaled up replica set checkout-service-5c8b9d7f6 to 4
+2026-09-22T14:16:45.834Z INFO k8s event namespace=prod Scaled up replica set shipping-service-9f5d7c6b8 to 10
+2026-09-22T14:16:53.797Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=1.1s
+2026-09-22T14:17:00.381Z INFO k8s event namespace=prod HorizontalPodAutoscaler orders-api status: current CPU utilization 53%
+2026-09-22T14:17:27.674Z INFO k8s event namespace=prod Pod cart-service-4b9c6d8f7-s3q12 started container cart-service
+2026-09-22T14:17:41.820Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=140.3ms tokens=238
+2026-09-22T14:17:45.463Z INFO [user-profile-api] query SELECT * FROM payments WHERE id=? rows=33 duration=40.0ms
+2026-09-22T14:17:46.715Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=118.0ms tokens=321
+2026-09-22T14:17:47.171Z INFO [recommendation-service] memory usage host=recommendation-service-4b9c6d8f7-c2m96 rss=407MB
+2026-09-22T14:17:48.357Z INFO [payments-gateway] query SELECT * FROM users WHERE id=? rows=18 duration=41.4ms
+2026-09-22T14:17:53.537Z INFO [gateway-edge] webhook delivered url=https://partner-15.example.com/hooks status=200 attempt=1
+2026-09-22T14:18:10.165Z INFO [auth-service] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:18:10.534Z INFO [orders-api] heartbeat ok host=orders-api-6d9f4c8b5c-t3z31 uptime=279670s
+2026-09-22T14:18:18.453Z INFO [payments-gateway] query SELECT * FROM users WHERE id=? rows=5 duration=42.2ms
+2026-09-22T14:18:21.680Z INFO [auth-service] POST /api/v1/checkout 200 duration=162.1ms trace=412601f0b017aa4e region=us-east-1
+2026-09-22T14:18:25.406Z INFO k8s event namespace=prod HorizontalPodAutoscaler billing-service status: current CPU utilization 63%
+2026-09-22T14:18:39.414Z INFO [media-processor] redis GET key=user_profile:1925 HIT latency=1.8ms
+2026-09-22T14:18:44.619Z INFO datadog-agent flush metrics count=3905 host=orders-api-8b5d7c9f6-a3r39
+2026-09-22T14:18:53.344Z INFO otel span exported service.name=session-service span_id=3dcf67f9 duration=52.7ms
+2026-09-22T14:19:01.333Z INFO [inventory-service] query SELECT * FROM orders WHERE id=? rows=2 duration=29.5ms
+2026-09-22T14:19:02.226Z INFO [reporting-service] redis GET key=pricing:3010 HIT latency=1.2ms
+2026-09-22T14:19:06.886Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=11.6s
+2026-09-22T14:19:09.578Z INFO [search-api] redis GET key=user_profile:4944 HIT latency=0.6ms
+2026-09-22T14:19:09.735Z INFO [search-api] webhook delivered url=https://partner-1.example.com/hooks status=200 attempt=1
+2026-09-22T14:19:13.907Z INFO otel span exported service.name=billing-service span_id=f66859d4 duration=1.8ms
+2026-09-22T14:19:16.249Z INFO [cart-service] query SELECT * FROM users WHERE id=? rows=40 duration=19.7ms
+2026-09-22T14:19:24.866Z INFO datadog-agent flush metrics count=2909 host=webhook-dispatcher-5f6c9b7d8-m6t89
+2026-09-22T14:19:26.253Z INFO datadog-agent flush metrics count=2287 host=search-api-8b5d7c9f6-p3z49
+2026-09-22T14:19:37.564Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=159.7ms tokens=576
+2026-09-22T14:19:40.193Z INFO deployment reporting-service rollout status: 1/1 replicas updated to v3.29.20
+2026-09-22T14:19:42.158Z INFO deployment ml-inference rollout status: 2/6 replicas updated to v7.4.16
+2026-09-22T14:19:44.430Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=2.0s
+2026-09-22T14:19:48.700Z INFO k8s event namespace=prod Readiness probe succeeded for pod checkout-service-4b9c6d8f7-m5g21
+2026-09-22T14:19:49.982Z INFO [recommendation-service] query SELECT * FROM users WHERE id=? rows=3 duration=10.3ms
+2026-09-22T14:19:51.203Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=3.3s
+2026-09-22T14:19:52.764Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=95.3ms tokens=309
+2026-09-22T14:19:59.070Z INFO [cart-service] heartbeat ok host=cart-service-8c7d6f9b4-q3m30 uptime=261315s
+2026-09-22T14:20:04.113Z INFO [auth-service] PUT /api/v1/checkout 200 duration=87.0ms trace=30e6743cc4d2e95d region=eu-west-1
+2026-09-22T14:20:08.546Z WARN [notification-worker] RabbitMQ consumer lag queue=email-notifications messages_ready=6875
+2026-09-22T14:20:12.787Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=89.0ms tokens=197
+2026-09-22T14:20:15.224Z INFO [webhook-dispatcher] query SELECT * FROM sessions WHERE id=? rows=37 duration=44.7ms
+2026-09-22T14:20:17.104Z INFO worker invoice-sync batch=401 completed items=182 duration=3.0s
+2026-09-22T14:20:25.612Z INFO [search-api] webhook delivered url=https://partner-19.example.com/hooks status=200 attempt=1
+2026-09-22T14:20:30.283Z INFO datadog-agent flush metrics count=3720 host=reporting-service-7b58d96d84-g5e97
+2026-09-22T14:20:32.684Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=82.4ms tokens=127
+2026-09-22T14:20:34.050Z INFO otel span exported service.name=webhook-dispatcher span_id=a665a693 duration=3.6ms
+2026-09-22T14:20:37.883Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=170.2ms tokens=732
+2026-09-22T14:20:43.620Z INFO otel span exported service.name=ml-inference span_id=62510735 duration=24.7ms
+2026-09-22T14:20:48.546Z WARN [notification-worker] queue depth growing queue=email-notifications messages_ready=15662
+2026-09-22T14:20:49.916Z INFO [shipping-service] query SELECT * FROM orders WHERE id=? rows=31 duration=12.7ms
+2026-09-22T14:20:59.478Z INFO [shipping-service] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:21:00.933Z INFO worker image-resize batch=373 completed items=133 duration=1.7s
+2026-09-22T14:21:13.853Z INFO [media-processor] heartbeat ok host=media-processor-5f6c9b7d8-q5v70 uptime=813067s
+2026-09-22T14:21:17.871Z INFO otel span exported service.name=recommendation-service span_id=8d37ad3b duration=1.1ms
+2026-09-22T14:21:25.541Z INFO [invoice-worker] redis GET key=search_results:8518 HIT latency=3.4ms
+2026-09-22T14:21:27.834Z INFO deployment payments-gateway rollout status: 4/4 replicas updated to v4.1.20
+2026-09-22T14:21:28.546Z ERROR [notification-worker] channel closed by broker: PRECONDITION_FAILED - consumer ack timeout
+2026-09-22T14:21:30.030Z INFO [auth-service] heartbeat ok host=auth-service-4b9c6d8f7-a6a90 uptime=626817s
+2026-09-22T14:21:32.463Z INFO otel span exported service.name=payments-gateway span_id=a51cfd1a duration=78.7ms
+2026-09-22T14:21:33.913Z INFO deployment user-profile-api rollout status: 3/6 replicas updated to v9.3.1
+2026-09-22T14:21:36.044Z INFO [billing-service] redis GET key=user_profile:2310 HIT latency=1.3ms
+2026-09-22T14:21:40.681Z INFO [orders-api] query SELECT * FROM invoices WHERE id=? rows=20 duration=14.6ms
+2026-09-22T14:21:42.297Z INFO datadog-agent flush metrics count=467 host=recommendation-service-5c8b9d7f6-f2h34
+2026-09-22T14:21:46.052Z INFO [notification-worker] webhook delivered url=https://partner-19.example.com/hooks status=200 attempt=1
+2026-09-22T14:21:48.671Z INFO [checkout-service] GET /api/v1/shipping/quote 304 duration=169.1ms trace=61f57efdf563a1b0 region=us-east-1
+2026-09-22T14:21:50.360Z INFO otel span exported service.name=shipping-service span_id=78a13413 duration=18.2ms
+2026-09-22T14:21:53.461Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=10.2s
+2026-09-22T14:21:58.546Z WARN [notification-worker] messages_ready=26781 queue=email-notifications
+2026-09-22T14:21:59.442Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=105.1ms tokens=274
+2026-09-22T14:22:04.480Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=120.8ms tokens=530
+2026-09-22T14:22:07.096Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=76.2ms tokens=784
+2026-09-22T14:22:09.689Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=8.5s
+2026-09-22T14:22:09.995Z WARN [payments-gateway] rate limit approaching client=partner-integrations requests=933/1000 window=60s
+2026-09-22T14:22:11.515Z INFO [notification-worker] GET /api/v1/checkout 204 duration=41.0ms trace=e612a4d05c0991ba region=ap-southeast-2
+2026-09-22T14:22:15.613Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=2.1s
+2026-09-22T14:22:17.995Z WARN [payments-gateway] 429 Too Many Requests client=partner-integrations trace=db84a07e07b24dcb
+2026-09-22T14:22:19.044Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=176.4ms tokens=375
+2026-09-22T14:22:20.955Z INFO otel span exported service.name=ml-inference span_id=1a66f9a4 duration=28.6ms
+2026-09-22T14:22:25.995Z ERROR [payments-gateway] rate limit exceeded client=partner-integrations retry_after=45s
+2026-09-22T14:22:29.706Z INFO [billing-service] query SELECT * FROM users WHERE id=? rows=33 duration=14.1ms
+2026-09-22T14:22:30.165Z INFO [user-profile-api] redis GET key=inventory_count:1572 HIT latency=3.3ms
+2026-09-22T14:22:37.607Z INFO [billing-service] GET /api/v1/recommendations 200 duration=155.5ms trace=991a48e5edac5aea region=us-west-2
+2026-09-22T14:22:38.633Z INFO deployment webhook-dispatcher rollout status: 5/5 replicas updated to v4.0.18
+2026-09-22T14:22:39.789Z INFO [billing-service] redis GET key=cart:7321 HIT latency=1.8ms
+2026-09-22T14:22:39.995Z INFO [payments-gateway] client partner-integrations throttled, backing off
+2026-09-22T14:22:42.882Z INFO deployment gateway-edge rollout status: 2/5 replicas updated to v5.30.10
+2026-09-22T14:22:47.171Z WARN [recommendation-service] memory usage host=recommendation-service-4b9c6d8f7-c2m96 rss=1195MB, trending upward over 30m
+2026-09-22T14:22:48.546Z INFO ops added 2 consumer replicas queue=email-notifications
+2026-09-22T14:22:48.751Z INFO datadog-agent flush metrics count=2421 host=user-profile-api-6f7b8d9c5-e5w86
+2026-09-22T14:22:53.007Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=148.1ms tokens=411
+2026-09-22T14:22:58.948Z INFO otel span exported service.name=analytics-ingest span_id=07719a0e duration=5.7ms
+2026-09-22T14:23:01.078Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=166.7ms tokens=590
+2026-09-22T14:23:05.540Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=168.9ms tokens=818
+2026-09-22T14:23:14.843Z INFO [payments-gateway] webhook delivered url=https://partner-10.example.com/hooks status=200 attempt=1
+2026-09-22T14:23:15.687Z INFO [invoice-worker] heartbeat ok host=invoice-worker-8b5d7c9f6-a5r80 uptime=618500s
+2026-09-22T14:23:19.469Z INFO [inventory-service] heartbeat ok host=inventory-service-7b58d96d84-a7v20 uptime=812638s
+2026-09-22T14:23:24.953Z INFO deployment cart-service rollout status: 5/3 replicas updated to v1.1.16
+2026-09-22T14:23:25.541Z INFO worker email-batch batch=601 completed items=467 duration=4.1s
+2026-09-22T14:23:29.120Z INFO [shipping-service] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:23:32.804Z INFO worker email-batch batch=410 completed items=390 duration=16.6s
+2026-09-22T14:23:36.109Z INFO [invoice-worker] heartbeat ok host=invoice-worker-5c8b9d7f6-w3r12 uptime=921528s
+2026-09-22T14:23:42.235Z INFO [gateway-edge] POST /api/v1/sessions 200 duration=213.8ms trace=38b5c3423ffa8ed6 region=ap-southeast-2
+2026-09-22T14:23:45.790Z INFO [notification-worker] webhook delivered url=https://partner-4.example.com/hooks status=200 attempt=1
+2026-09-22T14:23:46.929Z INFO [inventory-service] redis GET key=search_results:9907 HIT latency=1.1ms
+2026-09-22T14:23:47.926Z INFO [gateway-edge] webhook delivered url=https://partner-4.example.com/hooks status=200 attempt=1
+2026-09-22T14:23:58.546Z INFO [notification-worker] queue=email-notifications messages_ready=949 draining
+2026-09-22T14:24:06.043Z INFO otel span exported service.name=analytics-ingest span_id=3c1b5cb9 duration=3.4ms
+2026-09-22T14:24:06.989Z INFO deployment cart-service rollout status: 3/5 replicas updated to v2.10.3
+2026-09-22T14:24:12.401Z INFO otel span exported service.name=ml-inference span_id=93b2c917 duration=36.0ms
+2026-09-22T14:24:15.598Z ERROR [ml-inference] failed to load model fraud-detector-v2: checkpoint file not found in S3 bucket ml-models-prod
+2026-09-22T14:24:19.598Z ERROR [ml-inference] botocore.exceptions.ClientError: An error occurred (404) when calling the GetObject operation
+2026-09-22T14:24:25.598Z WARN [ml-inference] falling back to previous model version fraud-detector-v2-prev
+2026-09-22T14:24:31.553Z INFO datadog-agent flush metrics count=919 host=recommendation-service-5c8b9d7f6-e9b24
+2026-09-22T14:24:36.295Z INFO k8s event namespace=prod Pod checkout-service-6d9f4c8b5c-t5e32 Scheduled on node ip-10-228-137-211.ap-southeast-2.compute.internal
+2026-09-22T14:24:36.826Z INFO k8s event namespace=prod HorizontalPodAutoscaler invoice-worker status: current CPU utilization 50%
+2026-09-22T14:24:40.598Z INFO ops re-uploaded checkpoint for fraud-detector-v2 to S3
+2026-09-22T14:24:41.646Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=164.8ms tokens=818
+2026-09-22T14:24:53.824Z INFO [user-profile-api] redis GET key=cart:7311 HIT latency=3.4ms
+2026-09-22T14:24:53.847Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=10.9s
+2026-09-22T14:24:55.475Z INFO deployment webhook-dispatcher rollout status: 2/3 replicas updated to v3.2.11
+2026-09-22T14:24:55.598Z INFO [ml-inference] model fraud-detector-v2 loaded successfully, warmup complete
+2026-09-22T14:24:57.331Z INFO k8s event namespace=prod Pod user-profile-api-8b5d7c9f6-a6w74 Scheduled on node ip-10-134-216-14.ap-northeast-1.compute.internal
+2026-09-22T14:25:00.232Z INFO [auth-service] GET /api/v1/sessions 200 duration=41.5ms trace=0b05311ab7a85ce2 region=eu-central-1
+2026-09-22T14:25:01.979Z INFO [orders-api] redis GET key=pricing:3099 HIT latency=2.4ms
+2026-09-22T14:25:05.351Z INFO [orders-api] webhook delivered url=https://partner-2.example.com/hooks status=200 attempt=1
+2026-09-22T14:25:08.388Z INFO datadog-agent flush metrics count=1828 host=media-processor-5f6c9b7d8-p9x45
+2026-09-22T14:25:14.211Z INFO worker invoice-sync batch=360 completed items=464 duration=16.7s
+2026-09-22T14:25:21.780Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=11.1s
+2026-09-22T14:25:25.324Z INFO k8s event namespace=prod Scaled up replica set recommendation-service-9f5d7c6b8 to 9
+2026-09-22T14:25:32.646Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=2.3s
+2026-09-22T14:25:37.851Z INFO [search-api] query SELECT * FROM users WHERE id=? rows=35 duration=23.4ms
+2026-09-22T14:25:44.332Z INFO worker email-batch batch=867 completed items=247 duration=13.9s
+2026-09-22T14:25:47.793Z INFO [notification-worker] PUT /api/v1/search 304 duration=164.3ms trace=ba9110dfa89ffdf3 region=us-east-1
+2026-09-22T14:25:50.257Z ERROR [order-events-producer] org.apache.kafka.common.errors.TimeoutException: Timeout expired while fetching topic metadata
+2026-09-22T14:25:53.257Z ERROR [order-events-producer] Connection to node 0 (kafka-broker-1.ap-northeast-1.internal) could not be established
+2026-09-22T14:25:58.257Z WARN [order-events-producer] producer retrying batch send attempt=1
+2026-09-22T14:25:59.948Z INFO k8s event namespace=prod HorizontalPodAutoscaler ml-inference status: current CPU utilization 63%
+2026-09-22T14:26:00.153Z INFO k8s event namespace=prod Readiness probe succeeded for pod webhook-dispatcher-9f5d7c6b8-a5h84
+2026-09-22T14:26:05.257Z ERROR [order-events-producer] NOT_ENOUGH_REPLICAS: Messages are rejected since there are fewer in-sync replicas than required
+2026-09-22T14:26:05.695Z INFO [billing-service] query SELECT * FROM users WHERE id=? rows=21 duration=6.6ms
+2026-09-22T14:26:06.259Z INFO [analytics-ingest] query SELECT * FROM inventory WHERE id=? rows=13 duration=9.8ms
+2026-09-22T14:26:09.482Z INFO [cart-service] redis GET key=cart:6778 HIT latency=2.8ms
+2026-09-22T14:26:10.548Z INFO [session-service] redis GET key=search_results:7851 HIT latency=1.6ms
+2026-09-22T14:26:12.185Z INFO [auth-service] query SELECT * FROM payments WHERE id=? rows=36 duration=7.8ms
+2026-09-22T14:26:13.200Z INFO datadog-agent flush metrics count=1065 host=cart-service-6d9f4c8b5c-b2a81
+2026-09-22T14:26:15.257Z WARN kafka-ops broker kafka-broker-1.ap-northeast-1.internal marked unhealthy, controller election in progress
+2026-09-22T14:26:15.887Z INFO [recommendation-service] PUT /healthz 200 duration=176.4ms trace=5842d69a02282c23 region=ap-northeast-1
+2026-09-22T14:26:16.979Z INFO [notification-worker] query SELECT * FROM sessions WHERE id=? rows=24 duration=21.6ms
+2026-09-22T14:26:17.199Z INFO k8s event namespace=prod Pod analytics-ingest-7b58d96d84-r3s82 Scheduled on node ip-10-120-227-60.us-west-2.compute.internal
+2026-09-22T14:26:17.807Z INFO k8s event namespace=prod Scaled up replica set webhook-dispatcher-5f6c9b7d8 to 10
+2026-09-22T14:26:18.030Z INFO [reporting-service] POST /api/v1/users/me 200 duration=162.4ms trace=2f1600a06c8556bb region=ap-southeast-2
+2026-09-22T14:26:22.028Z INFO worker payout-batch batch=693 completed items=190 duration=7.7s
+2026-09-22T14:26:23.280Z INFO [invoice-worker] heartbeat ok host=invoice-worker-6f7b8d9c5-c3f97 uptime=975690s
+2026-09-22T14:26:28.762Z INFO [billing-service] POST /api/v1/orders 200 duration=217.1ms trace=dec9cb542005ed39 region=us-west-2
+2026-09-22T14:26:30.821Z INFO deployment payments-gateway rollout status: 1/2 replicas updated to v8.21.11
+2026-09-22T14:26:34.463Z INFO [webhook-dispatcher] webhook delivered url=https://partner-4.example.com/hooks status=200 attempt=1
+2026-09-22T14:26:35.257Z INFO kafka-ops new controller elected broker=4
+2026-09-22T14:26:45.979Z INFO [notification-worker] redis GET key=session:1477 HIT latency=1.7ms
+2026-09-22T14:26:48.680Z INFO [invoice-worker] GET /api/v1/sessions 201 duration=19.0ms trace=66e080001dcb18f0 region=us-east-2
+2026-09-22T14:26:49.082Z INFO [gateway-edge] query SELECT * FROM inventory WHERE id=? rows=28 duration=44.7ms
+2026-09-22T14:26:51.688Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=10.7s
+2026-09-22T14:26:54.435Z INFO [notification-worker] query SELECT * FROM payments WHERE id=? rows=8 duration=20.0ms
+2026-09-22T14:26:56.693Z INFO k8s event namespace=prod Pod inventory-service-6d9f4c8b5c-a4h10 started container inventory-service
+2026-09-22T14:27:00.257Z INFO [order-events-producer] producer connection restored, backlog draining
+2026-09-22T14:27:03.633Z INFO k8s event namespace=prod Pod media-processor-5c8b9d7f6-p7c84 started container media-processor
+2026-09-22T14:27:10.235Z INFO [payments-gateway] heartbeat ok host=payments-gateway-6d9f4c8b5c-s4c54 uptime=897035s
+2026-09-22T14:27:14.084Z INFO [session-service] GET /api/v1/cart 204 duration=117.4ms trace=c2bb33bdf52fea8e region=us-west-2
+2026-09-22T14:27:17.009Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=102.4ms tokens=416
+2026-09-22T14:27:20.843Z INFO [session-service] POST /api/v1/users/me 201 duration=100.6ms trace=bbc25cbfde5181be region=eu-west-1
+2026-09-22T14:27:21.878Z INFO datadog-agent flush metrics count=3024 host=search-api-6d9f4c8b5c-f8j24
+2026-09-22T14:27:30.157Z INFO worker email-batch batch=680 completed items=15 duration=2.4s
+2026-09-22T14:27:47.171Z WARN [recommendation-service] GC pause increasing duration=515.9ms
+2026-09-22T14:27:56.462Z INFO deployment session-service rollout status: 4/2 replicas updated to v7.12.20
+2026-09-22T14:27:58.730Z INFO [checkout-service] webhook delivered url=https://partner-9.example.com/hooks status=200 attempt=1
+2026-09-22T14:28:00.361Z WARN [billing-service] HikariPool-1 - Connection is not available, 21 in use, request timed out after 30000ms
+2026-09-22T14:28:00.599Z INFO [orders-api] heartbeat ok host=orders-api-5f6c9b7d8-h4d70 uptime=591343s
+2026-09-22T14:28:01.846Z INFO [analytics-ingest] redis GET key=search_results:8422 HIT latency=2.2ms
+2026-09-22T14:28:01.875Z INFO [recommendation-service] redis GET key=user_profile:2776 HIT latency=0.9ms
+2026-09-22T14:28:02.016Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=102.8ms tokens=213
+2026-09-22T14:28:04.361Z WARN [billing-service] HikariPool-1 - pending threads waiting for connection: 13
+2026-09-22T14:28:09.361Z ERROR [billing-service] CannotGetJdbcConnectionException: Failed to obtain PostgreSQL connection from pool
+2026-09-22T14:28:13.361Z ERROR [billing-service] POST /api/v1/orders 503 duration=31426.4ms trace=f69a48c6128622a0
+2026-09-22T14:28:16.537Z INFO [billing-service] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:28:18.032Z INFO [checkout-service] GET /metrics 304 duration=73.9ms trace=437e586b213ce58c region=us-east-1
+2026-09-22T14:28:18.361Z WARN [billing-service] retrying order submission order=899306 attempt=2
+2026-09-22T14:28:19.919Z INFO [shipping-service] query SELECT * FROM inventory WHERE id=? rows=28 duration=37.2ms
+2026-09-22T14:28:20.416Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=2.1s
+2026-09-22T14:28:27.361Z ERROR [billing-service] HikariPool-1 pool exhausted, max size 20 reached
+2026-09-22T14:28:33.590Z INFO [reporting-service] redis GET key=user_profile:2580 HIT latency=0.8ms
+2026-09-22T14:28:41.361Z ERROR [billing-service] GET /api/v1/checkout 503 duration=29130.8ms trace=b589a04b61d8ff71
+2026-09-22T14:28:46.802Z INFO [billing-service] redis GET key=cart:8769 HIT latency=0.4ms
+2026-09-22T14:28:52.756Z INFO [payments-gateway] query SELECT * FROM orders WHERE id=? rows=10 duration=22.5ms
+2026-09-22T14:28:54.053Z INFO [analytics-ingest] redis GET key=pricing:3551 HIT latency=2.1ms
+2026-09-22T14:28:56.641Z INFO [session-service] heartbeat ok host=session-service-9f5d7c6b8-h5f72 uptime=197467s
+2026-09-22T14:28:58.361Z WARN pagerduty triggered service=billing-service severity=high
+2026-09-22T14:29:04.456Z INFO [recommendation-service] heartbeat ok host=recommendation-service-5c8b9d7f6-b9q57 uptime=852758s
+2026-09-22T14:29:06.065Z INFO [checkout-service] redis GET key=search_results:1829 HIT latency=2.1ms
+2026-09-22T14:29:09.590Z INFO otel span exported service.name=checkout-service span_id=4741603b duration=41.7ms
+2026-09-22T14:29:11.132Z INFO [notification-worker] redis GET key=session:4853 HIT latency=0.7ms
+2026-09-22T14:29:12.107Z INFO worker invoice-sync batch=620 completed items=297 duration=17.8s
+2026-09-22T14:29:15.361Z INFO [billing-service] db-ops increased max pool size to 60
+2026-09-22T14:29:22.191Z INFO [orders-api] heartbeat ok host=orders-api-8c7d6f9b4-b7q25 uptime=632664s
+2026-09-22T14:29:29.973Z INFO [user-profile-api] POST /api/v1/orders 204 duration=221.8ms trace=629bf0b5057feb5f region=eu-west-1
+2026-09-22T14:29:32.894Z INFO [checkout-service] query SELECT * FROM payments WHERE id=? rows=25 duration=21.1ms
+2026-09-22T14:29:35.361Z INFO [billing-service] HikariPool-1 - connection acquisition normalized, pending=0
+2026-09-22T14:29:37.025Z ERROR [session-service] missing required environment variable JWT_SECRET
+2026-09-22T14:29:39.025Z ERROR [session-service] application failed to start: config validation error
+2026-09-22T14:29:41.957Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=27.7ms tokens=841
+2026-09-22T14:29:42.025Z WARN k8s event namespace=prod Pod session-service-5f6c9b7d8-g9k58 container session-service failed startup probe
+2026-09-22T14:29:42.744Z INFO otel span exported service.name=auth-service span_id=2b958586 duration=75.1ms
+2026-09-22T14:29:45.859Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=11.2s
+2026-09-22T14:29:48.074Z WARN k8s event namespace=prod Pod session-service-5f6c9b7d8-g9k58 container session-service failed startup probe
+2026-09-22T14:29:52.025Z INFO ops rolled back ConfigMap session-service-config to previous revision
+2026-09-22T14:29:52.154Z INFO [reporting-service] webhook delivered url=https://partner-2.example.com/hooks status=200 attempt=1
+2026-09-22T14:29:58.771Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=147.5ms tokens=140
+2026-09-22T14:30:07.025Z INFO [session-service] application started successfully
+2026-09-22T14:30:16.888Z ERROR [session-service] missing required environment variable JWT_SECRET
+2026-09-22T14:30:21.140Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=1.2s
+2026-09-22T14:30:30.491Z INFO [auth-service] POST /api/v1/shipping/quote 200 duration=85.7ms trace=e719af4e990fa34a region=us-west-2
+2026-09-22T14:30:36.951Z WARN k8s event namespace=prod Pod session-service-5f6c9b7d8-g9k58 container session-service failed startup probe
+2026-09-22T14:30:38.450Z INFO k8s event namespace=prod Pod user-profile-api-9f5d7c6b8-r7v20 started container user-profile-api
+2026-09-22T14:30:45.282Z INFO k8s event namespace=prod Pod session-service-5f6c9b7d8-d3g12 Scheduled on node ip-10-176-144-42.us-east-2.compute.internal
+2026-09-22T14:30:56.247Z INFO k8s event namespace=prod Scaled up replica set orders-api-4b9c6d8f7 to 5
+2026-09-22T14:30:58.722Z INFO datadog-agent flush metrics count=306 host=notification-worker-7d6c9b8f5-d3a81
+2026-09-22T14:31:00.637Z INFO k8s event namespace=prod Pod invoice-worker-7b58d96d84-a3q62 Scheduled on node ip-10-215-169-75.ap-northeast-1.compute.internal
+2026-09-22T14:31:02.749Z INFO [notification-worker] redis GET key=search_results:9328 HIT latency=2.4ms
+2026-09-22T14:31:05.698Z INFO worker report-export batch=821 completed items=78 duration=18.4s
+2026-09-22T14:31:16.906Z INFO [orders-api] query SELECT * FROM invoices WHERE id=? rows=38 duration=41.7ms
+2026-09-22T14:31:21.565Z INFO [billing-service] PUT /api/v1/recommendations 304 duration=222.4ms trace=2c2574403f546de6 region=us-east-1
+2026-09-22T14:31:23.190Z INFO deployment reporting-service rollout status: 6/3 replicas updated to v4.6.1
+2026-09-22T14:31:24.244Z INFO deployment reporting-service rollout status: 4/4 replicas updated to v1.40.14
+2026-09-22T14:31:29.163Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=21.5ms tokens=224
+2026-09-22T14:31:32.244Z INFO worker payout-batch batch=852 completed items=134 duration=13.2s
+2026-09-22T14:31:33.413Z INFO k8s event namespace=prod Pod ml-inference-7d6c9b8f5-w9k94 started container ml-inference
+2026-09-22T14:31:35.583Z INFO [notification-worker] heartbeat ok host=notification-worker-6f7b8d9c5-a4m73 uptime=525794s
+2026-09-22T14:31:51.268Z INFO datadog-agent flush metrics count=1246 host=gateway-edge-6f7b8d9c5-d6n84
+2026-09-22T14:31:53.315Z INFO otel span exported service.name=orders-api span_id=7da3e352 duration=14.9ms
+2026-09-22T14:31:55.798Z INFO otel span exported service.name=payments-gateway span_id=17956797 duration=68.9ms
+2026-09-22T14:32:05.172Z INFO otel span exported service.name=payments-gateway span_id=c6a19b76 duration=74.1ms
+2026-09-22T14:32:09.328Z INFO [inventory-service] webhook delivered url=https://partner-12.example.com/hooks status=200 attempt=1
+2026-09-22T14:32:15.255Z INFO [billing-service] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:32:18.882Z ERROR [orders-api] upstream request to shipping-service failed: 503 Service Unavailable
+2026-09-22T14:32:20.261Z INFO datadog-agent flush metrics count=578 host=search-api-8c7d6f9b4-d6p35
+2026-09-22T14:32:22.882Z WARN [orders-api] circuit breaker half-open for shipping-service
+2026-09-22T14:32:24.235Z INFO datadog-agent flush metrics count=2523 host=webhook-dispatcher-8c7d6f9b4-h6w64
+2026-09-22T14:32:24.922Z INFO otel span exported service.name=media-processor span_id=419462bf duration=31.7ms
+2026-09-22T14:32:28.882Z ERROR [orders-api] Envoy upstream reset before headers, cluster=shipping-service
+2026-09-22T14:32:29.138Z INFO [webhook-dispatcher] heartbeat ok host=webhook-dispatcher-5f6c9b7d8-a9d49 uptime=506364s
+2026-09-22T14:32:33.007Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=75.4ms tokens=179
+2026-09-22T14:32:33.154Z ERROR [orders-api] Envoy upstream reset before headers, cluster=shipping-service
+2026-09-22T14:32:35.635Z INFO k8s event namespace=prod Readiness probe succeeded for pod billing-service-7b58d96d84-m5f84
+2026-09-22T14:32:36.882Z ERROR [orders-api] POST /api/v1/checkout 502 duration=3395.6ms trace=1561667759b5e493
+2026-09-22T14:32:37.837Z INFO [payments-gateway] webhook delivered url=https://partner-5.example.com/hooks status=200 attempt=1
+2026-09-22T14:32:37.938Z ERROR [orders-api] Envoy upstream reset before headers, cluster=shipping-service
+2026-09-22T14:32:41.098Z INFO [notification-worker] POST /api/v1/inventory 200 duration=205.8ms trace=41f5242af54a940e region=us-east-2
+2026-09-22T14:32:44.210Z INFO [media-processor] redis GET key=search_results:2627 HIT latency=3.4ms
+2026-09-22T14:32:47.171Z ERROR [recommendation-service] memory usage host=recommendation-service-4b9c6d8f7-c2m96 rss=1885MB approaching limit
+2026-09-22T14:32:48.314Z INFO [invoice-worker] redis GET key=pricing:6863 HIT latency=0.7ms
+2026-09-22T14:32:53.882Z WARN [orders-api] circuit breaker open for shipping-service, failing fast
+2026-09-22T14:33:01.941Z INFO [user-profile-api] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:33:07.500Z INFO datadog-agent flush metrics count=1395 host=search-api-4b9c6d8f7-g8d85
+2026-09-22T14:33:10.710Z INFO [user-profile-api] redis GET key=pricing:4936 HIT latency=0.5ms
+2026-09-22T14:33:12.944Z WARN [orders-api] circuit breaker open for shipping-service, failing fast
+2026-09-22T14:33:18.882Z INFO [orders-api] circuit breaker closed, shipping-service healthy again
+2026-09-22T14:33:20.026Z INFO [analytics-ingest] GET /api/v1/search 201 duration=31.6ms trace=bc8d8de5c57b5063 region=eu-central-1
+2026-09-22T14:33:24.356Z INFO datadog-agent flush metrics count=1336 host=reporting-service-9f5d7c6b8-f6c99
+2026-09-22T14:33:26.727Z INFO [user-profile-api] redis GET key=user_profile:6958 HIT latency=1.6ms
+2026-09-22T14:33:32.566Z INFO k8s event namespace=prod Pod reporting-service-7b58d96d84-s8y97 Scheduled on node ip-10-130-168-141.us-west-2.compute.internal
+2026-09-22T14:33:37.689Z INFO otel span exported service.name=checkout-service span_id=5315cbf0 duration=70.8ms
+2026-09-22T14:33:41.806Z INFO deployment cart-service rollout status: 5/6 replicas updated to v4.22.5
+2026-09-22T14:33:42.556Z ERROR [search-api] elasticsearch cluster status RED, unassigned_shards=6
+2026-09-22T14:33:50.556Z ERROR [search-api] NoNodeAvailableException: None of the configured nodes are available
+2026-09-22T14:33:54.485Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=120.9ms tokens=188
+2026-09-22T14:33:57.438Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=8.5s
+2026-09-22T14:33:57.556Z WARN [search-api] search requests degraded, falling back to cached results
+2026-09-22T14:34:01.836Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=9.7s
+2026-09-22T14:34:01.886Z INFO worker email-batch batch=495 completed items=455 duration=5.6s
+2026-09-22T14:34:12.556Z ERROR [search-api] GET /api/v1/search 503 duration=3367.9ms trace=eb814ea646971648
+2026-09-22T14:34:13.560Z INFO [reporting-service] POST /api/v1/search 200 duration=9.1ms trace=69dbe6936722e0e8 region=us-west-2
+2026-09-22T14:34:13.957Z INFO worker report-export batch=930 completed items=299 duration=13.3s
+2026-09-22T14:34:20.289Z INFO [checkout-service] heartbeat ok host=checkout-service-9f5d7c6b8-r2z45 uptime=601353s
+2026-09-22T14:34:21.260Z INFO otel span exported service.name=auth-service span_id=3bb168f1 duration=32.6ms
+2026-09-22T14:34:23.228Z INFO otel span exported service.name=recommendation-service span_id=701c8c14 duration=45.4ms
+2026-09-22T14:34:27.171Z WARN k8s event namespace=prod Pod recommendation-service-4b9c6d8f7-c2m96 memory usage 94% of limit
+2026-09-22T14:34:29.754Z INFO deployment session-service rollout status: 6/6 replicas updated to v7.12.7
+2026-09-22T14:34:33.429Z INFO [media-processor] webhook delivered url=https://partner-9.example.com/hooks status=200 attempt=1
+2026-09-22T14:34:34.979Z INFO worker report-export batch=560 completed items=385 duration=16.4s
+2026-09-22T14:34:36.028Z WARN [search-api] search requests degraded, falling back to cached results
+2026-09-22T14:34:39.302Z WARN [search-api] search requests degraded, falling back to cached results
+2026-09-22T14:34:42.556Z WARN ops restarted elasticsearch data node es-data-4
+2026-09-22T14:34:46.133Z ERROR [search-api] elasticsearch cluster status RED, unassigned_shards=6
+2026-09-22T14:34:47.319Z INFO k8s event namespace=prod Readiness probe succeeded for pod session-service-6d9f4c8b5c-w9h57
+2026-09-22T14:34:48.106Z INFO deployment inventory-service rollout status: 5/2 replicas updated to v1.4.16
+2026-09-22T14:34:49.875Z ERROR [search-api] NoNodeAvailableException: None of the configured nodes are available
+2026-09-22T14:34:55.557Z INFO [cart-service] webhook delivered url=https://partner-8.example.com/hooks status=200 attempt=1
+2026-09-22T14:34:58.082Z INFO [reporting-service] query SELECT * FROM users WHERE id=? rows=31 duration=38.3ms
+2026-09-22T14:34:58.266Z ERROR [search-api] GET /api/v1/search 503 duration=3367.9ms trace=eb814ea646971648
+2026-09-22T14:34:58.529Z INFO deployment gateway-edge rollout status: 3/6 replicas updated to v1.24.5
+2026-09-22T14:34:59.909Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=62.4ms tokens=851
+2026-09-22T14:35:03.293Z INFO k8s event namespace=prod Pod notification-worker-4b9c6d8f7-h5v75 started container notification-worker
+2026-09-22T14:35:04.131Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=73.8ms tokens=843
+2026-09-22T14:35:06.671Z INFO datadog-agent flush metrics count=242 host=payments-gateway-8c7d6f9b4-r4p76
+2026-09-22T14:35:12.642Z WARN [search-api] search requests degraded, falling back to cached results
+2026-09-22T14:35:17.171Z INFO ops scheduled rolling restart for recommendation-service to mitigate suspected leak
+2026-09-22T14:35:21.009Z INFO [session-service] webhook delivered url=https://partner-4.example.com/hooks status=200 attempt=1
+2026-09-22T14:35:22.556Z INFO [search-api] elasticsearch cluster status YELLOW, shards recovering
+2026-09-22T14:35:22.776Z INFO k8s event namespace=prod Scaled up replica set webhook-dispatcher-4b9c6d8f7 to 3
+2026-09-22T14:35:27.304Z INFO deployment inventory-service rollout status: 4/4 replicas updated to v5.4.4
+2026-09-22T14:35:29.663Z INFO otel span exported service.name=payments-gateway span_id=bdc34abc duration=18.9ms
+2026-09-22T14:35:37.094Z INFO worker report-export batch=292 completed items=268 duration=7.8s
+2026-09-22T14:35:38.408Z INFO [session-service] webhook delivered url=https://partner-14.example.com/hooks status=200 attempt=1
+2026-09-22T14:35:43.361Z INFO [notification-worker] webhook delivered url=https://partner-10.example.com/hooks status=200 attempt=1
+2026-09-22T14:35:44.746Z ERROR [search-api] elasticsearch cluster status RED, unassigned_shards=6
+2026-09-22T14:35:49.036Z INFO deployment recommendation-service rollout status: 6/3 replicas updated to v3.15.14
+2026-09-22T14:35:55.446Z INFO datadog-agent flush metrics count=1468 host=webhook-dispatcher-7b58d96d84-e6f60
+2026-09-22T14:35:57.111Z INFO datadog-agent flush metrics count=312 host=webhook-dispatcher-5f6c9b7d8-a2v78
+2026-09-22T14:35:57.343Z INFO [ml-inference] webhook delivered url=https://partner-12.example.com/hooks status=200 attempt=1
+2026-09-22T14:36:01.762Z INFO [ml-inference] webhook delivered url=https://partner-10.example.com/hooks status=200 attempt=1
+2026-09-22T14:36:07.171Z INFO [recommendation-service] restarted host=recommendation-service-4b9c6d8f7-x8g56 rss=467MB
+2026-09-22T14:36:08.114Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=78.5ms tokens=603
+2026-09-22T14:36:12.556Z INFO [search-api] elasticsearch cluster status GREEN
+2026-09-22T14:36:14.221Z WARN k8s event namespace=prod Back-off restarting failed container notification-worker in pod notification-worker-7b58d96d84-n5n19
+2026-09-22T14:36:19.221Z ERROR k8s event namespace=prod Pod notification-worker-7b58d96d84-n5n19 in CrashLoopBackOff, restartCount=4
+2026-09-22T14:36:19.302Z WARN k8s event namespace=prod Back-off restarting failed container notification-worker in pod notification-worker-7b58d96d84-n5n19
+2026-09-22T14:36:19.614Z INFO [gateway-edge] GET /api/v1/cart 200 duration=149.9ms trace=26464a8bedf00c68 region=ap-southeast-2
+2026-09-22T14:36:23.221Z ERROR [notification-worker] container exited with code 1
+2026-09-22T14:36:29.221Z WARN k8s event namespace=prod Liveness probe failed for pod notification-worker-7b58d96d84-n5n19: HTTP probe failed with statuscode: 503
+2026-09-22T14:36:30.684Z INFO otel span exported service.name=webhook-dispatcher span_id=caad35a3 duration=29.7ms
+2026-09-22T14:36:31.643Z ERROR k8s event namespace=prod Pod notification-worker-7b58d96d84-n5n19 in CrashLoopBackOff, restartCount=4
+2026-09-22T14:36:36.221Z ERROR k8s event namespace=prod Pod notification-worker-7b58d96d84-n5n19 restartCount=11
+2026-09-22T14:36:36.827Z WARN k8s event namespace=prod Back-off restarting failed container notification-worker in pod notification-worker-7b58d96d84-n5n19
+2026-09-22T14:36:37.125Z WARN k8s event namespace=prod Back-off restarting failed container notification-worker in pod notification-worker-7b58d96d84-n5n19
+2026-09-22T14:36:40.832Z INFO deployment gateway-edge rollout status: 3/4 replicas updated to v7.31.7
+2026-09-22T14:36:41.952Z WARN k8s event namespace=prod Liveness probe failed for pod notification-worker-7b58d96d84-n5n19: HTTP probe failed with statuscode: 503
+2026-09-22T14:36:44.160Z INFO [media-processor] query SELECT * FROM orders WHERE id=? rows=12 duration=5.6ms
+2026-09-22T14:36:45.126Z INFO [recommendation-service] redis GET key=cart:5470 HIT latency=1.4ms
+2026-09-22T14:36:45.135Z ERROR [notification-worker] container exited with code 1
+2026-09-22T14:36:51.572Z INFO [webhook-dispatcher] heartbeat ok host=webhook-dispatcher-6f7b8d9c5-h5m38 uptime=989067s
+2026-09-22T14:36:54.221Z INFO k8s event namespace=prod Pod notification-worker-7b58d96d84-n5n19 rolled back to previous image, container started successfully
+2026-09-22T14:36:54.611Z ERROR [notification-worker] container exited with code 1
+2026-09-22T14:36:55.841Z INFO datadog-agent flush metrics count=398 host=analytics-ingest-8b5d7c9f6-m6q84
+2026-09-22T14:36:56.449Z WARN k8s event namespace=prod Back-off restarting failed container notification-worker in pod notification-worker-7b58d96d84-n5n19
+2026-09-22T14:37:00.521Z INFO deployment invoice-worker rollout status: 5/5 replicas updated to v2.19.19
+2026-09-22T14:37:04.304Z INFO [checkout-service] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:37:09.955Z INFO [gateway-edge] PUT /metrics 201 duration=53.6ms trace=f0d8ca7f26b364a2 region=eu-central-1
+2026-09-22T14:37:15.940Z INFO k8s event namespace=prod HorizontalPodAutoscaler ml-inference status: current CPU utilization 45%
+2026-09-22T14:37:16.192Z ERROR k8s event namespace=prod Pod notification-worker-7b58d96d84-n5n19 in CrashLoopBackOff, restartCount=4
+2026-09-22T14:37:21.745Z ERROR cronjob=daily-revenue-report namespace=prod status=Failed exitCode=1
+2026-09-22T14:37:26.745Z ERROR [reporting-service] scheduler failed to acquire lock for job=daily-revenue-report, lock held by stale instance
+2026-09-22T14:37:28.733Z INFO worker report-export batch=962 completed items=481 duration=20.0s
+2026-09-22T14:37:30.726Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=7.8s
+2026-09-22T14:37:31.438Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=113.7ms tokens=325
+2026-09-22T14:37:37.250Z INFO worker report-export batch=907 completed items=177 duration=19.1s
+2026-09-22T14:37:41.745Z WARN [reporting-service] job=daily-revenue-report skipped, previous run still marked in-progress
+2026-09-22T14:37:48.045Z INFO [recommendation-service] redis GET key=cart:3780 HIT latency=3.1ms
+2026-09-22T14:37:55.576Z INFO [analytics-ingest] heartbeat ok host=analytics-ingest-7d6c9b8f5-d2g93 uptime=135114s
+2026-09-22T14:37:57.672Z INFO deployment notification-worker rollout status: 1/3 replicas updated to v7.15.8
+2026-09-22T14:37:58.138Z INFO k8s event namespace=prod Pod ml-inference-6f7b8d9c5-r2a59 started container ml-inference
+2026-09-22T14:38:06.745Z INFO ops manually released lock for job=daily-revenue-report
+2026-09-22T14:38:07.072Z INFO [media-processor] redis GET key=search_results:2757 HIT latency=0.3ms
+2026-09-22T14:38:09.022Z INFO worker image-resize batch=927 completed items=474 duration=9.6s
+2026-09-22T14:38:11.516Z INFO [webhook-dispatcher] heartbeat ok host=webhook-dispatcher-4b9c6d8f7-h9z18 uptime=358522s
+2026-09-22T14:38:12.285Z INFO [analytics-ingest] PUT /metrics 200 duration=113.9ms trace=b603f2795ca51960 region=eu-west-1
+2026-09-22T14:38:14.476Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=7.8s
+2026-09-22T14:38:16.408Z INFO datadog-agent flush metrics count=2873 host=cart-service-8b5d7c9f6-b9q86
+2026-09-22T14:38:20.408Z INFO otel span exported service.name=analytics-ingest span_id=3ac28504 duration=51.4ms
+2026-09-22T14:38:21.512Z INFO datadog-agent flush metrics count=3235 host=gateway-edge-7d6c9b8f5-s4d50
+2026-09-22T14:38:21.619Z INFO [notification-worker] GET /api/v1/inventory 200 duration=23.3ms trace=eeaa628f076120e7 region=ap-southeast-2
+2026-09-22T14:38:21.745Z INFO cronjob=daily-revenue-report namespace=prod status=Complete duration=4.7s
+2026-09-22T14:38:36.117Z INFO otel span exported service.name=notification-worker span_id=c0448b68 duration=20.9ms
+2026-09-22T14:38:50.968Z INFO otel span exported service.name=cart-service span_id=ddf8fefe duration=68.1ms
+2026-09-22T14:38:52.820Z INFO [user-profile-api] query SELECT * FROM orders WHERE id=? rows=9 duration=15.0ms
+2026-09-22T14:38:57.551Z INFO otel span exported service.name=notification-worker span_id=8b4e3fcf duration=16.9ms
+2026-09-22T14:39:00.872Z INFO [billing-service] redis GET key=inventory_count:9629 HIT latency=2.1ms
+2026-09-22T14:39:01.170Z INFO [media-processor] query SELECT * FROM payments WHERE id=? rows=21 duration=36.9ms
+2026-09-22T14:39:08.841Z INFO [analytics-ingest] POST /api/v1/payments/charge 201 duration=165.3ms trace=9a3c6fe784c3d524 region=us-east-1
+2026-09-22T14:39:12.862Z INFO datadog-agent flush metrics count=993 host=notification-worker-7d6c9b8f5-c7r97
+2026-09-22T14:39:13.182Z INFO otel span exported service.name=reporting-service span_id=aa6fb37a duration=49.5ms
+2026-09-22T14:39:13.225Z INFO datadog-agent flush metrics count=218 host=orders-api-5c8b9d7f6-s5d20
+2026-09-22T14:39:16.863Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=122.6ms tokens=407
+2026-09-22T14:39:25.392Z INFO [orders-api] POST /api/v1/orders 200 duration=124.0ms trace=99d61c9ebfc81c61 region=ap-northeast-1
+2026-09-22T14:39:25.751Z INFO [billing-service] heartbeat ok host=billing-service-4b9c6d8f7-s7a30 uptime=459519s
+2026-09-22T14:39:36.360Z INFO [invoice-worker] webhook delivered url=https://partner-11.example.com/hooks status=200 attempt=1
+2026-09-22T14:39:36.519Z INFO otel span exported service.name=media-processor span_id=b9c18abb duration=63.9ms
+2026-09-22T14:39:49.953Z INFO worker invoice-sync batch=249 completed items=459 duration=14.0s
+2026-09-22T14:39:52.573Z INFO otel span exported service.name=notification-worker span_id=6128cc9f duration=78.7ms
+2026-09-22T14:39:58.680Z WARN k8s event namespace=prod Pod invoice-worker-7b58d96d84-j4n44 ephemeral-storage usage 93%
+2026-09-22T14:39:59.760Z INFO otel span exported service.name=recommendation-service span_id=e04d4a50 duration=46.7ms
+2026-09-22T14:40:02.547Z INFO [shipping-service] GET /api/v1/search 200 duration=216.3ms trace=f5a16197bf76efad region=ap-northeast-1
+2026-09-22T14:40:07.504Z INFO [recommendation-service] GET /api/v1/sessions 200 duration=39.0ms trace=bc2d50efbd091ffa region=us-east-2
+2026-09-22T14:40:09.453Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=43.9ms tokens=94
+2026-09-22T14:40:19.818Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=6.8s
+2026-09-22T14:40:22.716Z INFO [shipping-service] redis GET key=inventory_count:6466 HIT latency=1.9ms
+2026-09-22T14:40:25.901Z INFO deployment recommendation-service rollout status: 6/5 replicas updated to v3.31.9
+2026-09-22T14:40:31.016Z INFO deployment inventory-service rollout status: 6/4 replicas updated to v4.36.10
+2026-09-22T14:40:33.282Z INFO [payments-gateway] query SELECT * FROM sessions WHERE id=? rows=33 duration=45.0ms
+2026-09-22T14:40:36.679Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=11.9s
+2026-09-22T14:40:38.574Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=156.9ms tokens=390
+2026-09-22T14:40:38.680Z ERROR [invoice-worker] write failed: no space left on device path=/var/lib/invoice-worker/tmp
+2026-09-22T14:40:48.390Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=4.9s
+2026-09-22T14:40:53.680Z ERROR k8s event namespace=prod Pod invoice-worker-7b58d96d84-j4n44 evicted: The node had condition: [DiskPressure]
+2026-09-22T14:40:58.606Z INFO [shipping-service] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:40:59.402Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=90.0ms tokens=800
+2026-09-22T14:41:01.520Z INFO worker payout-batch batch=717 completed items=409 duration=0.7s
+2026-09-22T14:41:01.879Z INFO otel span exported service.name=billing-service span_id=d2834278 duration=49.9ms
+2026-09-22T14:41:03.211Z INFO [session-service] GET /api/v1/search 304 duration=227.7ms trace=198de553cf6caa01 region=ap-northeast-1
+2026-09-22T14:41:04.324Z INFO [ml-inference] webhook delivered url=https://partner-9.example.com/hooks status=200 attempt=1
+2026-09-22T14:41:04.528Z INFO [notification-worker] query SELECT * FROM inventory WHERE id=? rows=38 duration=44.5ms
+2026-09-22T14:41:11.617Z INFO [cart-service] webhook delivered url=https://partner-3.example.com/hooks status=200 attempt=1
+2026-09-22T14:41:11.959Z INFO worker report-export batch=739 completed items=242 duration=2.4s
+2026-09-22T14:41:18.680Z WARN [invoice-worker] job log-rotation failed: disk full
+2026-09-22T14:41:20.265Z INFO deployment shipping-service rollout status: 3/3 replicas updated to v5.33.10
+2026-09-22T14:41:22.199Z INFO deployment auth-service rollout status: 1/4 replicas updated to v8.32.9
+2026-09-22T14:41:38.700Z INFO [cart-service] query SELECT * FROM inventory WHERE id=? rows=39 duration=24.0ms
+2026-09-22T14:41:44.938Z INFO [shipping-service] query SELECT * FROM invoices WHERE id=? rows=40 duration=25.6ms
+2026-09-22T14:41:48.680Z INFO ops cleared temp files and expanded volume for invoice-worker to 50Gi
+2026-09-22T14:41:50.261Z INFO [analytics-ingest] PUT /api/v1/cart 200 duration=170.6ms trace=ee93319f14ae9cd3 region=us-east-1
+2026-09-22T14:42:01.212Z INFO [inventory-service] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:42:01.903Z INFO deployment webhook-dispatcher rollout status: 6/4 replicas updated to v8.39.4
+2026-09-22T14:42:02.407Z WARN [search-api] search query slow query="wireless headphones" duration=4074.3ms
+2026-09-22T14:42:06.722Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:42:09.424Z WARN [search-api] search query slow query="wireless headphones" duration=4074.3ms
+2026-09-22T14:42:12.407Z ERROR [search-api] elasticsearch query timeout after 5000ms index=catalog
+2026-09-22T14:42:15.136Z INFO [invoice-worker] query SELECT * FROM users WHERE id=? rows=2 duration=7.4ms
+2026-09-22T14:42:16.217Z INFO [webhook-dispatcher] redis GET key=search_results:7144 HIT latency=3.4ms
+2026-09-22T14:42:17.658Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:42:18.680Z INFO k8s event namespace=prod Pod invoice-worker-6d9f4c8b5c-a7z18 scheduled, disk pressure resolved
+2026-09-22T14:42:19.646Z INFO datadog-agent flush metrics count=1193 host=user-profile-api-7d6c9b8f5-t5g74
+2026-09-22T14:42:22.407Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:42:26.155Z INFO [notification-worker] webhook delivered url=https://partner-8.example.com/hooks status=200 attempt=1
+2026-09-22T14:42:36.851Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:42:37.560Z INFO worker email-batch batch=989 completed items=138 duration=19.0s
+2026-09-22T14:42:42.021Z INFO [user-profile-api] query SELECT * FROM inventory WHERE id=? rows=3 duration=3.2ms
+2026-09-22T14:42:42.407Z INFO [search-api] search latency p99 recovered latency=191.3ms
+2026-09-22T14:42:48.673Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:42:51.564Z INFO [billing-service] heartbeat ok host=billing-service-7d6c9b8f5-g5k88 uptime=444771s
+2026-09-22T14:42:52.173Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=0.8s
+2026-09-22T14:42:54.117Z INFO datadog-agent flush metrics count=345 host=ml-inference-6d9f4c8b5c-c2f99
+2026-09-22T14:42:55.965Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=4.0s
+2026-09-22T14:42:58.435Z WARN [search-api] search query slow query="wireless headphones" duration=4074.3ms
+2026-09-22T14:43:02.012Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=1.9s
+2026-09-22T14:43:02.180Z WARN [search-api] search fallback to keyword-only mode
+2026-09-22T14:43:03.902Z INFO deployment invoice-worker rollout status: 3/4 replicas updated to v7.36.3
+2026-09-22T14:43:12.857Z INFO datadog-agent flush metrics count=2480 host=analytics-ingest-8c7d6f9b4-d8r80
+2026-09-22T14:43:26.692Z INFO [search-api] POST /api/v1/recommendations 200 duration=115.7ms trace=02af4b9914ab71b4 region=ap-northeast-1
+2026-09-22T14:43:27.856Z INFO worker report-export batch=629 completed items=416 duration=19.1s
+2026-09-22T14:43:32.586Z WARN [webhook-dispatcher] webhook delivery failed url=https://partner-16.example.com/hooks status=timeout attempt=1
+2026-09-22T14:43:38.785Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=72.8ms tokens=213
+2026-09-22T14:43:41.463Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=131.8ms tokens=75
+2026-09-22T14:43:45.325Z INFO [ml-inference] PUT /api/v1/recommendations 304 duration=182.1ms trace=bb8cb8286ec00ed0 region=eu-central-1
+2026-09-22T14:43:52.586Z WARN [webhook-dispatcher] webhook delivery failed url=https://partner-16.example.com/hooks status=timeout attempt=2
+2026-09-22T14:43:56.927Z INFO [media-processor] redis GET key=session:4779 HIT latency=2.4ms
+2026-09-22T14:44:09.763Z INFO [gateway-edge] POST /api/v1/notifications 200 duration=126.4ms trace=03970ff9646cc68f region=us-west-2
+2026-09-22T14:44:21.467Z INFO deployment inventory-service rollout status: 1/3 replicas updated to v9.20.15
+2026-09-22T14:44:22.586Z ERROR [webhook-dispatcher] webhook delivery failed url=https://partner-16.example.com/hooks status=timeout attempt=3, moving to DLQ
+2026-09-22T14:44:24.411Z INFO [reporting-service] redis GET key=session:2411 HIT latency=1.6ms
+2026-09-22T14:44:30.456Z INFO k8s event namespace=prod Pod payments-gateway-6d9f4c8b5c-c7c47 started container payments-gateway
+2026-09-22T14:44:36.140Z INFO [session-service] webhook delivered url=https://partner-12.example.com/hooks status=200 attempt=1
+2026-09-22T14:44:42.586Z WARN [webhook-dispatcher] DLQ depth increasing queue=webhooks-dlq size=174
+2026-09-22T14:44:43.583Z INFO k8s event namespace=prod Pod billing-service-4b9c6d8f7-t8m62 Scheduled on node ip-10-151-106-68.ap-northeast-1.compute.internal
+2026-09-22T14:44:43.734Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=9.5s
+2026-09-22T14:44:47.308Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=9.0s
+2026-09-22T14:44:47.976Z INFO otel span exported service.name=checkout-service span_id=2f84a1c3 duration=45.2ms
+2026-09-22T14:44:52.555Z INFO worker report-export batch=776 completed items=144 duration=19.8s
+2026-09-22T14:44:59.157Z INFO [invoice-worker] query SELECT * FROM invoices WHERE id=? rows=18 duration=36.7ms
+2026-09-22T14:45:03.095Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=8.4s
+2026-09-22T14:45:05.575Z INFO deployment search-api rollout status: 6/6 replicas updated to v9.36.9
+2026-09-22T14:45:05.897Z INFO worker report-export batch=476 completed items=469 duration=14.2s
+2026-09-22T14:45:12.586Z INFO [webhook-dispatcher] partner partner-16.example.com endpoint recovered, reprocessing DLQ
+2026-09-22T14:45:15.652Z INFO otel span exported service.name=invoice-worker span_id=edeb072f duration=30.4ms
+2026-09-22T14:45:15.881Z INFO deployment session-service rollout status: 1/4 replicas updated to v5.17.1
+2026-09-22T14:45:20.863Z WARN [payments-gateway] Adyen API request slow duration=6968.3ms order=737619
+2026-09-22T14:45:22.845Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=80.0ms tokens=272
+2026-09-22T14:45:24.257Z INFO [gateway-edge] heartbeat ok host=gateway-edge-5f6c9b7d8-v9d81 uptime=358190s
+2026-09-22T14:45:24.560Z INFO otel span exported service.name=ml-inference span_id=e272890f duration=31.8ms
+2026-09-22T14:45:26.732Z INFO [billing-service] heartbeat ok host=billing-service-7b58d96d84-v2c11 uptime=681469s
+2026-09-22T14:45:26.863Z ERROR [payments-gateway] context deadline exceeded calling Adyen charge endpoint order=737619
+2026-09-22T14:45:27.780Z INFO datadog-agent flush metrics count=1618 host=shipping-service-7d6c9b8f5-t8t33
+2026-09-22T14:45:29.465Z INFO [ml-inference] PUT /api/v1/checkout 200 duration=66.3ms trace=fb327737f839bfc7 region=eu-west-1
+2026-09-22T14:45:30.863Z WARN [payments-gateway] retrying payment order=737619 attempt=2
+2026-09-22T14:45:31.573Z INFO [invoice-worker] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:45:37.626Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=10.8s
+2026-09-22T14:45:38.863Z ERROR [payments-gateway] POST /api/v1/payments/charge 504 duration=8927.9ms trace=559240fafa7cc883
+2026-09-22T14:45:50.863Z WARN [payments-gateway] Adyen status page reports elevated latency
+2026-09-22T14:45:51.187Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=39.7ms tokens=505
+2026-09-22T14:45:59.311Z WARN [payments-gateway] Adyen status page reports elevated latency
+2026-09-22T14:46:01.940Z INFO [recommendation-service] webhook delivered url=https://partner-19.example.com/hooks status=200 attempt=1
+2026-09-22T14:46:04.933Z INFO [inventory-service] heartbeat ok host=inventory-service-7b58d96d84-c2k68 uptime=504106s
+2026-09-22T14:46:07.904Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=69.6ms tokens=857
+2026-09-22T14:46:09.535Z INFO [ml-inference] redis GET key=pricing:3370 HIT latency=1.8ms
+2026-09-22T14:46:13.793Z WARN [payments-gateway] Adyen API request slow duration=6968.3ms order=737619
+2026-09-22T14:46:15.863Z INFO [payments-gateway] payment succeeded on retry order=737619 attempt=3
+2026-09-22T14:46:18.476Z WARN [payments-gateway] Adyen status page reports elevated latency
+2026-09-22T14:46:31.871Z WARN [payments-gateway] Adyen API request slow duration=6968.3ms order=737619
+2026-09-22T14:46:37.534Z WARN [payments-gateway] Adyen API request slow duration=6968.3ms order=737619
+2026-09-22T14:46:42.129Z ERROR [payments-gateway] POST /api/v1/payments/charge 504 duration=8927.9ms trace=559240fafa7cc883
+2026-09-22T14:46:47.616Z INFO [cart-service] heartbeat ok host=cart-service-6f7b8d9c5-w8y74 uptime=145610s
+2026-09-22T14:46:58.209Z INFO [notification-worker] POST /api/v1/cart 204 duration=103.2ms trace=e41212968599d8c0 region=us-east-1
+2026-09-22T14:47:05.332Z INFO [auth-service] query SELECT * FROM users WHERE id=? rows=37 duration=31.6ms
+2026-09-22T14:47:06.300Z INFO [cart-service] webhook delivered url=https://partner-18.example.com/hooks status=200 attempt=1
+2026-09-22T14:47:08.281Z INFO [gateway-edge] GET /readyz 304 duration=43.9ms trace=007ebba2a4776d04 region=ap-northeast-1
+2026-09-22T14:47:23.944Z INFO k8s event namespace=prod Readiness probe succeeded for pod shipping-service-6f7b8d9c5-j6h51
+2026-09-22T14:47:24.723Z WARN [reporting-service] thread pool 'Tomcat-http' queue size 250 approaching capacity
+2026-09-22T14:47:29.897Z ERROR [reporting-service] java.util.concurrent.RejectedExecutionException: Task rejected from Tomcat-http
+2026-09-22T14:47:30.364Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=135.9ms tokens=616
+2026-09-22T14:47:32.668Z INFO deployment inventory-service rollout status: 5/4 replicas updated to v5.18.10
+2026-09-22T14:47:34.723Z ERROR [reporting-service] java.util.concurrent.RejectedExecutionException: Task rejected from Tomcat-http
+2026-09-22T14:47:38.533Z ERROR [reporting-service] POST /api/v1/orders 503 duration=5663.7ms trace=455938ee04da4467
+2026-09-22T14:47:39.723Z WARN [reporting-service] active threads 192/200 in pool Tomcat-http
+2026-09-22T14:47:43.195Z INFO otel span exported service.name=shipping-service span_id=631b1d9c duration=34.0ms
+2026-09-22T14:47:47.208Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=89.0ms tokens=565
+2026-09-22T14:47:49.723Z ERROR [reporting-service] POST /api/v1/orders 503 duration=5663.7ms trace=455938ee04da4467
+2026-09-22T14:47:54.466Z INFO otel span exported service.name=shipping-service span_id=ef14eef1 duration=76.1ms
+2026-09-22T14:47:55.474Z INFO [payments-gateway] query SELECT * FROM payments WHERE id=? rows=17 duration=23.1ms
+2026-09-22T14:47:57.256Z INFO [session-service] webhook delivered url=https://partner-12.example.com/hooks status=200 attempt=1
+2026-09-22T14:48:00.128Z WARN [reporting-service] thread pool 'Tomcat-http' queue size 250 approaching capacity
+2026-09-22T14:48:01.302Z INFO [user-profile-api] query SELECT * FROM inventory WHERE id=? rows=12 duration=24.4ms
+2026-09-22T14:48:09.723Z INFO ops increased thread pool size for reporting-service to 380
+2026-09-22T14:48:12.475Z INFO [recommendation-service] redis GET key=inventory_count:4026 HIT latency=1.7ms
+2026-09-22T14:48:16.693Z INFO [checkout-service] redis GET key=user_profile:7533 HIT latency=0.8ms
+2026-09-22T14:48:17.087Z INFO k8s event namespace=prod Readiness probe succeeded for pod analytics-ingest-7b58d96d84-k7v40
+2026-09-22T14:48:18.173Z INFO k8s event namespace=prod Scaled up replica set user-profile-api-8b5d7c9f6 to 10
+2026-09-22T14:48:19.430Z INFO deployment billing-service rollout status: 6/1 replicas updated to v1.4.14
+2026-09-22T14:48:20.606Z INFO k8s event namespace=prod Readiness probe succeeded for pod search-api-5f6c9b7d8-p9f28
+2026-09-22T14:48:24.719Z INFO [session-service] PUT /api/v1/notifications 200 duration=106.3ms trace=42d89f78c7646c7b region=eu-central-1
+2026-09-22T14:48:29.098Z WARN [reporting-service] thread pool 'Tomcat-http' queue size 250 approaching capacity
+2026-09-22T14:48:33.859Z ERROR [reporting-service] POST /api/v1/orders 503 duration=5663.7ms trace=455938ee04da4467
+2026-09-22T14:48:34.723Z INFO [reporting-service] thread pool 'Tomcat-http' queue size 18, healthy
+2026-09-22T14:48:37.658Z ERROR [reporting-service] POST /api/v1/orders 503 duration=5663.7ms trace=455938ee04da4467
+2026-09-22T14:48:38.339Z INFO deployment reporting-service rollout status: 6/5 replicas updated to v8.0.5
+2026-09-22T14:48:44.171Z INFO datadog-agent flush metrics count=564 host=invoice-worker-6f7b8d9c5-c5p60
+2026-09-22T14:48:44.568Z INFO [reporting-service] webhook delivered url=https://partner-2.example.com/hooks status=200 attempt=1
+2026-09-22T14:48:45.958Z INFO otel span exported service.name=recommendation-service span_id=695a461b duration=32.3ms
+2026-09-22T14:48:49.340Z ERROR [reporting-service] POST /api/v1/orders 503 duration=5663.7ms trace=455938ee04da4467
+2026-09-22T14:48:50.536Z INFO [notification-worker] heartbeat ok host=notification-worker-8b5d7c9f6-s2e27 uptime=386937s
+2026-09-22T14:48:54.443Z INFO datadog-agent flush metrics count=2408 host=gateway-edge-6d9f4c8b5c-q3e50
+2026-09-22T14:48:57.507Z WARN [reporting-service] thread pool 'Tomcat-http' queue size 250 approaching capacity
+2026-09-22T14:49:08.969Z INFO [session-service] query SELECT * FROM invoices WHERE id=? rows=23 duration=15.5ms
+2026-09-22T14:49:10.261Z INFO [webhook-dispatcher] heartbeat ok host=webhook-dispatcher-9f5d7c6b8-x6z27 uptime=63788s
+2026-09-22T14:49:16.758Z INFO [webhook-dispatcher] redis GET key=session:8448 HIT latency=2.6ms
+2026-09-22T14:49:41.768Z ERROR [cart-service] redis.exceptions.ConnectionError: Error connecting to redis-cache.internal:6379
+2026-09-22T14:49:43.768Z WARN [cart-service] redis client retrying connection attempt=1 backoff=200ms
+2026-09-22T14:49:46.768Z WARN [cart-service] redis client retrying connection attempt=2 backoff=400ms
+2026-09-22T14:49:49.260Z WARN [cart-service] redis client retrying connection attempt=1 backoff=200ms
+2026-09-22T14:49:50.768Z ERROR [cart-service] cache unavailable, falling back to database for session lookups
+2026-09-22T14:49:51.598Z INFO [payments-gateway] heartbeat ok host=payments-gateway-9f5d7c6b8-b2s61 uptime=620071s
+2026-09-22T14:49:53.901Z WARN [cart-service] redis client retrying connection attempt=2 backoff=400ms
+2026-09-22T14:49:54.588Z WARN [cart-service] redis client retrying connection attempt=2 backoff=400ms
+2026-09-22T14:49:55.581Z ERROR [cart-service] cache unavailable, falling back to database for session lookups
+2026-09-22T14:49:57.671Z INFO k8s event namespace=prod HorizontalPodAutoscaler session-service status: current CPU utilization 46%
+2026-09-22T14:49:58.641Z ERROR [cart-service] redis.exceptions.ConnectionError: Error connecting to redis-cache.internal:6379
+2026-09-22T14:50:01.782Z INFO datadog-agent flush metrics count=3694 host=ml-inference-7d6c9b8f5-r8b93
+2026-09-22T14:50:03.768Z INFO [cart-service] redis connection re-established
+2026-09-22T14:50:06.083Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=158.1ms tokens=135
+2026-09-22T14:50:14.297Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=87.4ms tokens=588
+2026-09-22T14:50:15.426Z ERROR [cart-service] cache unavailable, falling back to database for session lookups
+2026-09-22T14:50:16.470Z WARN [cart-service] redis client retrying connection attempt=2 backoff=400ms
+2026-09-22T14:50:24.565Z INFO worker email-batch batch=208 completed items=473 duration=15.9s
+2026-09-22T14:50:26.295Z WARN [cart-service] redis client retrying connection attempt=2 backoff=400ms
+2026-09-22T14:50:40.144Z INFO [search-api] redis GET key=pricing:5801 HIT latency=1.1ms
+2026-09-22T14:50:43.926Z INFO [auth-service] redis GET key=pricing:9092 HIT latency=0.4ms
+2026-09-22T14:50:48.396Z INFO [inventory-service] query SELECT * FROM sessions WHERE id=? rows=20 duration=43.4ms
+2026-09-22T14:50:48.636Z INFO [shipping-service] GET /api/v1/checkout 304 duration=51.2ms trace=23cf1e9771ab409b region=ap-northeast-1
+2026-09-22T14:50:55.572Z INFO [billing-service] webhook delivered url=https://partner-15.example.com/hooks status=200 attempt=1
+2026-09-22T14:51:02.731Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=82.2ms tokens=644
+2026-09-22T14:51:03.264Z INFO otel span exported service.name=recommendation-service span_id=012e7202 duration=4.9ms
+2026-09-22T14:51:11.944Z INFO deployment orders-api rollout complete image=orders-api:v2.27.4
+2026-09-22T14:51:12.527Z INFO datadog-agent flush metrics count=1950 host=media-processor-6f7b8d9c5-a6n10
+2026-09-22T14:51:14.141Z ERROR [orders-api] NullPointerException at orders-api.handlers.OrderHandler.process(OrderHandler.java:75)
+2026-09-22T14:51:16.425Z INFO otel span exported service.name=session-service span_id=afb15c1e duration=56.6ms
+2026-09-22T14:51:20.927Z INFO [shipping-service] POST /api/v1/checkout 304 duration=183.2ms trace=3c0f895479930688 region=us-east-1
+2026-09-22T14:51:25.059Z INFO [user-profile-api] heartbeat ok host=user-profile-api-5c8b9d7f6-g2m55 uptime=746707s
+2026-09-22T14:51:27.481Z INFO [checkout-service] webhook delivered url=https://partner-5.example.com/hooks status=200 attempt=1
+2026-09-22T14:51:37.137Z WARN [orders-api] error rate increasing since deploy of v2.27.4, error_rate=14%
+2026-09-22T14:51:41.944Z WARN [orders-api] error rate increasing since deploy of v2.27.4, error_rate=14%
+2026-09-22T14:51:41.990Z WARN [orders-api] error rate increasing since deploy of v2.27.4, error_rate=14%
+2026-09-22T14:51:54.750Z INFO datadog-agent flush metrics count=515 host=media-processor-8c7d6f9b4-c3q88
+2026-09-22T14:51:56.808Z INFO deployment reporting-service rollout status: 6/6 replicas updated to v6.21.12
+2026-09-22T14:52:02.108Z INFO [shipping-service] webhook delivered url=https://partner-17.example.com/hooks status=200 attempt=1
+2026-09-22T14:52:04.953Z WARN [orders-api] automatic rollback triggered by Datadog monitor
+2026-09-22T14:52:11.811Z INFO [auth-service] query SELECT * FROM invoices WHERE id=? rows=22 duration=27.3ms
+2026-09-22T14:52:19.275Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=11.5s
+2026-09-22T14:52:20.321Z ERROR [orders-api] error rate error_rate=34%, exceeding SLO
+2026-09-22T14:52:21.944Z ERROR [orders-api] NullPointerException at orders-api.handlers.OrderHandler.process(OrderHandler.java:75)
+2026-09-22T14:52:23.121Z INFO [recommendation-service] webhook delivered url=https://partner-7.example.com/hooks status=200 attempt=1
+2026-09-22T14:52:29.967Z INFO datadog-agent flush metrics count=2605 host=media-processor-7b58d96d84-h9k77
+2026-09-22T14:52:32.399Z ERROR [orders-api] NullPointerException at orders-api.handlers.OrderHandler.process(OrderHandler.java:75)
+2026-09-22T14:52:47.157Z ERROR [orders-api] error rate error_rate=34%, exceeding SLO
+2026-09-22T14:52:48.083Z INFO deployment invoice-worker rollout status: 2/1 replicas updated to v9.38.12
+2026-09-22T14:52:50.938Z INFO [media-processor] heartbeat ok host=media-processor-5c8b9d7f6-f4j47 uptime=535174s
+2026-09-22T14:52:51.944Z ERROR [orders-api] error rate error_rate=34%, exceeding SLO
+2026-09-22T14:52:52.519Z INFO k8s event namespace=prod Readiness probe succeeded for pod user-profile-api-4b9c6d8f7-j9v49
+2026-09-22T14:52:54.999Z INFO [user-profile-api] query SELECT * FROM payments WHERE id=? rows=31 duration=32.6ms
+2026-09-22T14:52:55.565Z INFO [orders-api] GET /api/v1/search 200 duration=100.3ms trace=be5a8954f6732e08 region=us-west-2
+2026-09-22T14:52:55.961Z INFO otel span exported service.name=recommendation-service span_id=28a8c2fd duration=10.2ms
+2026-09-22T14:52:57.097Z INFO deployment billing-service rollout status: 6/2 replicas updated to v7.21.16
+2026-09-22T14:53:02.681Z INFO [payments-gateway] redis GET key=session:1176 HIT latency=3.3ms
+2026-09-22T14:53:05.913Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=59.8ms tokens=458
+2026-09-22T14:53:19.337Z INFO [search-api] heartbeat ok host=search-api-4b9c6d8f7-k7h83 uptime=821505s
+2026-09-22T14:53:20.813Z INFO [notification-worker] query SELECT * FROM invoices WHERE id=? rows=23 duration=28.9ms
+2026-09-22T14:53:21.944Z WARN [orders-api] automatic rollback triggered by Datadog monitor
+2026-09-22T14:53:35.588Z ERROR [billing-service] deadlock detected: Deadlock found when trying to get lock; try restarting transaction
+2026-09-22T14:53:37.588Z ERROR [billing-service] org.postgresql.util.PSQLException: ERROR: deadlock detected
+2026-09-22T14:53:38.588Z WARN [billing-service] Detail: Process 4766 waits for ShareLock on transaction 232574
+2026-09-22T14:53:41.588Z WARN [billing-service] transaction rolled back order=788689 retry=1
+2026-09-22T14:53:45.167Z INFO [gateway-edge] heartbeat ok host=gateway-edge-5c8b9d7f6-r9e32 uptime=348538s
+2026-09-22T14:53:46.588Z INFO [billing-service] transaction committed successfully after retry order=765601
+2026-09-22T14:53:48.722Z INFO [media-processor] heartbeat ok host=media-processor-7d6c9b8f5-x5v76 uptime=751088s
+2026-09-22T14:53:48.849Z ERROR [orders-api] NullPointerException at orders-api.handlers.OrderHandler.process(OrderHandler.java:75)
+2026-09-22T14:53:51.944Z INFO deployment orders-api rolled back to previous stable version
+2026-09-22T14:54:01.968Z INFO otel span exported service.name=checkout-service span_id=0f607379 duration=8.8ms
+2026-09-22T14:54:02.125Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=176.9ms tokens=594
+2026-09-22T14:54:03.753Z INFO k8s event namespace=prod HorizontalPodAutoscaler webhook-dispatcher status: current CPU utilization 45%
+2026-09-22T14:54:03.796Z INFO datadog-agent flush metrics count=1202 host=inventory-service-6f7b8d9c5-e5v90
+2026-09-22T14:54:04.382Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=7.3s
+2026-09-22T14:54:09.920Z INFO [user-profile-api] POST /metrics 304 duration=34.4ms trace=f8ad9e3931976ca6 region=us-east-1
+2026-09-22T14:54:13.263Z INFO [search-api] heartbeat ok host=search-api-4b9c6d8f7-f2t81 uptime=424858s
+2026-09-22T14:54:18.366Z INFO datadog-agent flush metrics count=3027 host=auth-service-9f5d7c6b8-h2d14
+2026-09-22T14:54:21.944Z INFO [orders-api] error rate normalized error_rate=0%
+2026-09-22T14:54:24.998Z INFO datadog-agent flush metrics count=3891 host=webhook-dispatcher-4b9c6d8f7-x4g93
+2026-09-22T14:54:27.843Z INFO worker report-export batch=843 completed items=251 duration=2.0s
+2026-09-22T14:54:28.754Z INFO worker payout-batch batch=965 completed items=33 duration=12.5s
+2026-09-22T14:54:29.164Z INFO datadog-agent flush metrics count=1654 host=recommendation-service-7b58d96d84-a3m14
+2026-09-22T14:54:32.177Z INFO [analytics-ingest] query SELECT * FROM orders WHERE id=? rows=32 duration=4.1ms
+2026-09-22T14:54:35.637Z INFO [auth-service] redis GET key=user_profile:1852 HIT latency=2.0ms
+2026-09-22T14:54:46.166Z INFO k8s event namespace=prod Scaled up replica set cart-service-7d6c9b8f5 to 8
+2026-09-22T14:55:00.889Z INFO k8s event namespace=prod Readiness probe succeeded for pod shipping-service-9f5d7c6b8-t6a14
+2026-09-22T14:55:01.798Z INFO [checkout-service] redis GET key=pricing:1662 HIT latency=1.9ms
+2026-09-22T14:55:06.161Z INFO [search-api] query SELECT * FROM users WHERE id=? rows=36 duration=20.2ms
+2026-09-22T14:55:16.620Z INFO [recommendation-service] redis GET key=cart:6546 HIT latency=0.2ms
+2026-09-22T14:55:18.954Z INFO [billing-service] query SELECT * FROM sessions WHERE id=? rows=15 duration=24.2ms
+2026-09-22T14:55:21.061Z INFO deployment session-service rollout status: 4/4 replicas updated to v4.26.18
+2026-09-22T14:55:25.792Z INFO otel span exported service.name=ml-inference span_id=7109a827 duration=51.3ms
+2026-09-22T14:55:28.345Z INFO [ml-inference] GET /api/v1/inventory 200 duration=98.7ms trace=009f4f1c6a3abebb region=us-east-1
+2026-09-22T14:55:30.091Z WARN [reporting-service] slow query detected duration=3027.1ms table=audit_log
+2026-09-22T14:55:33.668Z INFO worker payout-batch batch=507 completed items=382 duration=7.2s
+2026-09-22T14:55:47.937Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=134.1ms tokens=723
+2026-09-22T14:55:50.503Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=22.6ms tokens=792
+2026-09-22T14:55:56.723Z INFO deployment notification-worker rollout status: 1/5 replicas updated to v5.18.6
+2026-09-22T14:55:59.807Z INFO k8s event namespace=prod HorizontalPodAutoscaler reporting-service status: current CPU utilization 49%
+2026-09-22T14:56:00.091Z WARN [reporting-service] query planner: seq scan on audit_log rows=3367041
+2026-09-22T14:56:01.415Z INFO [session-service] POST /readyz 204 duration=45.1ms trace=227baea0d10290dd region=us-east-2
+2026-09-22T14:56:05.224Z INFO [reporting-service] redis GET key=cart:6538 HIT latency=1.1ms
+2026-09-22T14:56:05.523Z INFO deployment cart-service rollout status: 2/4 replicas updated to v4.7.14
+2026-09-22T14:56:08.237Z INFO otel span exported service.name=cart-service span_id=089499d1 duration=54.5ms
+2026-09-22T14:56:09.867Z INFO [ml-inference] model=rec-ranker-v2 inference ok latency=81.7ms tokens=881
+2026-09-22T14:56:10.232Z INFO [auth-service] PUT /metrics 304 duration=104.4ms trace=5bad4e244a2ed5a2 region=ap-southeast-2
+2026-09-22T14:56:11.019Z INFO deployment inventory-service rollout status: 6/4 replicas updated to v7.7.8
+2026-09-22T14:56:15.630Z INFO [ml-inference] redis GET key=session:4503 HIT latency=2.7ms
+2026-09-22T14:56:16.125Z INFO [ml-inference] model=rec-ranker-v3 inference ok latency=84.6ms tokens=424
+2026-09-22T14:56:17.491Z INFO [ml-inference] webhook delivered url=https://partner-19.example.com/hooks status=200 attempt=1
+2026-09-22T14:56:18.782Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=107.5ms tokens=252
+2026-09-22T14:56:21.298Z INFO [orders-api] heartbeat ok host=orders-api-8c7d6f9b4-w7n13 uptime=74541s
+2026-09-22T14:56:21.735Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=1.6s
+2026-09-22T14:56:22.088Z INFO deployment webhook-dispatcher rollout status: 3/4 replicas updated to v1.8.5
+2026-09-22T14:56:22.711Z INFO [billing-service] webhook delivered url=https://partner-11.example.com/hooks status=200 attempt=1
+2026-09-22T14:56:30.091Z WARN [reporting-service] slow query detected duration=3109.1ms table=audit_log
+2026-09-22T14:56:36.924Z INFO [media-processor] query SELECT * FROM users WHERE id=? rows=9 duration=16.2ms
+2026-09-22T14:56:40.685Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=8.9s
+2026-09-22T14:56:40.919Z INFO [ml-inference] query SELECT * FROM sessions WHERE id=? rows=36 duration=11.1ms
+2026-09-22T14:56:51.326Z INFO k8s event namespace=prod HorizontalPodAutoscaler reporting-service status: current CPU utilization 56%
+2026-09-22T14:56:51.721Z INFO [webhook-dispatcher] webhook delivered url=https://partner-20.example.com/hooks status=200 attempt=1
+2026-09-22T14:56:55.796Z INFO datadog-agent flush metrics count=3393 host=media-processor-8c7d6f9b4-q4y10
+2026-09-22T14:56:59.770Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=171.5ms tokens=127
+2026-09-22T14:57:00.091Z ERROR [reporting-service] statement timeout: canceling statement due to statement timeout
+2026-09-22T14:57:06.148Z INFO [shipping-service] heartbeat ok host=shipping-service-7b58d96d84-r7j56 uptime=682700s
+2026-09-22T14:57:06.684Z INFO [cart-service] heartbeat ok host=cart-service-7d6c9b8f5-r4a11 uptime=435209s
+2026-09-22T14:57:11.112Z INFO k8s event namespace=prod Pod recommendation-service-7b58d96d84-n9w28 started container recommendation-service
+2026-09-22T14:57:14.013Z INFO [invoice-worker] heartbeat ok host=invoice-worker-4b9c6d8f7-s4j70 uptime=307816s
+2026-09-22T14:57:16.410Z INFO deployment recommendation-service rollout status: 1/5 replicas updated to v8.32.18
+2026-09-22T14:57:25.532Z INFO [ml-inference] model=rec-ranker-v1 inference ok latency=169.7ms tokens=505
+2026-09-22T14:57:27.008Z INFO [auth-service] redis GET key=user_profile:1258 HIT latency=0.4ms
+2026-09-22T14:57:27.490Z INFO [invoice-worker] query SELECT * FROM orders WHERE id=? rows=40 duration=16.2ms
+2026-09-22T14:57:29.399Z ERROR [payments-gateway] Stripe API returned 500 Internal Server Error
+2026-09-22T14:57:29.890Z INFO [notification-worker] webhook delivered url=https://partner-13.example.com/hooks status=200 attempt=1
+2026-09-22T14:57:30.091Z WARN [reporting-service] p99 query latency elevated latency=2740.2ms
+2026-09-22T14:57:32.399Z ERROR [payments-gateway] payment authorization failed order=765194 reason=gateway_error
+2026-09-22T14:57:33.738Z INFO k8s event namespace=prod Pod reporting-service-7d6c9b8f5-v6n54 Scheduled on node ip-10-140-243-129.eu-west-1.compute.internal
+2026-09-22T14:57:34.399Z ERROR [payments-gateway] payment authorization failed order=971167 reason=gateway_error
+2026-09-22T14:57:38.399Z WARN [payments-gateway] Stripe error rate 61% over last 5m
+2026-09-22T14:57:41.033Z INFO deployment user-profile-api rollout status: 1/6 replicas updated to v7.12.17
+2026-09-22T14:57:43.117Z INFO [inventory-service] GET /api/v1/payments/charge 200 duration=163.9ms trace=39ed0025eabc59db region=eu-west-1
+2026-09-22T14:57:44.377Z INFO [auth-service] webhook delivered url=https://partner-8.example.com/hooks status=200 attempt=1
+2026-09-22T14:57:46.189Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=8.9s
+2026-09-22T14:57:48.787Z INFO [shipping-service] redis GET key=user_profile:3340 HIT latency=2.5ms
+2026-09-22T14:57:49.399Z ERROR [payments-gateway] failing over to secondary processor Braintree
+2026-09-22T14:57:50.379Z INFO otel span exported service.name=analytics-ingest span_id=701b0f6d duration=74.9ms
+2026-09-22T14:57:52.320Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=1.1s
+2026-09-22T14:57:56.239Z INFO [cart-service] webhook delivered url=https://partner-9.example.com/hooks status=200 attempt=1
+2026-09-22T14:57:56.261Z INFO worker report-export batch=712 completed items=145 duration=13.7s
+2026-09-22T14:57:56.488Z INFO k8s event namespace=prod Pod billing-service-9f5d7c6b8-j3y31 started container billing-service
+2026-09-22T14:58:00.091Z INFO [reporting-service] added missing index on audit_log(status)
+2026-09-22T14:58:03.853Z INFO k8s event namespace=prod Scaled up replica set billing-service-7b58d96d84 to 10
+2026-09-22T14:58:04.399Z WARN pagerduty triggered service=payments-gateway severity=critical
+2026-09-22T14:58:05.754Z INFO deployment payments-gateway rollout status: 5/6 replicas updated to v9.32.11
+2026-09-22T14:58:05.820Z INFO deployment reporting-service rollout status: 6/3 replicas updated to v1.31.7
+2026-09-22T14:58:18.568Z INFO worker payout-batch batch=229 completed items=24 duration=11.4s
+2026-09-22T14:58:25.195Z INFO otel span exported service.name=invoice-worker span_id=04dfb6d9 duration=70.9ms
+2026-09-22T14:58:29.399Z INFO [payments-gateway] Stripe incident resolved, error rate back to 1%
+2026-09-22T14:58:29.860Z INFO [gateway-edge] heartbeat ok host=gateway-edge-4b9c6d8f7-j8t96 uptime=596863s
+2026-09-22T14:58:31.995Z INFO [auth-service] POST /healthz 200 duration=122.2ms trace=97ad3993fb973eb4 region=ap-southeast-2
+2026-09-22T14:58:33.125Z INFO datadog-agent flush metrics count=393 host=notification-worker-4b9c6d8f7-r3m72
+2026-09-22T14:58:37.859Z INFO [gateway-edge] webhook delivered url=https://partner-16.example.com/hooks status=200 attempt=1
+2026-09-22T14:58:38.325Z INFO otel span exported service.name=inventory-service span_id=9133ccb6 duration=53.2ms
+2026-09-22T14:58:39.306Z INFO otel span exported service.name=notification-worker span_id=11ec7e6c duration=70.5ms
+2026-09-22T14:58:39.846Z INFO cronjob=sync-exchange-rates namespace=prod status=Complete duration=5.0s
+2026-09-22T14:58:46.214Z INFO [ml-inference] heartbeat ok host=ml-inference-5c8b9d7f6-j2f20 uptime=897089s
+2026-09-22T14:58:47.249Z INFO [cart-service] webhook delivered url=https://partner-1.example.com/hooks status=200 attempt=1
+2026-09-22T14:58:50.091Z INFO [reporting-service] query latency back to baseline p99=38.1ms
+2026-09-22T14:58:53.957Z INFO [payments-gateway] POST /api/v1/recommendations 204 duration=92.6ms trace=22d6e9f63d2e717d region=us-east-2
+2026-09-22T14:58:54.065Z INFO worker report-export batch=555 completed items=163 duration=5.3s
+2026-09-22T14:58:55.718Z INFO [notification-worker] redis GET key=cart:5172 HIT latency=2.1ms
+2026-09-22T14:58:55.766Z INFO otel span exported service.name=search-api span_id=35154185 duration=57.8ms
+2026-09-22T14:58:55.863Z INFO otel span exported service.name=invoice-worker span_id=daa97662 duration=52.7ms
+2026-09-22T14:58:55.865Z INFO deployment orders-api rollout status: 1/5 replicas updated to v7.10.7
+2026-09-22T14:59:01.069Z INFO [billing-service] query SELECT * FROM payments WHERE id=? rows=21 duration=32.4ms
+2026-09-22T14:59:04.938Z INFO datadog-agent flush metrics count=1343 host=cart-service-7b58d96d84-q6z29
+2026-09-22T14:59:05.052Z INFO otel span exported service.name=search-api span_id=d5059397 duration=56.1ms
+2026-09-22T14:59:09.617Z INFO [shipping-service] query SELECT * FROM sessions WHERE id=? rows=34 duration=15.7ms
+2026-09-22T14:59:17.664Z INFO worker image-resize batch=616 completed items=199 duration=10.2s
+2026-09-22T14:59:22.683Z INFO k8s event namespace=prod Pod shipping-service-8c7d6f9b4-p7p44 Scheduled on node ip-10-157-141-88.eu-central-1.compute.internal
+2026-09-22T14:59:25.820Z INFO k8s event namespace=prod Scaled up replica set shipping-service-4b9c6d8f7 to 3
+2026-09-22T14:59:27.118Z ERROR [orders-api] getaddrinfo ENOTFOUND kafka-broker-2.internal
+2026-09-22T14:59:27.118Z ERROR [ml-inference] failed to load adapter lora-region-eu-v1: incompatible base model version
+2026-09-22T14:59:28.922Z INFO [notification-worker] query SELECT * FROM invoices WHERE id=? rows=36 duration=4.9ms
+2026-09-22T14:59:29.152Z ERROR [orders-api] upstream connect error or disconnect/reset before headers, DNS resolution failed
+2026-09-22T14:59:30.118Z ERROR [orders-api] dial tcp: lookup kafka-broker-2.internal on 10.0.0.10:53: no such host
+2026-09-22T14:59:30.118Z ERROR [ml-inference] torch.serialization: invalid load key in adapter weights file
+2026-09-22T14:59:30.263Z INFO deployment checkout-service rollout status: 3/6 replicas updated to v9.8.6
+2026-09-22T14:59:30.412Z INFO [auth-service] query SELECT * FROM orders WHERE id=? rows=3 duration=11.8ms
+2026-09-22T14:59:32.954Z INFO deployment invoice-worker rollout status: 3/2 replicas updated to v5.5.17
+2026-09-22T14:59:34.118Z WARN [orders-api] coredns query failures increasing, 23 failures/min
+2026-09-22T14:59:35.118Z WARN [ml-inference] serving requests without adapter lora-region-eu-v1, using base model
+2026-09-22T14:59:36.378Z INFO [ml-inference] model=rec-ranker-v4 inference ok latency=130.3ms tokens=533
+2026-09-22T14:59:42.118Z ERROR [orders-api] upstream connect error or disconnect/reset before headers, DNS resolution failed
+2026-09-22T14:59:47.118Z INFO ops re-exported adapter lora-region-eu-v1 with compatible format
+2026-09-22T14:59:52.118Z INFO ops restarted coredns pods in kube-system namespace
+2026-09-22T14:59:52.628Z INFO [invoice-worker] heartbeat ok host=invoice-worker-8c7d6f9b4-c7d66 uptime=370603s
+2026-09-22T14:59:58.547Z INFO otel span exported service.name=invoice-worker span_id=ba29361e duration=35.0ms
+2026-09-22T14:59:59.725Z INFO [session-service] redis GET key=pricing:3619 HIT latency=0.3ms
+2026-09-22T15:00:01.660Z INFO worker email-batch batch=180 completed items=474 duration=17.9s
+2026-09-22T15:00:02.118Z INFO [ml-inference] adapter lora-region-eu-v1 loaded successfully
+2026-09-22T15:00:03.062Z ERROR [orders-api] dial tcp: lookup kafka-broker-2.internal on 10.0.0.10:53: no such host
+2026-09-22T15:00:04.717Z ERROR [orders-api] upstream connect error or disconnect/reset before headers, DNS resolution failed
+2026-09-22T15:00:05.118Z INFO [orders-api] DNS resolution restored for kafka-broker-2.internal
+2026-09-22T15:00:06.748Z ERROR [orders-api] getaddrinfo ENOTFOUND kafka-broker-2.internal
+2026-09-22T15:00:14.658Z INFO [auth-service] query SELECT * FROM orders WHERE id=? rows=7 duration=28.7ms
+2026-09-22T15:00:18.288Z ERROR [orders-api] getaddrinfo ENOTFOUND kafka-broker-2.internal
+2026-09-22T15:00:25.598Z INFO [webhook-dispatcher] redis GET key=session:2040 HIT latency=1.3ms
+2026-09-22T15:00:31.058Z ERROR [orders-api] getaddrinfo ENOTFOUND kafka-broker-2.internal
+2026-09-22T15:00:35.034Z INFO otel span exported service.name=reporting-service span_id=b54aa76c duration=41.9ms
+2026-09-22T15:00:36.250Z INFO [analytics-ingest] query SELECT * FROM invoices WHERE id=? rows=5 duration=44.3ms
+2026-09-22T15:00:41.512Z INFO otel span exported service.name=billing-service span_id=d678a286 duration=61.1ms
+2026-09-22T15:00:47.109Z INFO [gateway-edge] query SELECT * FROM inventory WHERE id=? rows=38 duration=5.5ms
+2026-09-22T15:01:00.174Z INFO [inventory-service] GET /api/v1/users/me 200 duration=197.2ms trace=7a3a200a7cc63caf region=eu-central-1
+2026-09-22T15:01:01.304Z INFO [checkout-service] query SELECT * FROM payments WHERE id=? rows=25 duration=9.8ms
+2026-09-22T15:01:08.532Z INFO otel span exported service.name=user-profile-api span_id=eb9921d8 duration=49.7ms
+2026-09-22T15:01:12.849Z INFO datadog-agent flush metrics count=1746 host=shipping-service-8c7d6f9b4-k2s75
+2026-09-22T15:01:15.793Z INFO otel span exported service.name=cart-service span_id=a9bfecda duration=76.9ms
+2026-09-22T15:01:25.748Z INFO cronjob=cleanup-expired-sessions namespace=prod status=Complete duration=3.4s
+2026-09-22T15:01:29.511Z INFO k8s event namespace=prod Readiness probe succeeded for pod shipping-service-5c8b9d7f6-w6g16
+2026-09-22T15:01:35.586Z INFO worker report-export batch=103 completed items=494 duration=13.6s
+2026-09-22T15:01:43.084Z INFO cronjob=purge-old-logs namespace=prod status=Complete duration=5.8s
+2026-09-22T15:01:46.948Z INFO datadog-agent flush metrics count=3987 host=ml-inference-7b58d96d84-r5t80
+2026-09-22T15:01:55.460Z INFO worker payout-batch batch=418 completed items=45 duration=18.4s
+2026-09-22T15:02:03.323Z INFO deployment user-profile-api rollout status: 6/2 replicas updated to v8.24.6
+2026-09-22T15:02:17.473Z INFO [reporting-service] query SELECT * FROM users WHERE id=? rows=24 duration=16.4ms
+2026-09-22T15:02:17.777Z INFO deployment invoice-worker rollout status: 1/4 replicas updated to v8.35.17
+2026-09-22T15:02:19.714Z INFO cronjob=reconcile-inventory namespace=prod status=Complete duration=11.0s
+2026-09-22T15:02:25.373Z INFO [inventory-service] redis GET key=cart:4273 HIT latency=1.8ms
+2026-09-22T15:02:35.748Z INFO cronjob=generate-daily-report namespace=prod status=Complete duration=1.0s
+2026-09-22T15:02:36.398Z INFO [session-service] query SELECT * FROM sessions WHERE id=? rows=23 duration=12.2ms
+2026-09-22T15:02:37.006Z INFO otel span exported service.name=billing-service span_id=67524de9 duration=29.3ms
+2026-09-22T15:02:40.093Z INFO datadog-agent flush metrics count=3917 host=analytics-ingest-5f6c9b7d8-k7j20
+2026-09-22T15:02:46.781Z INFO [recommendation-service] webhook delivered url=https://partner-11.example.com/hooks status=200 attempt=1
+2026-09-22T15:02:59.330Z INFO [reporting-service] heartbeat ok host=reporting-service-7b58d96d84-n7f13 uptime=849507s

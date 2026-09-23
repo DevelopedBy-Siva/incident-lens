@@ -57,7 +57,7 @@ def _write_investigation_run(
                 evidence_related_count=(
                     len(evidence.related_incidents) if evidence else 0
                 ),
-                evidence_runbook=evidence.runbook_name if evidence else None,
+                evidence_runbook=None,
                 evidence_snapshot=evidence.as_prompt_context() if evidence else None,
                 tool_calls=tool_calls,
                 iterations=iterations,
@@ -96,7 +96,6 @@ def _write_investigation_run(
 def analyze_incident(incident, project, force=False):
     from app.serving.models import Analysis
     from app.shared.database import SessionLocal
-    from app.serving.runbook_matcher import match_runbook, should_escalate
     from app.serving.evidence import build_serving_evidence
     from app.serving.investigator import get_investigation_loop
     from app.serving.policy import evaluate as policy_eval
@@ -123,60 +122,34 @@ def analyze_incident(incident, project, force=False):
         fallback_used = False
         analysis_source_log = "unknown"
 
-        # Runbook fast-path
-        runbook, score = match_runbook(incident)
-        use_runbook = runbook and score >= 0.5
+        # Phase 2 — investigation loop
+        loop = get_investigation_loop()
 
-        if use_runbook:
-            disposition = runbook.disposition
-            if disposition == "OBSERVE" and should_escalate(incident, runbook):
-                disposition = runbook.observe_threshold.get("escalate_to", "ESCALATE")
+        llm_analysis = loop.investigate(incident, project=project, evidence=evidence)
 
-            new_severity = runbook.default_severity
-            new_disposition = disposition
-            new_confidence = score
-            new_summary = f"{runbook.name}: {runbook.description}"
-            new_next_steps = runbook.steps
-            new_ticket_title = runbook.name
-            new_ticket_body = "\n".join(runbook.steps)
-            new_source = "runbook"
-            matched_runbook_id = runbook.id
-            runbook_match_score = score
-            analysis_source_log = "runbook"
+        # Best-effort extraction of loop metadata
+        try:
+            tool_calls_log = getattr(loop, "_last_tool_calls", [])
+            iterations_log = getattr(loop, "_last_iterations", 0)
+            fallback_used = getattr(loop, "_last_fallback", False)
+        except Exception:
+            pass
 
-        else:
-            # Phase 2 — investigation loop
-            loop = get_investigation_loop()
+        if not llm_analysis:
+            logger.warning("[WORKER] Investigation returned None for %s", incident.id)
+            return None
 
-            llm_analysis = loop.investigate(
-                incident, project=project, evidence=evidence
-            )
-
-            # Best-effort extraction of loop metadata
-            try:
-                tool_calls_log = getattr(loop, "_last_tool_calls", [])
-                iterations_log = getattr(loop, "_last_iterations", 0)
-                fallback_used = getattr(loop, "_last_fallback", False)
-            except Exception:
-                pass
-
-            if not llm_analysis:
-                logger.warning(
-                    "[WORKER] Investigation returned None for %s", incident.id
-                )
-                return None
-
-            new_severity = llm_analysis.severity
-            new_disposition = llm_analysis.disposition
-            new_confidence = llm_analysis.confidence
-            new_summary = llm_analysis.summary
-            new_next_steps = llm_analysis.next_steps
-            new_ticket_title = llm_analysis.ticket_title
-            new_ticket_body = llm_analysis.ticket_body
-            new_source = "llm"
-            matched_runbook_id = None
-            runbook_match_score = None
-            analysis_source_log = "llm"
+        new_severity = llm_analysis.severity
+        new_disposition = llm_analysis.disposition
+        new_confidence = llm_analysis.confidence
+        new_summary = llm_analysis.summary
+        new_next_steps = llm_analysis.next_steps
+        new_ticket_title = llm_analysis.ticket_title
+        new_ticket_body = llm_analysis.ticket_body
+        new_source = "llm"
+        matched_runbook_id = None
+        runbook_match_score = None
+        analysis_source_log = "llm"
 
         # Persist analysis
         if existing and force:
