@@ -2,7 +2,7 @@ name: Deploy log analyzer to EC2
 
 on:
   push:
-    branches: [main]
+    branches: [v1]
     paths:
       - "log-analyzer/**"
       - "compose.prod.yaml"
@@ -49,6 +49,9 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      TRAINING_EC2_ENABLED: ${{ secrets.TRAINING_EC2_ENABLED }}
+      TRAINING_EC2_AMI_ID: ${{ secrets.TRAINING_EC2_AMI_ID }}
+      TRAINING_EC2_IAM_INSTANCE_PROFILE: ${{ secrets.TRAINING_EC2_IAM_INSTANCE_PROFILE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -89,6 +92,10 @@ jobs:
             printf 'DD_LLMOBS_ENABLED=0\n'
             printf 'DD_LLMOBS_AGENTLESS_ENABLED=0\n'
             printf 'DD_TRACE_ENABLED=0\n'
+            # EC2 GPU Training Configuration (deployment-specific)
+            printf 'TRAINING_EC2_ENABLED=%s\n' "${TRAINING_EC2_ENABLED:-false}"
+            printf 'TRAINING_EC2_AMI_ID=%s\n' "${TRAINING_EC2_AMI_ID:-}"
+            printf 'TRAINING_EC2_IAM_INSTANCE_PROFILE=%s\n' "${TRAINING_EC2_IAM_INSTANCE_PROFILE:-}"
           } > /tmp/.env.production
 
       - name: Upload release

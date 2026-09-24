@@ -154,17 +154,34 @@ Create a GitHub Environment named `production`, then add these required secrets:
 | `S3_BUCKET` | Private bucket name |
 | `HF_TOKEN` | Hugging Face token used to download `Qwen/Qwen3.5-4B` |
 
-Optional secrets for EC2 GPU training:
+**GitHub Secrets for EC2 GPU training (optional, production only):**
+
+Set these three secrets to enable asynchronous GPU training on temporary EC2 instances:
 
 | Secret | Value |
 | --- | --- |
 | `TRAINING_EC2_ENABLED` | Set to `true` to enable GPU training (defaults to `false`) |
-| `TRAINING_EC2_AMI_ID` | Pre-built training AMI with PyTorch/PEFT installed |
-| `TRAINING_EC2_INSTANCE_TYPE` | GPU instance type, e.g., `g6.xlarge` (defaults to `g6.xlarge`) |
+| `TRAINING_EC2_AMI_ID` | Pre-built training AMI with PyTorch/PEFT installed (e.g., `ami-0c54a4fe99a96cfc3`) |
 | `TRAINING_EC2_IAM_INSTANCE_PROFILE` | IAM instance profile name for training instances |
-| `TRAINING_EC2_SUBNET_ID` | VPC subnet ID for training instances (optional, uses default) |
-| `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs (optional, uses default) |
-| `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training; defaults to 3600 |
+
+**Application defaults (not GitHub Secrets):**
+
+These configuration values use sensible defaults and should not be stored as GitHub Secrets:
+
+- `TRAINING_EC2_INSTANCE_TYPE`: Defaults to `g6.xlarge` (85 GB GPU memory)
+- `TRAINING_EC2_MAX_WAIT_SECONDS`: Defaults to `3600` (1 hour)
+- `TRAINING_EC2_DETAILED_MONITORING`: Defaults to `false`
+- `TRAINING_EC2_TERMINATE_ON_COMPLETION`: Defaults to `true`
+- `TRAINING_EC2_ASSOCIATE_PUBLIC_IP`: Defaults to `false` (recommended for security)
+- `TRAINING_EC2_SUBNET_ID`: Optional, uses default VPC if not specified
+- `TRAINING_EC2_SECURITY_GROUP_IDS`: Optional, uses default security group if not specified
+
+Override these defaults by setting environment variables in `.env` if needed, but they do not need to be GitHub Secrets.
+
+Optional environment configuration:
+
+| Variable | Value |
+| --- | --- |
 | `GIT_REPOSITORY_URL` | Git repository URL to clone (defaults to `https://github.com/DevelopedBy-Siva/incident-lens.git`) |
 | `GIT_COMMIT_SHA` | Git commit SHA to use (optional; auto-detected from deployment if not set) |
 | `EC2_DEPLOY_PATH` | Custom path; defaults to `/home/<user>/incident-lens` |

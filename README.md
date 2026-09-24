@@ -313,22 +313,31 @@ The complete template is in [`.env.example`](.env.example). The primary settings
 
 ### EC2 GPU Training Configuration (Production)
 
-To enable asynchronous training on temporary GPU instances, set these variables:
+To enable asynchronous training on temporary GPU instances, configure these settings:
+
+**GitHub Secrets (deployment-specific values):**
 
 | Variable | Purpose |
 | --- | --- |
-| `TRAINING_EC2_ENABLED` | Enable EC2 remote training; defaults to `false` |
-| `TRAINING_EC2_AMI_ID` | **Required.** Pre-built training AMI with PyTorch, Transformers, PEFT installed |
-| `TRAINING_EC2_INSTANCE_TYPE` | GPU instance type; defaults to `g6.xlarge` (85 GB GPU memory) |
+| `TRAINING_EC2_ENABLED` | Enable EC2 remote training; set to `true` (defaults to `false`) |
+| `TRAINING_EC2_AMI_ID` | **Required.** Pre-built training AMI with PyTorch, Transformers, PEFT installed (e.g., `ami-0c54a4fe99a96cfc3`) |
 | `TRAINING_EC2_IAM_INSTANCE_PROFILE` | **Required.** IAM instance profile name with S3 and PostgreSQL access |
-| `TRAINING_EC2_SUBNET_ID` | VPC subnet for instance; uses default if not specified |
-| `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs; uses default if not specified |
-| `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training; defaults to 3600 |
-| `TRAINING_EC2_DETAILED_MONITORING` | Enable CloudWatch detailed monitoring; defaults to `false` |
-| `TRAINING_EC2_TERMINATE_ON_COMPLETION` | Auto-terminate instance after completion; defaults to `true` |
-| `TRAINING_EC2_ASSOCIATE_PUBLIC_IP` | Assign public IP; defaults to `false` (recommended for security) |
 
-The application must have AWS credentials (via IAM role or environment variables) to launch EC2 instances and manage them.
+**Application defaults (non-sensitive configuration):**
+
+These values use sensible defaults and do not need to be stored as GitHub Secrets:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `TRAINING_EC2_INSTANCE_TYPE` | GPU instance type | `g6.xlarge` (85 GB GPU memory) |
+| `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training completion | `3600` (1 hour) |
+| `TRAINING_EC2_DETAILED_MONITORING` | Enable CloudWatch detailed monitoring | `false` |
+| `TRAINING_EC2_TERMINATE_ON_COMPLETION` | Auto-terminate instance after completion | `true` |
+| `TRAINING_EC2_ASSOCIATE_PUBLIC_IP` | Assign public IP to training instances | `false` |
+| `TRAINING_EC2_SUBNET_ID` | VPC subnet for instance (optional) | Uses default VPC |
+| `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs (optional) | Uses default security group |
+
+The application must have AWS credentials (via IAM role) to launch EC2 instances. No AWS access keys are required as GitHub Secrets.
 
 Datadog application-observability variables (`DD_*`) are separate from the per-project credentials used to search logs.
 

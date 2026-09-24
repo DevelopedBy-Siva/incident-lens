@@ -55,7 +55,6 @@ def configured_ec2_training_config() -> EC2TrainingConfig | None:
     # Validate required configuration
     required_vars = {
         "TRAINING_EC2_AMI_ID": "Training AMI ID",
-        "TRAINING_EC2_INSTANCE_TYPE": "EC2 instance type (e.g., g6.xlarge)",
         "TRAINING_EC2_IAM_INSTANCE_PROFILE": "IAM instance profile name",
     }
 
