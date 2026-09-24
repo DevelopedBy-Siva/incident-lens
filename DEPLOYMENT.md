@@ -264,6 +264,34 @@ curl http://EC2_HOST:8000/api/training-jobs/{job_id}
 - `200 OK`: Training completed locally (local mode)
 - `ec2_instance_id` field in response: ID of the temporary training instance
 
+**Monitor training progress in real-time (Datadog Live Tail):**
+
+Training logs are sent to Datadog in real-time while the GPU instance is running. This telemetry is **best-effort** and uses the project's Datadog credentials configured in project settings.
+
+**View logs for a specific training job:**
+```
+service:incidentlens-training @training_job_id:job-abc123
+```
+
+**View logs for a specific project:**
+```
+service:incidentlens-training @project_id:project-xyz
+```
+
+**Filter by training event:**
+```
+service:incidentlens-training @event:training_progress
+service:incidentlens-training @event:training_failed
+service:incidentlens-training @event:training_completed
+```
+
+**Important notes on training telemetry:**
+- Training logs are **best-effort** and will never cause training to fail
+- If Datadog is unavailable, logs are written to `/var/log/incident-lens-training.log` on the instance
+- Uses the same Datadog API key configured for the project's log ingestion
+- If no Datadog credentials are configured, training proceeds without telemetry
+- All logs include correlation attributes: `project_id`, `training_job_id`, `dataset_id`, `ec2_instance_id`
+
 **Monitor EC2 training instances:**
 ```bash
 # From the application EC2 instance
@@ -274,9 +302,10 @@ aws ec2 describe-instances \
 
 **Troubleshoot training failure:**
 1. Check job status: `GET /api/training-jobs/{job_id}` → look for `FAILED` status
-2. Check EC2 instance: Verify instance launched, check if it terminated (training succeeded)
-3. Check bootstrap logs: On a running instance, SSH and check `/var/log/incident-lens-training.log`
-4. Manual cleanup: If an instance is stuck, terminate it manually via AWS console or CLI
+2. Check Datadog Live Tail: View real-time logs with `service:incidentlens-training @training_job_id:<job-id>`
+3. Check EC2 instance: Verify instance launched, check if it terminated (training succeeded)
+4. Check bootstrap logs: On a running instance, SSH and check `/var/log/incident-lens-training.log`
+5. Manual cleanup: If an instance is stuck, terminate it manually via AWS console or CLI
 
 **Configuration tuning:**
 - `TRAINING_EC2_MAX_WAIT_SECONDS`: Increase if training frequently times out (GPU-intensive datasets)

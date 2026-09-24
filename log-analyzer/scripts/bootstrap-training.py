@@ -83,6 +83,8 @@ class TrainingBootstrap:
         self.db_session = None
         self.working_dir = None
         self.repo_dir = None
+        self.datadog_logger = None
+        self.training_start_time = None
 
     def _load_config(self) -> dict[str, Any]:
         """Load training configuration from S3.
@@ -228,6 +230,60 @@ class TrainingBootstrap:
             os.environ["PYTHONPATH"] = str(log_analyzer_path)
         
         logger.info(f"Python path configured: {log_analyzer_path}")
+    
+    def _setup_datadog_logger(self) -> None:
+        """Initialize Datadog logger for training telemetry.
+        
+        Creates a DatadogLogger instance using credentials from the training config.
+        Failures in Datadog setup are logged but do not prevent training.
+        """
+        try:
+            # Import after Python path is configured
+            from app.training.datadog_logger import create_training_logger
+            
+            # Get EC2 instance ID if available
+            ec2_instance_id = None
+            try:
+                import requests
+                response = requests.get(
+                    "http://169.254.169.254/latest/meta-data/instance-id",
+                    timeout=2,
+                )
+                if response.status_code == 200:
+                    ec2_instance_id = response.text.strip()
+            except Exception:
+                pass  # Not running on EC2 or metadata service unavailable
+            
+            # Create Datadog logger with project credentials
+            self.datadog_logger = create_training_logger(
+                api_key=self.config.get("datadog_api_key"),
+                site=self.config.get("datadog_site"),
+                project_id=self.config["project_id"],
+                training_job_id=self.config["job_id"],
+                dataset_id=self.config["dataset_id"],
+                ec2_instance_id=ec2_instance_id,
+            )
+            
+            if self.datadog_logger.enabled:
+                logger.info("Datadog training telemetry enabled")
+            else:
+                logger.info("Datadog training telemetry disabled (credentials not configured)")
+                
+        except Exception as exc:
+            logger.warning(
+                f"Failed to initialize Datadog logger: {exc}. Training will continue without telemetry."
+            )
+            # Create a disabled logger as fallback
+            try:
+                from app.training.datadog_logger import DatadogLogger, TrainingLogContext
+                context = TrainingLogContext(
+                    project_id=self.config["project_id"],
+                    training_job_id=self.config["job_id"],
+                    dataset_id=self.config["dataset_id"],
+                )
+                self.datadog_logger = DatadogLogger(None, None, context, enabled=False)
+            except Exception:
+                self.datadog_logger = None
 
     def run(self) -> int:
         """Execute the complete training pipeline.
@@ -240,27 +296,84 @@ class TrainingBootstrap:
                 f"Starting training for job {self.config['job_id']} "
                 f"(project={self.config['project_id']})"
             )
+            
+            self.training_start_time = time.time()
 
             # Clone repository and checkout specified commit
+            logger.info("Cloning repository")
             self._clone_repository()
+            if self.datadog_logger:
+                self.datadog_logger.info("repository_clone_completed", {
+                    "git_commit_sha": self.config.get("git_commit_sha", "unknown")
+                })
 
             # Setup Python path for cloned repository
             self._setup_python_path()
+            logger.info("Checking out specified commit")
+            if self.datadog_logger:
+                self.datadog_logger.info("repository_checkout_completed")
+
+            # Initialize Datadog logger after Python path is set
+            self._setup_datadog_logger()
+            
+            # Emit worker started event
+            if self.datadog_logger:
+                self.datadog_logger.info("training_worker_started", {
+                    "base_model": self.config.get("base_model", "unknown"),
+                })
 
             # Setup working directory
             self._setup_working_directory()
 
             # Download dataset from S3
+            logger.info("Downloading dataset from S3")
+            if self.datadog_logger:
+                self.datadog_logger.info("dataset_download_started")
+            
             dataset_path = self._download_dataset()
+            
+            if self.datadog_logger:
+                file_size_mb = dataset_path.stat().st_size / 1024 / 1024
+                self.datadog_logger.info("dataset_download_completed", {
+                    "dataset_size_mb": round(file_size_mb, 2),
+                })
 
             # Run training using existing training engine
+            logger.info("Starting model loading and training")
+            if self.datadog_logger:
+                self.datadog_logger.info("model_loading_started")
+            
             training_result = self._run_training(dataset_path)
+            
+            if self.datadog_logger:
+                elapsed = time.time() - self.training_start_time
+                self.datadog_logger.info("training_completed", {
+                    "total_elapsed_seconds": round(elapsed, 1),
+                    "final_loss": training_result.get("metrics", {}).get("training_loss"),
+                })
 
             # Upload artifacts to S3
+            logger.info("Uploading artifacts to S3")
+            if self.datadog_logger:
+                self.datadog_logger.info("artifact_upload_started")
+            
             self._upload_artifacts(training_result["adapter_path"])
+            
+            if self.datadog_logger:
+                self.datadog_logger.info("artifact_upload_completed")
 
             # Update job status to PASSED
+            if self.datadog_logger:
+                self.datadog_logger.info("job_status_update_started", {
+                    "new_status": "PASSED"
+                })
+            
             self._update_job_status("PASSED", training_result)
+            
+            if self.datadog_logger:
+                self.datadog_logger.info("job_status_updated", {
+                    "status": "PASSED"
+                })
 
             logger.info(
                 f"Training completed successfully for job {self.config['job_id']}"
@@ -269,18 +382,38 @@ class TrainingBootstrap:
 
         except TrainingBootstrapError as exc:
             logger.error(f"Training failed: {exc}")
+            
+            if self.datadog_logger:
+                self.datadog_logger.error("training_failed", {
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc)[:200],  # Truncate to avoid leaking sensitive data
+                })
+            
             try:
                 self._update_job_status("FAILED", {"error": str(exc)})
             except Exception as update_exc:
                 logger.error(f"Failed to update job status: {update_exc}")
+                if self.datadog_logger:
+                    self.datadog_logger.error("job_status_update_failed", {
+                        "error_type": type(update_exc).__name__,
+                    })
             return 1
 
         except Exception as exc:
             logger.error(f"Unexpected error during training: {exc}", exc_info=True)
+            
+            if self.datadog_logger:
+                self.datadog_logger.error("training_failed", {
+                    "error_type": "UnexpectedError",
+                    "error_class": type(exc).__name__,
+                })
+            
             return 1
 
         finally:
             self._cleanup()
+            if self.datadog_logger:
+                self.datadog_logger.close()
 
     def _setup_working_directory(self) -> None:
         """Create temporary working directory for training artifacts."""
@@ -371,6 +504,15 @@ class TrainingBootstrap:
                 dataset_content = f.read()
 
             logger.info("Starting QLoRA fine-tuning")
+            
+            if self.datadog_logger:
+                self.datadog_logger.info("model_loading_completed")
+                self.datadog_logger.info("training_started", {
+                    "lora_rank": profile.rank,
+                    "lora_alpha": profile.alpha,
+                    "epochs": profile.epochs,
+                    "batch_size": profile.batch_size,
+                })
 
             # Run training
             engine = TransformersPeftTrainingEngine()
@@ -427,10 +569,10 @@ class TrainingBootstrap:
             return 0
 
     def _report_progress(self, current: int, total: int) -> None:
-        """Report training progress (stub for local execution).
+        """Report training progress to local logs and Datadog.
         
-        In EC2 mode, progress updates are logged but not sent back to orchestrator.
-        Full progress tracking happens via job status API once training completes.
+        Emits progress updates at regular intervals (approximately 20 times during training)
+        to avoid flooding Datadog with excessive log entries.
         
         Args:
             current: Current training step
@@ -438,8 +580,29 @@ class TrainingBootstrap:
         """
         if total > 0:
             percent = (current / total) * 100
-            if current % max(1, total // 20) == 0:  # Log 20 times
-                logger.info(f"Training progress: {current}/{total} ({percent:.1f}%)")
+            
+            # Calculate reporting interval (emit ~20 progress logs during training)
+            report_interval = max(1, total // 20)
+            
+            # Log progress locally at regular intervals
+            if current % report_interval == 0 or current == total:
+                elapsed = None
+                if self.training_start_time:
+                    elapsed = time.time() - self.training_start_time
+                
+                logger.info(
+                    f"Training progress: {current}/{total} ({percent:.1f}%)"
+                    + (f" - {elapsed:.1f}s elapsed" if elapsed else "")
+                )
+                
+                # Send to Datadog at the same interval
+                if self.datadog_logger:
+                    self.datadog_logger.progress(
+                        current_step=current,
+                        total_steps=total,
+                        training_loss=None,  # Loss not available in progress callback
+                        elapsed_seconds=elapsed,
+                    )
 
     def _upload_artifacts(self, adapter_path: str) -> None:
         """Upload trained adapter artifacts to S3.

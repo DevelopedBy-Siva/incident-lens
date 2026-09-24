@@ -55,6 +55,10 @@ class TrainingJobConfig:
     
     # Optional: HuggingFace token for model access
     huggingface_token: str | None = None
+    
+    # Optional: Datadog telemetry configuration
+    datadog_api_key: str | None = None
+    datadog_site: str | None = None
 
     def to_json(self) -> str:
         """Serialize to JSON string for User Data encoding."""
@@ -85,6 +89,8 @@ def create_training_job_config(
     training_profile: LoraTrainingProfile,
     selected_record_indices: list[int] | None = None,
     huggingface_token: str | None = None,
+    datadog_api_key: str | None = None,
+    datadog_site: str | None = None,
 ) -> TrainingJobConfig:
     """Create a training job configuration from parameters.
     
@@ -101,6 +107,8 @@ def create_training_job_config(
         training_profile: LoRA training profile with hyperparameters
         selected_record_indices: Optional list of record indices to train on
         huggingface_token: Optional HuggingFace API token
+        datadog_api_key: Optional Datadog API key for training telemetry
+        datadog_site: Optional Datadog site for training telemetry
     
     Returns:
         TrainingJobConfig instance ready for serialization
@@ -128,4 +136,6 @@ def create_training_job_config(
         lora_target_modules=list(training_profile.target_modules),
         selected_record_indices=selected_record_indices,
         huggingface_token=huggingface_token,
+        datadog_api_key=datadog_api_key,
+        datadog_site=datadog_site,
     )

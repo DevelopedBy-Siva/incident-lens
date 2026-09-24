@@ -219,6 +219,8 @@ class TrainingWorker:
                 selected_record_indices=job.selected_record_indices
                 or dataset.selected_record_indices,
                 huggingface_token=os.getenv("HF_TOKEN", "").strip() or None,
+                datadog_api_key=getattr(project, "datadog_api_key", None),
+                datadog_site=getattr(project, "datadog_site", None),
             )
 
             # Launch temporary EC2 instance

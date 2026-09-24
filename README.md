@@ -180,6 +180,7 @@ Training applies the Qwen chat template and masks prompt tokens so loss is compu
 - **Response:** API returns `202 Accepted` with running job; training completes asynchronously
 - **Monitoring:** Poll `GET /training-jobs/{job_id}` to track progress and completion
 - **Status updates:** Bootstrap script updates job status via direct database connection
+- **Telemetry:** Training logs are sent to Datadog Live Tail for real-time monitoring (best-effort)
 
 **Architecture:**
 1. Application receives training request, validates dataset, creates configuration
@@ -199,6 +200,55 @@ Training applies the Qwen chat template and masks prompt tokens so loss is compu
 - Application code is cloned fresh at runtime and pinned to a Git commit SHA
 - This ensures training uses code matching the application version that launched the job
 - AMI can be updated for GPU/Python dependencies without rebuilding for code changes
+
+**Training Observability:**
+
+While the temporary GPU instance is running, training logs are sent to **Datadog Live Tail** for real-time monitoring. This telemetry is **best-effort** and will never cause training to fail:
+
+- **Service:** `incidentlens-training`
+- **Source:** `incidentlens`
+- **Local logs:** Always written to `/var/log/incident-lens-training.log` on the instance
+- **Datadog logs:** Sent via HTTP Logs API with 5-second timeout
+- **Failure handling:** If Datadog is unavailable, logs are written locally and training continues
+
+**View training logs in Datadog Live Tail:**
+
+Filter by specific training job:
+```
+service:incidentlens-training @training_job_id:<job-id>
+```
+
+Filter by project:
+```
+service:incidentlens-training @project_id:<project-id>
+```
+
+Filter by event type:
+```
+service:incidentlens-training @event:training_progress
+service:incidentlens-training @event:training_failed
+```
+
+**Available training events:**
+- `training_worker_started` – Instance started, configuration loaded
+- `repository_clone_completed` – Git repository cloned and checked out
+- `dataset_download_started` / `dataset_download_completed` – Dataset download from S3
+- `model_loading_started` / `model_loading_completed` – Base model loading
+- `training_started` – QLoRA fine-tuning started
+- `training_progress` – Progress updates (~20 during training) with `current_step`, `total_steps`, `progress_percent`, `elapsed_seconds`
+- `training_completed` – Training finished successfully
+- `artifact_upload_started` / `artifact_upload_completed` – Adapter upload to S3
+- `job_status_updated` – Database status update
+- `training_failed` – Training failed with error details
+
+**Correlation attributes on all logs:**
+- `project_id` – Project identifier
+- `training_job_id` – Training job identifier
+- `dataset_id` – Dataset identifier
+- `ec2_instance_id` – EC2 instance identifier (if available)
+- `environment` – Always `production`
+
+Training telemetry uses the same Datadog credentials configured for the project's log ingestion. If Datadog credentials are not configured, training proceeds without telemetry.
 
 Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged.
 
