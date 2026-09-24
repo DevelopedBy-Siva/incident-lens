@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -241,16 +242,31 @@ class TrainingBootstrap:
             # Import after Python path is configured
             from app.training.datadog_logger import create_training_logger
             
-            # Get EC2 instance ID if available
+            # Get EC2 instance ID using IMDSv2 if available
             ec2_instance_id = None
             try:
                 import requests
-                response = requests.get(
-                    "http://169.254.169.254/latest/meta-data/instance-id",
-                    timeout=2,
+                
+                # IMDSv2: First obtain a session token
+                token_response = requests.put(
+                    "http://169.254.169.254/latest/api/token",
+                    headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+                    timeout=1,
                 )
-                if response.status_code == 200:
-                    ec2_instance_id = response.text.strip()
+                
+                if token_response.status_code == 200:
+                    token = token_response.text.strip()
+                    
+                    # Use token to fetch instance ID
+                    response = requests.get(
+                        "http://169.254.169.254/latest/meta-data/instance-id",
+                        headers={"X-aws-ec2-metadata-token": token},
+                        timeout=1,
+                    )
+                    
+                    if response.status_code == 200:
+                        ec2_instance_id = response.text.strip()
+                        
             except Exception:
                 pass  # Not running on EC2 or metadata service unavailable
             
@@ -302,19 +318,20 @@ class TrainingBootstrap:
             # Clone repository and checkout specified commit
             logger.info("Cloning repository")
             self._clone_repository()
-            if self.datadog_logger:
-                self.datadog_logger.info("repository_clone_completed", {
-                    "git_commit_sha": self.config.get("git_commit_sha", "unknown")
-                })
 
             # Setup Python path for cloned repository
             self._setup_python_path()
             logger.info("Checking out specified commit")
-            if self.datadog_logger:
-                self.datadog_logger.info("repository_checkout_completed")
 
             # Initialize Datadog logger after Python path is set
             self._setup_datadog_logger()
+            
+            # Emit repository events after Datadog is initialized
+            if self.datadog_logger:
+                self.datadog_logger.info("repository_clone_completed", {
+                    "git_commit_sha": self.config.get("git_commit_sha", "unknown")
+                })
+                self.datadog_logger.info("repository_checkout_completed")
             
             # Emit worker started event
             if self.datadog_logger:
