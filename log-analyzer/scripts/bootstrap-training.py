@@ -74,7 +74,7 @@ class TrainingBootstrap:
     def __init__(self):
         """Initialize bootstrap by loading configuration."""
         self.config = self._load_config()
-        # Extract training_config from nested structure for easier access
+        # Extract training_config from nested structure if present (backward compatibility)
         if "training_config" in self.config:
             training_config = self.config["training_config"]
             # Merge training_config into root for backward compatibility
@@ -85,33 +85,59 @@ class TrainingBootstrap:
         self.repo_dir = None
 
     def _load_config(self) -> dict[str, Any]:
-        """Load training configuration from EC2 User Data file.
+        """Load training configuration from S3.
         
-        Configuration is written by the orchestrator to:
-        /tmp/incident-lens-training-config.json
+        The orchestrator uploads the complete training configuration to S3
+        before launching the instance. This avoids the 25,600-byte User Data limit.
+        
+        Configuration location is specified via environment variables:
+        - INCIDENT_LENS_S3_BUCKET: S3 bucket name
+        - INCIDENT_LENS_CONFIG_S3_KEY: S3 object key
         
         Returns:
             Configuration dictionary
             
         Raises:
-            ConfigurationError: If config file not found or invalid
+            ConfigurationError: If config cannot be downloaded or is invalid
         """
-        config_path = Path("/tmp/incident-lens-training-config.json")
+        # Get S3 location from environment
+        s3_bucket = os.environ.get("INCIDENT_LENS_S3_BUCKET", "").strip()
+        config_s3_key = os.environ.get("INCIDENT_LENS_CONFIG_S3_KEY", "").strip()
         
-        if not config_path.exists():
+        if not s3_bucket or not config_s3_key:
             raise ConfigurationError(
-                f"Configuration file not found: {config_path}"
+                "INCIDENT_LENS_S3_BUCKET and INCIDENT_LENS_CONFIG_S3_KEY "
+                "environment variables are required"
             )
+        
+        try:
+            import boto3
+        except ImportError as exc:
+            raise ConfigurationError("boto3 not installed") from exc
 
         try:
-            with config_path.open() as f:
-                config = json.load(f)
-            logger.info("Configuration loaded successfully")
+            logger.info(
+                f"Downloading training config from s3://{s3_bucket}/{config_s3_key}"
+            )
+            
+            s3_client = boto3.client("s3")
+            response = s3_client.get_object(Bucket=s3_bucket, Key=config_s3_key)
+            config_json = response["Body"].read().decode("utf-8")
+            
+            config = json.loads(config_json)
+            logger.info("Training configuration loaded successfully from S3")
+            
+            # Add S3 bucket to config for dataset/artifact operations
+            config["s3_bucket"] = s3_bucket
+            
             return config
+            
         except json.JSONDecodeError as exc:
             raise ConfigurationError(f"Invalid JSON in config file: {exc}") from exc
         except Exception as exc:
-            raise ConfigurationError(f"Failed to read config file: {exc}") from exc
+            raise ConfigurationError(
+                f"Failed to download config from S3: {exc}"
+            ) from exc
 
     def _clone_repository(self) -> None:
         """Clone the application repository and checkout the specified Git commit.
@@ -120,18 +146,23 @@ class TrainingBootstrap:
         specified in the configuration. This ensures training uses code that matches
         the application version that launched the job.
         
+        Repository URL and commit SHA are loaded from environment variables set by User Data:
+        - INCIDENT_LENS_GIT_REPOSITORY_URL
+        - INCIDENT_LENS_GIT_COMMIT_SHA
+        
         Raises:
             ConfigurationError: If repository URL or Git commit not configured
             TrainingBootstrapError: If git operations fail
         """
-        repo_url = self.config.get("git_repository_url")
-        git_commit = self.config.get("git_commit_sha")
+        # Load from environment variables (set by User Data)
+        repo_url = os.environ.get("INCIDENT_LENS_GIT_REPOSITORY_URL", "").strip()
+        git_commit = os.environ.get("INCIDENT_LENS_GIT_COMMIT_SHA", "").strip()
 
         if not repo_url:
-            raise ConfigurationError("git_repository_url not configured")
+            raise ConfigurationError("INCIDENT_LENS_GIT_REPOSITORY_URL not configured")
         
         if not git_commit:
-            raise ConfigurationError("git_commit_sha not configured")
+            raise ConfigurationError("INCIDENT_LENS_GIT_COMMIT_SHA not configured")
 
         # Create temporary directory for repository
         self.repo_dir = Path(tempfile.mkdtemp(prefix="incident-lens-repo-"))

@@ -229,6 +229,9 @@ class TrainingWorker:
                 dataset_storage_key=dataset.storage_key,
                 database_url=os.getenv("DATABASE_URL", "").strip(),
                 training_config_json=training_config.to_json(),
+                s3_bucket=s3_bucket,
+                git_repository_url=git_repository_url,
+                git_commit_sha=git_commit_sha,
             )
 
             # Store instance ID in job metadata for monitoring

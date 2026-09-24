@@ -15,6 +15,11 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 
 
+class ConfigUploadError(Exception):
+    """Failed to upload training configuration to S3."""
+    pass
+
+
 @dataclass(frozen=True)
 class EC2TrainingConfig:
     """Configuration for EC2-based training execution."""
@@ -104,20 +109,26 @@ class EC2TrainingOrchestrator:
     """Orchestrates temporary GPU EC2 instances for training job execution."""
 
     def __init__(
-        self, config: EC2TrainingConfig, ec2_client=None, region_name: str | None = None
+        self, config: EC2TrainingConfig, ec2_client=None, s3_client=None, region_name: str | None = None
     ):
         """Initialize EC2 orchestrator.
 
         Args:
             config: EC2 training configuration
             ec2_client: Optional boto3 EC2 client (for testing)
+            s3_client: Optional boto3 S3 client (for testing)
             region_name: AWS region (auto-detected if not provided)
         """
         self.config = config
+        region = region_name or os.getenv("AWS_REGION", "").strip() or None
+        
         if ec2_client is None:
-            region = region_name or os.getenv("AWS_REGION", "").strip() or None
             ec2_client = boto3.client("ec2", region_name=region)
         self.ec2_client = ec2_client
+        
+        if s3_client is None:
+            s3_client = boto3.client("s3", region_name=region)
+        self.s3_client = s3_client
 
     def launch_training_instance(
         self,
@@ -127,6 +138,9 @@ class EC2TrainingOrchestrator:
         dataset_storage_key: str,
         database_url: str,
         training_config_json: str,
+        s3_bucket: str,
+        git_repository_url: str,
+        git_commit_sha: str,
     ) -> str:
         """Launch a temporary GPU EC2 instance for training job execution.
 
@@ -137,21 +151,45 @@ class EC2TrainingOrchestrator:
             dataset_storage_key: S3 storage key for dataset
             database_url: Database connection URL (for job status updates)
             training_config_json: Serialized training job configuration
+            s3_bucket: S3 bucket for storing config and artifacts
+            git_repository_url: Git repository URL to clone
+            git_commit_sha: Git commit SHA to checkout
 
         Returns:
             instance_id: The launched EC2 instance ID
 
         Raises:
+            ConfigUploadError: If config upload to S3 fails
             RuntimeError: If instance launch fails
         """
-        # Prepare User Data script with job configuration
+        # Upload training configuration to S3 before launching instance
+        # This avoids exceeding the 25,600-byte User Data limit
+        config_s3_key = f"training-configs/{project_id}/{job_id}.json"
+        
+        try:
+            self._upload_config_to_s3(
+                s3_bucket=s3_bucket,
+                s3_key=config_s3_key,
+                config_json=training_config_json,
+            )
+            logger.info(
+                f"Training config uploaded to s3://{s3_bucket}/{config_s3_key} "
+                f"for job {job_id}"
+            )
+        except Exception as exc:
+            logger.error(f"Failed to upload config to S3 for job {job_id}: {exc}")
+            raise ConfigUploadError(
+                f"Failed to upload training configuration to S3: {exc}"
+            ) from exc
+
+        # Prepare minimal User Data with bootstrap identifiers only
         user_data = self._prepare_user_data(
             job_id=job_id,
             project_id=project_id,
-            dataset_id=dataset_id,
-            dataset_storage_key=dataset_storage_key,
-            database_url=database_url,
-            training_config_json=training_config_json,
+            s3_bucket=s3_bucket,
+            config_s3_key=config_s3_key,
+            git_repository_url=git_repository_url,
+            git_commit_sha=git_commit_sha,
         )
 
         # Build launch parameters
@@ -270,42 +308,59 @@ class EC2TrainingOrchestrator:
             logger.error(f"Failed to terminate instance {instance_id}: {exc}")
             return False
 
+    def _upload_config_to_s3(
+        self,
+        s3_bucket: str,
+        s3_key: str,
+        config_json: str,
+    ) -> None:
+        """Upload training configuration JSON to S3.
+
+        Args:
+            s3_bucket: S3 bucket name
+            s3_key: S3 object key
+            config_json: Serialized training configuration
+
+        Raises:
+            ClientError: If S3 upload fails
+        """
+        self.s3_client.put_object(
+            Bucket=s3_bucket,
+            Key=s3_key,
+            Body=config_json.encode("utf-8"),
+            ContentType="application/json",
+        )
+
     def _prepare_user_data(
         self,
         job_id: str,
         project_id: str,
-        dataset_id: str,
-        dataset_storage_key: str,
-        database_url: str,
-        training_config_json: str,
+        s3_bucket: str,
+        config_s3_key: str,
+        git_repository_url: str,
+        git_commit_sha: str,
     ) -> str:
-        """Prepare User Data script that configures the training instance.
+        """Prepare minimal User Data script that bootstraps the training instance.
 
-        The User Data script is base64-encoded and executed as root when the instance starts.
-        It sets up environment variables and invokes the training bootstrap script.
+        The User Data contains only identifiers needed to bootstrap:
+        - job_id and project_id
+        - S3 bucket and config key
+        - git repository URL and commit SHA
+
+        The bootstrap script downloads the full training configuration from S3.
 
         Args:
             job_id: Training job ID
             project_id: Project ID
-            dataset_id: Dataset ID
-            dataset_storage_key: S3 key for dataset
-            database_url: Database URL
-            training_config_json: Serialized training configuration
+            s3_bucket: S3 bucket name
+            config_s3_key: S3 key for training config
+            git_repository_url: Git repository URL
+            git_commit_sha: Git commit SHA
 
         Returns:
             base64-encoded User Data script
         """
-        # Create configuration JSON for the instance
-        config = {
-            "job_id": job_id,
-            "project_id": project_id,
-            "dataset_id": dataset_id,
-            "dataset_storage_key": dataset_storage_key,
-            "database_url": database_url,
-            "training_config": json.loads(training_config_json),
-        }
-
-        # Create shell script that runs training bootstrap
+        # Create shell script that runs training bootstrap with minimal env vars
         script = f"""#!/bin/bash
 set -e
 
@@ -315,19 +370,15 @@ exec 2>&1
 
 echo "[TRAINING] Temporary GPU instance launched for job {job_id}"
 
-# Export environment for training script
+# Export minimal bootstrap environment (identifiers only, no secrets or large data)
 export INCIDENT_LENS_JOB_ID="{job_id}"
 export INCIDENT_LENS_PROJECT_ID="{project_id}"
-export INCIDENT_LENS_DATASET_ID="{dataset_id}"
-export INCIDENT_LENS_DATASET_STORAGE_KEY="{dataset_storage_key}"
-export INCIDENT_LENS_DATABASE_URL="{database_url}"
+export INCIDENT_LENS_S3_BUCKET="{s3_bucket}"
+export INCIDENT_LENS_CONFIG_S3_KEY="{config_s3_key}"
+export INCIDENT_LENS_GIT_REPOSITORY_URL="{git_repository_url}"
+export INCIDENT_LENS_GIT_COMMIT_SHA="{git_commit_sha}"
 
-# Write training configuration to file for script access
-cat > /tmp/incident-lens-training-config.json << 'CONFIGEOF'
-{json.dumps(config, indent=2)}
-CONFIGEOF
-
-echo "[TRAINING] Configuration prepared at /tmp/incident-lens-training-config.json"
+echo "[TRAINING] Bootstrap environment prepared"
 
 # Activate pre-built training environment
 if [ -d /home/ubuntu/training-env ]; then
@@ -339,10 +390,11 @@ fi
 
 # Execute training bootstrap script from AMI
 # The bootstrap script at /opt/incident-lens/bootstrap-training.py will:
-# 1. Clone the repository
-# 2. Checkout the specified Git commit
-# 3. Setup Python path
-# 4. Run the training pipeline
+# 1. Download training configuration from S3
+# 2. Clone the repository
+# 3. Checkout the specified Git commit
+# 4. Setup Python path
+# 5. Run the training pipeline
 if [ -f /opt/incident-lens/bootstrap-training.py ]; then
     echo "[TRAINING] Starting training bootstrap"
     python /opt/incident-lens/bootstrap-training.py
@@ -360,6 +412,19 @@ echo "[TRAINING] Awaiting orchestrator termination signal"
 
         # Base64 encode the script for EC2 User Data
         encoded = b64encode(script.encode("utf-8")).decode("utf-8")
+        
+        # Log User Data size for monitoring
+        user_data_size = len(encoded)
+        logger.info(f"User Data size: {user_data_size} bytes (limit: 25600)")
+        
+        if user_data_size > 25600:
+            logger.error(
+                f"User Data size {user_data_size} exceeds AWS limit of 25600 bytes"
+            )
+            raise RuntimeError(
+                f"User Data size {user_data_size} exceeds AWS limit of 25600 bytes"
+            )
+        
         return encoded
 
     @staticmethod

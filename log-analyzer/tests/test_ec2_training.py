@@ -137,7 +137,10 @@ class EC2OrchestratorTests(unittest.TestCase):
             associate_public_ip=False,
         )
         self.ec2_client = Mock()
-        self.orchestrator = EC2TrainingOrchestrator(self.config, self.ec2_client)
+        self.s3_client = Mock()
+        self.orchestrator = EC2TrainingOrchestrator(
+            self.config, self.ec2_client, self.s3_client
+        )
 
     def test_launch_instance(self):
         """Test launching a training instance."""
@@ -151,10 +154,24 @@ class EC2OrchestratorTests(unittest.TestCase):
             dataset_id="dataset-1",
             dataset_storage_key="datasets/project-1/dataset-v1.jsonl",
             database_url="postgresql://localhost/db",
-            training_config_json='{"job_id": "job-1"}',
+            training_config_json='{"job_id": "job-1", "base_model": "Qwen/Qwen3.5-4B"}',
+            s3_bucket="incident-lens-data",
+            git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+            git_commit_sha="abc123def456789012345678901234567890abcd",
         )
 
         self.assertEqual(instance_id, "i-training-123")
+        
+        # Verify config was uploaded to S3
+        self.s3_client.put_object.assert_called_once()
+        s3_call_args = self.s3_client.put_object.call_args.kwargs
+        self.assertEqual(s3_call_args["Bucket"], "incident-lens-data")
+        self.assertEqual(
+            s3_call_args["Key"], "training-configs/project-1/job-1.json"
+        )
+        self.assertEqual(s3_call_args["ContentType"], "application/json")
+        
+        # Verify EC2 instance was launched
         self.ec2_client.run_instances.assert_called_once()
 
         # Verify launch parameters
@@ -166,6 +183,15 @@ class EC2OrchestratorTests(unittest.TestCase):
         self.assertEqual(kwargs["SecurityGroupIds"], ["sg-1"])
         self.assertIn("UserData", kwargs)
         self.assertIn("TagSpecifications", kwargs)
+        
+        # Verify User Data does not contain sensitive data
+        import base64
+        user_data = base64.b64decode(kwargs["UserData"]).decode("utf-8")
+        self.assertNotIn("postgresql://", user_data)  # No DATABASE_URL
+        self.assertNotIn("base_model", user_data)  # No config JSON
+        self.assertIn("job-1", user_data)  # Contains job_id
+        self.assertIn("incident-lens-data", user_data)  # Contains S3 bucket
+        self.assertIn("training-configs/project-1/job-1.json", user_data)  # Contains config key
 
     def test_launch_instance_without_subnet(self):
         """Test launching instance without specifying subnet."""
@@ -181,7 +207,8 @@ class EC2OrchestratorTests(unittest.TestCase):
             terminate_on_completion=True,
             associate_public_ip=False,
         )
-        orchestrator = EC2TrainingOrchestrator(config, self.ec2_client)
+        s3_client = Mock()
+        orchestrator = EC2TrainingOrchestrator(config, self.ec2_client, s3_client)
         self.ec2_client.run_instances.return_value = {
             "Instances": [{"InstanceId": "i-training-456"}]
         }
@@ -193,6 +220,9 @@ class EC2OrchestratorTests(unittest.TestCase):
             dataset_storage_key="datasets/project-1/dataset-v1.jsonl",
             database_url="postgresql://localhost/db",
             training_config_json='{"job_id": "job-2"}',
+            s3_bucket="incident-lens-data",
+            git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+            git_commit_sha="abc123def456789012345678901234567890abcd",
         )
 
         call_args = self.ec2_client.run_instances.call_args.kwargs
@@ -247,6 +277,119 @@ class EC2OrchestratorTests(unittest.TestCase):
         result = self.orchestrator.terminate_instance("i-nonexistent")
 
         self.assertTrue(result)  # Should return True (already gone)
+
+    def test_config_upload_to_s3(self):
+        """Test that training configuration is uploaded to S3 before instance launch."""
+        self.ec2_client.run_instances.return_value = {
+            "Instances": [{"InstanceId": "i-training-789"}]
+        }
+
+        training_config = {
+            "job_id": "job-1",
+            "project_id": "project-1",
+            "base_model": "Qwen/Qwen3.5-4B",
+            "lora_rank": 8,
+            "database_url": "postgresql://user:pass@host/db",
+            "huggingface_token": "hf_secret_token_12345",
+        }
+
+        self.orchestrator.launch_training_instance(
+            job_id="job-1",
+            project_id="project-1",
+            dataset_id="dataset-1",
+            dataset_storage_key="datasets/project-1/dataset-v1.jsonl",
+            database_url="postgresql://user:pass@host/db",
+            training_config_json=json.dumps(training_config),
+            s3_bucket="incident-lens-data",
+            git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+            git_commit_sha="abc123def456789012345678901234567890abcd",
+        )
+
+        # Verify S3 upload was called
+        self.s3_client.put_object.assert_called_once()
+        s3_call = self.s3_client.put_object.call_args.kwargs
+
+        # Verify S3 key follows expected pattern
+        self.assertEqual(s3_call["Bucket"], "incident-lens-data")
+        self.assertEqual(s3_call["Key"], "training-configs/project-1/job-1.json")
+
+        # Verify uploaded config contains expected data
+        uploaded_config = json.loads(s3_call["Body"].decode("utf-8"))
+        self.assertEqual(uploaded_config["job_id"], "job-1")
+        self.assertEqual(uploaded_config["base_model"], "Qwen/Qwen3.5-4B")
+        self.assertIn("database_url", uploaded_config)
+        self.assertIn("huggingface_token", uploaded_config)
+
+    def test_user_data_size_within_limit(self):
+        """Test that User Data size is well below AWS 25,600-byte limit."""
+        import base64
+
+        self.ec2_client.run_instances.return_value = {
+            "Instances": [{"InstanceId": "i-training-999"}]
+        }
+
+        # Create a large config (simulating real-world scenario)
+        large_config = {
+            "job_id": "job-1" * 100,
+            "project_id": "project-1" * 100,
+            "base_model": "Qwen/Qwen3.5-4B",
+            "lora_rank": 8,
+            "database_url": "postgresql://user:very_long_password_12345@hostname.domain.com:5432/database_name",
+            "huggingface_token": "hf_" + "x" * 500,
+            "git_repository_url": "https://github.com/DevelopedBy-Siva/incident-lens.git",
+            "git_commit_sha": "abc123def456789012345678901234567890abcd" * 10,
+        }
+
+        self.orchestrator.launch_training_instance(
+            job_id="job-1",
+            project_id="project-1",
+            dataset_id="dataset-1",
+            dataset_storage_key="datasets/project-1/dataset-v1.jsonl",
+            database_url=large_config["database_url"],
+            training_config_json=json.dumps(large_config),
+            s3_bucket="incident-lens-data",
+            git_repository_url=large_config["git_repository_url"],
+            git_commit_sha=large_config["git_commit_sha"][:40],  # Valid SHA length
+        )
+
+        # Verify User Data size
+        call_args = self.ec2_client.run_instances.call_args.kwargs
+        user_data_b64 = call_args["UserData"]
+        
+        # User Data size should be well below the limit
+        self.assertLess(len(user_data_b64), 25600)
+        
+        # Decode and verify User Data does NOT contain secrets
+        user_data = base64.b64decode(user_data_b64).decode("utf-8")
+        self.assertNotIn("postgresql://", user_data)
+        self.assertNotIn("hf_", user_data)
+        self.assertNotIn("very_long_password", user_data)
+
+    def test_config_upload_failure_prevents_instance_launch(self):
+        """Test that S3 upload failure prevents EC2 instance launch."""
+        from botocore.exceptions import ClientError
+
+        # Simulate S3 upload failure
+        self.s3_client.put_object.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+            "PutObject",
+        )
+
+        with self.assertRaises(Exception) as context:
+            self.orchestrator.launch_training_instance(
+                job_id="job-1",
+                project_id="project-1",
+                dataset_id="dataset-1",
+                dataset_storage_key="datasets/project-1/dataset-v1.jsonl",
+                database_url="postgresql://localhost/db",
+                training_config_json='{"job_id": "job-1"}',
+                s3_bucket="incident-lens-data",
+                git_repository_url="https://github.com/DevelopedBy-Siva/incident-lens.git",
+                git_commit_sha="abc123def456789012345678901234567890abcd",
+            )
+
+        # Verify EC2 instance was NOT launched
+        self.ec2_client.run_instances.assert_not_called()
 
     def test_is_training_instance_idle(self):
         """Test checking if instance is in terminal state."""
@@ -447,15 +590,27 @@ class TrainingWorkerModeTests(unittest.TestCase):
 
         # Mock boto3.client to avoid real AWS calls
         mock_ec2_client = MagicMock()
-        with patch("app.training.ec2_orchestrator.boto3.client", return_value=mock_ec2_client) as mock_boto3:
+        mock_s3_client = MagicMock()
+        
+        def mock_client(service, **kwargs):
+            if service == "ec2":
+                return mock_ec2_client
+            elif service == "s3":
+                return mock_s3_client
+            raise ValueError(f"Unexpected service: {service}")
+        
+        with patch("app.training.ec2_orchestrator.boto3.client", side_effect=mock_client) as mock_boto3:
             worker = TrainingWorker(self.db)
 
-            # Verify boto3.client was called with correct parameters
-            mock_boto3.assert_called_once_with("ec2", region_name=None)
+            # Verify boto3.client was called for both EC2 and S3
+            self.assertEqual(mock_boto3.call_count, 2)
+            mock_boto3.assert_any_call("ec2", region_name=None)
+            mock_boto3.assert_any_call("s3", region_name=None)
 
         self.assertTrue(worker.use_ec2_remote)
         self.assertIsInstance(worker.ec2_orchestrator, EC2TrainingOrchestrator)
         self.assertEqual(worker.ec2_orchestrator.ec2_client, mock_ec2_client)
+        self.assertEqual(worker.ec2_orchestrator.s3_client, mock_s3_client)
 
 
 class TrainingJobStatusTransitionTests(unittest.TestCase):
