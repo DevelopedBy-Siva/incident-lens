@@ -19,118 +19,259 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: log-analyzer
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: log-analyzer/requirements.txt
-      - run: >-
+
+      - name: Install PyTorch CPU
+        run: >-
           pip install torch==2.14.0+cpu
           --index-url https://download.pytorch.org/whl/cpu
           --extra-index-url https://pypi.org/simple
-      - run: pip install -r requirements.txt
-      - run: pip install pytest==8.3.5
-      - run: python -m pytest -q
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install pytest
+        run: pip install pytest==8.3.5
+
+      - name: Run tests
+        run: python -m pytest -q
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
     environment: production
+
     env:
-      DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_DEPLOY_PATH: ${{ secrets.EC2_DEPLOY_PATH }}
+
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
       TRAINING_EC2_ENABLED: ${{ secrets.TRAINING_EC2_ENABLED }}
       TRAINING_EC2_AMI_ID: ${{ secrets.TRAINING_EC2_AMI_ID }}
       TRAINING_EC2_IAM_INSTANCE_PROFILE: ${{ secrets.TRAINING_EC2_IAM_INSTANCE_PROFILE }}
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure SSH
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/id_ec2
-          chmod 600 ~/.ssh/id_ec2
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          set -euo pipefail
 
-      - name: Build deployment bundle and environment
+          SSH_DIR="${RUNNER_TEMP}/ssh"
+
+          mkdir -p "$SSH_DIR"
+          chmod 700 "$SSH_DIR"
+
+          printf '%s\n' "$EC2_SSH_KEY" > "$SSH_DIR/id_ec2"
+          chmod 600 "$SSH_DIR/id_ec2"
+
+          ssh-keyscan -H "$EC2_HOST" >> "$SSH_DIR/known_hosts"
+          chmod 644 "$SSH_DIR/known_hosts"
+
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
+
+      - name: Test SSH connection
         run: |
-          tar --exclude=.git --exclude='*/.venv*' --exclude='*/__pycache__' \
+          set -euo pipefail
+
+          ssh \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            "echo 'SSH connection successful'"
+
+      - name: Build deployment bundle
+        run: |
+          set -euo pipefail
+
+          tar \
+            --exclude=.git \
+            --exclude='*/.venv*' \
+            --exclude='*/__pycache__' \
+            --exclude='*/.pytest_cache' \
+            --exclude='*/.ruff_cache' \
+            --exclude='*/node_modules' \
             -czf /tmp/incident-lens.tar.gz .
+
+      - name: Create environment file
+        run: |
+          set -euo pipefail
           umask 077
+
           {
             printf 'APP_ENV=prod\n'
             printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
             printf 'SECRET_KEY=%s\n' "$SECRET_KEY"
             printf 'CORS_ORIGINS=%s\n' "$CORS_ORIGINS"
+
             printf 'AWS_REGION=%s\n' "${AWS_REGION:-us-east-1}"
             printf 'S3_BUCKET=%s\n' "$S3_BUCKET"
             printf 'S3_DATASET_PREFIX=datasets\n'
             printf 'S3_ARTIFACT_PREFIX=artifacts\n'
+
             printf 'DATASET_STORAGE_PATH=/app/data/datasets\n'
             printf 'ARTIFACT_STORAGE_PATH=/app/data/artifacts\n'
+
             printf 'MODEL_PROVIDER=local\n'
             printf 'BASE_MODEL=Qwen/Qwen3.5-4B\n'
             printf 'HF_TOKEN=%s\n' "$HF_TOKEN"
             printf 'DEVICE=cpu\n'
             printf 'DTYPE=auto\n'
+
             printf 'RESET_DATA_ON_STARTUP=false\n'
             printf 'POLL_INTERVAL=30\n'
             printf 'DATADOG_LOOKBACK_SECONDS=30\n'
+
             printf 'DD_LLMOBS_ENABLED=0\n'
             printf 'DD_LLMOBS_AGENTLESS_ENABLED=0\n'
             printf 'DD_TRACE_ENABLED=0\n'
-            # EC2 GPU Training Configuration (deployment-specific)
+
             printf 'TRAINING_EC2_ENABLED=%s\n' "${TRAINING_EC2_ENABLED:-false}"
             printf 'TRAINING_EC2_AMI_ID=%s\n' "${TRAINING_EC2_AMI_ID:-}"
             printf 'TRAINING_EC2_IAM_INSTANCE_PROFILE=%s\n' "${TRAINING_EC2_IAM_INSTANCE_PROFILE:-}"
           } > /tmp/.env.production
 
-      - name: Upload release
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          remote_path="${DEPLOY_PATH:-/home/$EC2_USER/incident-lens}"
-          ssh -i ~/.ssh/id_ec2 "$EC2_USER@$EC2_HOST" \
-            "mkdir -p '$remote_path/releases/${GITHUB_SHA}'"
-          scp -i ~/.ssh/id_ec2 /tmp/incident-lens.tar.gz /tmp/.env.production \
-            "$EC2_USER@$EC2_HOST:$remote_path/releases/${GITHUB_SHA}/"
+          chmod 600 /tmp/.env.production
 
-      - name: Start release
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
+      - name: Create remote directory
         run: |
-          remote_path="${DEPLOY_PATH:-/home/$EC2_USER/incident-lens}"
-          ssh -i ~/.ssh/id_ec2 "$EC2_USER@$EC2_HOST" bash -s -- \
-            "$remote_path" "$GITHUB_SHA" <<'REMOTE'
           set -euo pipefail
-          deploy_path="$1"
-          release="$deploy_path/releases/$2"
-          cd "$release"
+
+          RELEASE_PATH="$EC2_DEPLOY_PATH/releases/$GITHUB_SHA"
+
+          ssh \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            "mkdir -p '$RELEASE_PATH'"
+
+      - name: Upload files to EC2
+        run: |
+          set -euo pipefail
+
+          RELEASE_PATH="$EC2_DEPLOY_PATH/releases/$GITHUB_SHA"
+
+          scp \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            /tmp/incident-lens.tar.gz \
+            /tmp/.env.production \
+            "$EC2_USER@$EC2_HOST:$RELEASE_PATH/"
+
+      - name: Deploy application
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            bash -s -- "$EC2_DEPLOY_PATH" "$GITHUB_SHA" <<'REMOTE'
+          set -euo pipefail
+
+          DEPLOY_PATH="$1"
+          GITHUB_SHA="$2"
+          RELEASE_PATH="$DEPLOY_PATH/releases/$GITHUB_SHA"
+
+          echo "Extracting application..."
+          cd "$RELEASE_PATH"
+
           tar -xzf incident-lens.tar.gz
           rm incident-lens.tar.gz
-          docker compose -p incident-lens -f compose.prod.yaml up -d --build --remove-orphans
+
+          echo "Stopping existing containers..."
+          docker compose \
+            -p incident-lens \
+            -f compose.prod.yaml \
+            down || true
+
+          echo "Starting application..."
+          docker compose \
+            -p incident-lens \
+            -f compose.prod.yaml \
+            up -d --build --remove-orphans
+
+          echo "Waiting for application..."
+
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://localhost:8000/ready >/dev/null; then
-              ln -sfn "$release" "$deploy_path/current"
+            if curl \
+              --fail \
+              --silent \
+              http://localhost:8000/ready \
+              >/dev/null 2>&1; then
+
+              ln -sfn "$RELEASE_PATH" "$DEPLOY_PATH/current"
+
+              echo "Deployment successful"
               exit 0
             fi
+
+            echo "Attempt $attempt/30 - application not ready"
             sleep 10
           done
-          docker compose -p incident-lens -f compose.prod.yaml logs --tail=200
+
+          echo "Application failed to become ready"
+
+          docker compose \
+            -p incident-lens \
+            -f compose.prod.yaml \
+            logs --tail=200
+
           exit 1
           REMOTE
+
+      - name: Cleanup old releases
+        if: success()
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            bash -s -- "$EC2_DEPLOY_PATH" <<'REMOTE'
+          set -euo pipefail
+
+          DEPLOY_PATH="$1"
+          RELEASES_PATH="$DEPLOY_PATH/releases"
+
+          cd "$RELEASES_PATH"
+
+          ls -dt */ 2>/dev/null \
+            | tail -n +6 \
+            | xargs -r rm -rf
+
+          echo "Old releases cleaned up; latest 5 retained"
+          REMOTE
+
+      - name: Cleanup failed release
+        if: failure()
+        run: |
+          RELEASE_PATH="$EC2_DEPLOY_PATH/releases/$GITHUB_SHA"
+
+          ssh \
+            -i "$SSH_DIR/id_ec2" \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            "$EC2_USER@$EC2_HOST" \
+            "rm -rf '$RELEASE_PATH'" || true
