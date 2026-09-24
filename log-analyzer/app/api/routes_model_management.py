@@ -25,6 +25,7 @@ from app.training.dataset_storage import (
     DatasetAlreadyExistsError,
     configured_dataset_storage,
     configured_dataset_storage_location,
+    configured_local_dataset_storage,
 )
 from app.training.models import (
     DatasetStatus,
@@ -193,8 +194,15 @@ def get_dataset_records(
         raise HTTPException(status_code=409, detail="Dataset is not available to view")
 
     try:
+        # Use local storage for VALIDATING datasets (pending review)
+        # Use configured storage (S3 or local) for READY datasets (after approval)
+        storage = (
+            configured_local_dataset_storage()
+            if dataset.status == DatasetStatus.VALIDATING
+            else configured_dataset_storage()
+        )
         records = JsonLinesDatasetSerializer().deserialize(
-            configured_dataset_storage().load(dataset.storage_key)
+            storage.load(dataset.storage_key)
         )
     except (FileNotFoundError, UnicodeDecodeError, ValueError) as exc:
         raise HTTPException(
