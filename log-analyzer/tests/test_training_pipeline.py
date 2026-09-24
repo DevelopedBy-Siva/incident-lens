@@ -1,10 +1,11 @@
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -34,7 +35,7 @@ from app.training.training_engine import (
     TrainingResult,
 )
 from app.training.training_profile import LoraTrainingProfile
-from app.training.worker import TrainingJobStateError, TrainingWorker
+from app.training.worker import TrainingJobStateError, TrainingWorker, TrainingPipelineError
 
 
 class FailingTrainingEngine(TrainingEngine):
@@ -458,6 +459,124 @@ class TrainingPipelineTests(unittest.TestCase):
                     self.project.active_artifact_id, completed["artifact_id"]
                 )
                 self.assertEqual(self.db.query(TrainingJob).count(), 1)
+
+    def test_get_current_git_commit_prefers_environment_variable(self):
+        """Test that GIT_COMMIT_SHA environment variable is used first."""
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                test_sha = "a" * 40
+                with patch.dict(os.environ, {"GIT_COMMIT_SHA": test_sha}):
+                    # Should use env var without calling git
+                    commit = worker._get_current_git_commit()
+                    self.assertEqual(commit, test_sha)
+
+    def test_get_current_git_commit_uses_git_fallback(self):
+        """Test that git command is used when GIT_COMMIT_SHA is not set."""
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                test_sha = "b" * 40
+                mock_result = MagicMock()
+                mock_result.stdout = test_sha + "\n"
+                
+                with patch.dict(os.environ, {}, clear=False):
+                    # Remove GIT_COMMIT_SHA if it exists
+                    os.environ.pop("GIT_COMMIT_SHA", None)
+                    
+                    with patch("subprocess.run", return_value=mock_result) as mock_run:
+                        commit = worker._get_current_git_commit()
+                        self.assertEqual(commit, test_sha)
+                        # Verify git was actually called
+                        mock_run.assert_called_once()
+                        call_args = mock_run.call_args
+                        self.assertEqual(call_args[0][0], ["git", "rev-parse", "HEAD"])
+
+    def test_get_current_git_commit_raises_when_git_not_found(self):
+        """Test that clear error is raised when neither env var nor git is available."""
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                with patch.dict(os.environ, {}, clear=False):
+                    # Remove GIT_COMMIT_SHA if it exists
+                    os.environ.pop("GIT_COMMIT_SHA", None)
+                    
+                    with patch("subprocess.run", side_effect=FileNotFoundError("git not found")):
+                        with self.assertRaisesRegex(
+                            TrainingPipelineError,
+                            "Neither GIT_COMMIT_SHA environment variable nor git command is available"
+                        ):
+                            worker._get_current_git_commit()
+
+    def test_get_current_git_commit_raises_when_git_fails(self):
+        """Test that clear error is raised when git command fails."""
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                with patch.dict(os.environ, {}, clear=False):
+                    # Remove GIT_COMMIT_SHA if it exists
+                    os.environ.pop("GIT_COMMIT_SHA", None)
+                    
+                    git_error = subprocess.CalledProcessError(
+                        128, ["git", "rev-parse", "HEAD"], stderr="not a git repository"
+                    )
+                    with patch("subprocess.run", side_effect=git_error):
+                        with self.assertRaisesRegex(
+                            TrainingPipelineError,
+                            "GIT_COMMIT_SHA environment variable is not set and git command failed"
+                        ):
+                            worker._get_current_git_commit()
+
+    def test_get_current_git_commit_warns_on_invalid_env_length(self):
+        """Test that invalid GIT_COMMIT_SHA length triggers warning and falls back to git."""
+        with tempfile.TemporaryDirectory() as dataset_directory:
+            with tempfile.TemporaryDirectory() as artifact_directory:
+                storage = LocalDatasetStorage(dataset_directory)
+                worker = TrainingWorker(
+                    self.db,
+                    dataset_storage=storage,
+                    engine=SuccessfulTestTrainingEngine(),
+                    artifact_writer=LocalArtifactMetadataWriter(artifact_directory),
+                )
+
+                test_sha = "c" * 40
+                mock_result = MagicMock()
+                mock_result.stdout = test_sha + "\n"
+                
+                # Set invalid (too short) commit SHA in environment
+                with patch.dict(os.environ, {"GIT_COMMIT_SHA": "abc123"}):
+                    with patch("subprocess.run", return_value=mock_result):
+                        # Should fall back to git command
+                        commit = worker._get_current_git_commit()
+                        self.assertEqual(commit, test_sha)
 
 
 if __name__ == "__main__":

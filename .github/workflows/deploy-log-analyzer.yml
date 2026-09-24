@@ -150,6 +150,8 @@ jobs:
             printf 'TRAINING_EC2_ENABLED=%s\n' "${TRAINING_EC2_ENABLED:-false}"
             printf 'TRAINING_EC2_AMI_ID=%s\n' "${TRAINING_EC2_AMI_ID:-}"
             printf 'TRAINING_EC2_IAM_INSTANCE_PROFILE=%s\n' "${TRAINING_EC2_IAM_INSTANCE_PROFILE:-}"
+            
+            printf 'GIT_COMMIT_SHA=%s\n' "$GITHUB_SHA"
           } > /tmp/.env.production
 
           chmod 600 /tmp/.env.production

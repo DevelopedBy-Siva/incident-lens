@@ -256,9 +256,22 @@ class TrainingWorker:
         Raises:
             TrainingPipelineError: If unable to determine Git commit
         """
+        import subprocess
+        
+        # First, check environment variable (production deployment)
+        commit_sha = os.getenv("GIT_COMMIT_SHA", "").strip()
+        if commit_sha:
+            if len(commit_sha) == 40:
+                logger.info(f"Using GIT_COMMIT_SHA environment variable: {commit_sha}")
+                return commit_sha
+            else:
+                logger.warning(
+                    f"GIT_COMMIT_SHA environment variable has invalid length "
+                    f"({len(commit_sha)} chars, expected 40): {commit_sha}"
+                )
+        
+        # Fallback: try git command (local development)
         try:
-            import subprocess
-            
             # Get current working directory (should be the log-analyzer directory)
             cwd = Path(__file__).parent.parent.parent
             
@@ -274,25 +287,23 @@ class TrainingWorker:
             
             if not commit_sha or len(commit_sha) != 40:
                 raise TrainingPipelineError(
-                    f"Invalid Git commit SHA: {commit_sha}"
+                    f"Invalid Git commit SHA from git command: {commit_sha}"
                 )
             
-            logger.info(f"Current Git commit: {commit_sha}")
+            logger.info(f"Using git command for commit SHA: {commit_sha}")
             return commit_sha
             
-        except subprocess.CalledProcessError as exc:
-            # Fallback: if not in a Git repository (e.g., deployed without .git),
-            # use environment variable or raise error
-            fallback_commit = os.getenv("GIT_COMMIT_SHA", "").strip()
-            if fallback_commit:
-                logger.warning(
-                    f"Git command failed, using GIT_COMMIT_SHA environment variable: {fallback_commit}"
-                )
-                return fallback_commit
-            
+        except FileNotFoundError as exc:
             raise TrainingPipelineError(
-                f"Unable to determine Git commit SHA. Ensure application is deployed "
-                f"from a Git repository or set GIT_COMMIT_SHA environment variable. "
+                "Unable to determine Git commit SHA. Neither GIT_COMMIT_SHA "
+                "environment variable nor git command is available. "
+                "Ensure GIT_COMMIT_SHA is set in production deployments."
+            ) from exc
+        
+        except subprocess.CalledProcessError as exc:
+            raise TrainingPipelineError(
+                f"Unable to determine Git commit SHA. GIT_COMMIT_SHA environment "
+                f"variable is not set and git command failed. "
                 f"Error: {exc.stderr if exc.stderr else str(exc)}"
             ) from exc
 
