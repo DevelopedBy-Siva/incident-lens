@@ -141,6 +141,7 @@ class DatadogObservabilityTests(unittest.TestCase):
             status=SimpleNamespace(value="READY"),
         )
         worker = TrainingWorker.__new__(TrainingWorker)
+        worker.use_ec2_remote = False  # Ensure local execution path
         job = SimpleNamespace(
             id="job-1",
             dataset_id="dataset-1",
@@ -163,7 +164,7 @@ class DatadogObservabilityTests(unittest.TestCase):
             dataset_command.execute("project-1")
         with (
             patch("app.training.worker.trace_operation", record),
-            patch.object(worker, "_run", return_value=job),
+            patch.object(worker, "_run_local", return_value=job),
         ):
             worker.run("job-1", "project-1")
         with (

@@ -144,30 +144,6 @@ class TrainingWorker:
             )
             return job
 
-    def run(self, job_id: str, project_id: str) -> TrainingJob:
-        with trace_operation(
-            "training_job_lifecycle",
-            plane="training",
-            metadata={
-                "project_id": project_id,
-                "training_job_id": job_id,
-                "execution_mode": "ec2_remote" if self.use_ec2_remote else "local",
-            },
-        ) as span:
-            if self.use_ec2_remote:
-                job = self._run_ec2_remote(job_id, project_id)
-            else:
-                job = self._run_local(job_id, project_id)
-            span.tags(
-                {
-                    "dataset_id": job.dataset_id,
-                    "artifact_id": job.artifact_id,
-                    "status": job.status.value,
-                    "result": job.status.value,
-                }
-            )
-            return job
-
     def _run_ec2_remote(self, job_id: str, project_id: str) -> TrainingJob:
         """Launch a temporary EC2 GPU instance for training and return with RUNNING status.
         
@@ -325,7 +301,6 @@ class TrainingWorker:
         
         This is the original execution path that trains models locally before returning.
         """
-        return self._run(job_id, project_id)
         job = self.jobs.get_for_project(job_id, project_id)
         if not job:
             raise TrainingJobNotFoundError("Training job not found")

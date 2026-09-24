@@ -445,10 +445,17 @@ class TrainingWorkerModeTests(unittest.TestCase):
         os.environ["TRAINING_EC2_AMI_ID"] = "ami-12345"
         os.environ["TRAINING_EC2_IAM_INSTANCE_PROFILE"] = "incident-lens-training"
 
-        worker = TrainingWorker(self.db)
+        # Mock boto3.client to avoid real AWS calls
+        mock_ec2_client = MagicMock()
+        with patch("app.training.ec2_orchestrator.boto3.client", return_value=mock_ec2_client) as mock_boto3:
+            worker = TrainingWorker(self.db)
+
+            # Verify boto3.client was called with correct parameters
+            mock_boto3.assert_called_once_with("ec2", region_name=None)
 
         self.assertTrue(worker.use_ec2_remote)
         self.assertIsInstance(worker.ec2_orchestrator, EC2TrainingOrchestrator)
+        self.assertEqual(worker.ec2_orchestrator.ec2_client, mock_ec2_client)
 
 
 class TrainingJobStatusTransitionTests(unittest.TestCase):
