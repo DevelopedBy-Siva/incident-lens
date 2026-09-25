@@ -443,6 +443,9 @@ class InvestigationLoop:
 
         from app.serving.decision_engine import IncidentAnalysis, validate_analysis
 
+        # Log raw output for debugging
+        logger.info("[INVESTIGATOR] Raw model output (first 500 chars): %s", text[:500])
+
         clean = re.sub(r"```(?:json)?", "", text).strip()
 
         match = re.search(r"\{.*\}", clean, re.DOTALL)
@@ -452,6 +455,31 @@ class InvestigationLoop:
 
         try:
             data = json.loads(match.group())
+            
+            # Log what fields the model produced
+            logger.info("[INVESTIGATOR] Model produced fields: %s", list(data.keys()))
+            
+            # Validate required fields are present
+            required_fields = ["severity", "disposition", "summary"]
+            missing_required = [f for f in required_fields if not data.get(f)]
+            if missing_required:
+                logger.warning(
+                    "[INVESTIGATOR] Model output missing REQUIRED fields: %s",
+                    missing_required
+                )
+            
+            # Log which optional fields are missing (should be trained)
+            expected_fields = [
+                "confidence", "suspected_root_cause", "next_steps",
+                "ticket_title", "ticket_body"
+            ]
+            missing_expected = [f for f in expected_fields if f not in data]
+            if missing_expected:
+                logger.warning(
+                    "[INVESTIGATOR] Model output missing expected fields: %s",
+                    missing_expected
+                )
+            
             analysis = IncidentAnalysis(
                 severity=data.get("severity", "medium"),
                 disposition=data.get("disposition", "OBSERVE"),

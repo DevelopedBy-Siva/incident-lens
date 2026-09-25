@@ -1,0 +1,26 @@
+# Local Experiment Environment
+# Isolated from production AWS dependencies
+
+# Core ML/Training
+torch>=2.1.0
+transformers>=4.36.0
+peft>=0.7.0
+bitsandbytes>=0.41.0
+accelerate>=0.25.0
+datasets>=2.16.0
+
+# Data processing
+numpy>=1.24.0
+pandas>=2.1.0
+scikit-learn>=1.3.0
+
+# Configuration
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Evaluation
+jsonlines>=4.0.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0

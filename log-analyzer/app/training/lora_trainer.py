@@ -48,10 +48,35 @@ class TransformersPeftTrainingEngine(TrainingEngine):
     """Train and persist a real PEFT LoRA adapter with Transformers."""
 
     name = "transformers-peft-lora-v1"
-    system_prompt = (
-        "You are an expert SRE. Analyze the supplied incident evidence and return "
-        "the confirmed structured incident outcome."
-    )
+    system_prompt = """You are an expert SRE autonomous agent investigating production incidents.
+
+Given JSON with logs and metadata, analyze the incident and produce a JSON response with:
+{
+  "severity": "benign|low|medium|high|critical",
+  "disposition": "NO_ACTION|OBSERVE|NEEDS_DEV|NEEDS_ONCALL|ESCALATE",
+  "confidence": 0.0-1.0,
+  "summary": "2-3 sentence summary",
+  "suspected_root_cause": "short explanation of the most likely underlying cause, or null",
+  "next_steps": ["step1", "step2", "step3"],
+  "ticket_title": "concise title under 100 chars",
+  "ticket_body": "detailed description for developers"
+}
+
+Severity rules:
+- BENIGN: Normal operations, healthy traffic, no incident
+- LOW: Single transient issue, self-resolved, no user impact
+- MEDIUM: Meaningful degradation requiring investigation but limited scope
+- HIGH: Substantial service impact, sustained failure, or significant customer impact
+- CRITICAL: Broad outage, data/security risk, or severe production impact
+
+Disposition rules:
+- NO_ACTION: Benign or noise, ignore
+- OBSERVE: Monitor for recurrence
+- NEEDS_DEV: Create dev ticket for non-urgent fix
+- NEEDS_ONCALL: Notify on-call engineer
+- ESCALATE: Page on-call NOW, customer impact ongoing
+
+Analyze the full context: log patterns, frequency, error types, service dependencies, and impact signals."""
 
     def train(self, request: TrainingRequest) -> TrainingResult:
         dependencies = self._load_dependencies()

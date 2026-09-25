@@ -1,0 +1,19 @@
+# Example evaluation log file
+# This is a RAW LOG FILE - one log line per line
+# Format: TIMESTAMP LEVEL [service] message
+#
+# Place your actual evaluation logs in: data/evaluation.log
+# These logs MUST be completely separate from your training data
+
+2026-09-25T10:30:00.123Z ERROR [payment-api] database connection timeout after 5000ms
+2026-09-25T10:30:01.456Z WARN [payment-api] retry attempt 1/3 failed
+2026-09-25T10:30:02.789Z ERROR [payment-api] transaction aborted after max retries
+2026-09-25T10:30:05.000Z ERROR [payment-api] connection pool exhausted: 95/100 active
+2026-09-25T10:35:00.000Z INFO [user-service] heartbeat ok uptime=150000s
+2026-09-25T10:35:01.000Z INFO [user-service] health check passed
+2026-09-25T10:40:00.567Z WARN [notification-worker] kafka consumer lag topic=emails partition=3 lag=5000
+2026-09-25T10:40:30.789Z WARN [notification-worker] kafka consumer lag increasing topic=emails partition=3 lag=8000
+2026-09-25T10:41:00.123Z INFO [notification-worker] consumer scaling triggered replicas=4 target=6
+2026-09-25T10:45:15.456Z ERROR [order-service] PaymentGatewayTimeout: Stripe did not respond
+2026-09-25T10:45:16.123Z ERROR [order-service] Stripe unavailable transaction authorization failed
+2026-09-25T10:45:17.789Z WARN [order-service] payment gateway timeout retry limit exceeded
