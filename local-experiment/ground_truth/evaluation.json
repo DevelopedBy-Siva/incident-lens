@@ -1,0 +1,251 @@
+{
+  "metadata": {
+    "evaluation_log": "data/evaluation.log",
+    "total_log_lines": 138,
+    "evaluation_date": "2026-09-25",
+    "description": "Ground truth for evaluation log containing 8 distinct incident scenarios plus normal operations",
+    "clustering_method": "signature-based with 2-minute time windows",
+    "notes": "This ground truth was created based on the known synthetic log generation scenarios, NOT inferred from model predictions"
+  },
+  "incidents": [
+    {
+      "incident_id": "gt-incident-001",
+      "incident_type": "database_connection_pool_exhaustion",
+      "service": "payment-api",
+      "severity": "high",
+      "disposition": "NEEDS_ONCALL",
+      "start_time": "2026-09-25T10:00:00.123Z",
+      "end_time": "2026-09-25T10:02:45.234Z",
+      "duration_seconds": 165,
+      "log_count": 15,
+      "description": "Database connection pool exhausted leading to transaction failures",
+      "expected_root_cause": "Connection pool size insufficient for load, possible connection leak",
+      "expected_summary": "payment-api experiencing database connection pool exhaustion with 100% utilization causing transaction failures",
+      "log_line_markers": [
+        "database connection timeout",
+        "connection pool exhausted",
+        "all database connections blocked"
+      ],
+      "severity_justification": "HIGH - critical service degraded, transactions failing, but not complete outage",
+      "disposition_justification": "NEEDS_ONCALL - requires immediate investigation during business hours, may need connection pool scaling"
+    },
+    {
+      "incident_id": "gt-incident-002",
+      "incident_type": "kafka_consumer_lag",
+      "service": "notification-worker",
+      "severity": "medium",
+      "disposition": "OBSERVE",
+      "start_time": "2026-09-25T10:03:00.567Z",
+      "end_time": "2026-09-25T10:08:00.890Z",
+      "duration_seconds": 300,
+      "log_count": 12,
+      "description": "Kafka consumer lag increased but auto-scaled and recovered",
+      "expected_root_cause": "Temporary spike in email queue volume, resolved by auto-scaling",
+      "expected_summary": "notification-worker experienced Kafka consumer lag up to 18000 messages, auto-scaling triggered, lag recovered",
+      "log_line_markers": [
+        "kafka consumer lag",
+        "consumer scaling triggered",
+        "lag recovered"
+      ],
+      "severity_justification": "MEDIUM - degraded but recovering, auto-scaling working correctly",
+      "disposition_justification": "OBSERVE - self-healed, monitor for recurrence"
+    },
+    {
+      "incident_id": "gt-incident-003",
+      "incident_type": "rabbitmq_queue_backlog",
+      "service": "notification-worker",
+      "severity": "high",
+      "disposition": "NEEDS_DEV",
+      "start_time": "2026-09-25T10:08:30.456Z",
+      "end_time": "2026-09-25T10:12:00.234Z",
+      "duration_seconds": 210,
+      "log_count": 10,
+      "description": "RabbitMQ queue backlog reached critical depth with stalled consumers and message loss risk",
+      "expected_root_cause": "Consumer processing stalled, queue depth exceeded capacity, potential message loss",
+      "expected_summary": "notification-worker RabbitMQ queue backlog critical with depth reaching 100k messages, consumers stalled, message loss risk detected",
+      "log_line_markers": [
+        "RabbitMQ queue backlog",
+        "consumers stalled",
+        "message loss risk"
+      ],
+      "severity_justification": "HIGH - critical queue depth, consumer stall, message loss risk",
+      "disposition_justification": "NEEDS_DEV - requires code investigation for consumer stall, queue capacity planning",
+      "notes": "This is a DIFFERENT incident from gt-incident-002 despite same service (different signature)"
+    },
+    {
+      "incident_id": "gt-incident-004",
+      "incident_type": "payment_gateway_timeout",
+      "service": "order-service",
+      "severity": "critical",
+      "disposition": "ESCALATE",
+      "start_time": "2026-09-25T10:15:15.456Z",
+      "end_time": "2026-09-25T10:16:30.234Z",
+      "duration_seconds": 75,
+      "log_count": 8,
+      "description": "Stripe payment gateway completely unavailable causing payment processing blockage",
+      "expected_root_cause": "Stripe API outage or network connectivity issue, cascading from payment-api issues",
+      "expected_summary": "order-service unable to process payments due to Stripe gateway timeouts, payment processing completely blocked",
+      "log_line_markers": [
+        "PaymentGatewayTimeout",
+        "Stripe unavailable",
+        "payment processing completely blocked"
+      ],
+      "severity_justification": "CRITICAL - payment processing completely blocked, revenue impact",
+      "disposition_justification": "ESCALATE - immediate on-call page required, revenue-impacting outage",
+      "related_incidents": ["gt-incident-001"],
+      "notes": "May be cascading failure from payment-api database issues"
+    },
+    {
+      "incident_id": "gt-incident-005",
+      "incident_type": "oom_container_crash",
+      "service": "reporting-service",
+      "severity": "critical",
+      "disposition": "ESCALATE",
+      "start_time": "2026-09-25T10:25:00.567Z",
+      "end_time": "2026-09-25T10:26:00.012Z",
+      "duration_seconds": 60,
+      "log_count": 6,
+      "description": "reporting-service OOM crash resulting in service unavailability",
+      "expected_root_cause": "Memory leak or insufficient heap size allocation causing OOM and container termination",
+      "expected_summary": "reporting-service crashed due to OutOfMemoryError, all replicas unavailable, service down",
+      "log_line_markers": [
+        "heap usage",
+        "OutOfMemoryError",
+        "OOMKilled",
+        "service unavailable"
+      ],
+      "severity_justification": "CRITICAL - complete service outage, 0/3 replicas ready",
+      "disposition_justification": "ESCALATE - immediate on-call page, service completely down"
+    },
+    {
+      "incident_id": "gt-incident-006",
+      "incident_type": "normal_operations",
+      "service": "user-service",
+      "severity": "low",
+      "disposition": "NO_ACTION",
+      "start_time": "2026-09-25T10:00:30.000Z",
+      "end_time": "2026-09-25T10:39:00.000Z",
+      "duration_seconds": 2310,
+      "log_count": 25,
+      "description": "Normal healthy operations - heartbeats, health checks, successful requests",
+      "expected_root_cause": null,
+      "expected_summary": "user-service operating normally with healthy heartbeats and successful request processing",
+      "log_line_markers": [
+        "heartbeat ok",
+        "health check passed",
+        "request processed successfully"
+      ],
+      "severity_justification": "LOW - no issues, normal operations",
+      "disposition_justification": "NO_ACTION - benign activity, no incident",
+      "notes": "This should NOT be flagged as an actionable incident - it's baseline normal activity. Note: Some clustering implementations may create multiple small incidents from this instead of one long one due to 2-minute time windows - that's acceptable."
+    },
+    {
+      "incident_id": "gt-incident-007",
+      "incident_type": "rate_limit_spike",
+      "service": "auth-service",
+      "severity": "medium",
+      "disposition": "NEEDS_DEV",
+      "start_time": "2026-09-25T10:18:00.567Z",
+      "end_time": "2026-09-25T10:21:00.567Z",
+      "duration_seconds": 180,
+      "log_count": 11,
+      "description": "Specific client exceeding rate limits causing request blocking",
+      "expected_root_cause": "mobile-app-v2 client making excessive requests, possible retry loop or bug",
+      "expected_summary": "auth-service rate limiter blocking mobile-app-v2 client due to excessive requests (2000/min), normalized after 3 minutes",
+      "log_line_markers": [
+        "rate limit exceeded",
+        "rate limiter blocking",
+        "rate limit normalized"
+      ],
+      "severity_justification": "MEDIUM - isolated to one client, rate limiting working correctly, self-resolved",
+      "disposition_justification": "NEEDS_DEV - investigate mobile-app-v2 for retry loop or bug"
+    },
+    {
+      "incident_id": "gt-incident-008",
+      "incident_type": "cache_miss_storm",
+      "service": "inventory-service",
+      "severity": "medium",
+      "disposition": "OBSERVE",
+      "start_time": "2026-09-25T10:22:00.890Z",
+      "end_time": "2026-09-25T10:24:00.234Z",
+      "duration_seconds": 120,
+      "log_count": 9,
+      "description": "Cache miss rate spike causing increased database latency, resolved by cache warming",
+      "expected_root_cause": "Cache invalidation or expiration causing temporary miss storm, auto-remediated by cache warming",
+      "expected_summary": "inventory-service cache miss storm (75% miss rate) causing database query latency increase, cache warmed and recovered",
+      "log_line_markers": [
+        "cache miss storm",
+        "database query latency increased",
+        "cache warmed"
+      ],
+      "severity_justification": "MEDIUM - performance degradation but self-healed via cache warming",
+      "disposition_justification": "OBSERVE - self-healed, monitor cache invalidation patterns"
+    }
+  ],
+  "severity_distribution": {
+    "critical": 2,
+    "high": 2,
+    "medium": 3,
+    "low": 1
+  },
+  "disposition_distribution": {
+    "ESCALATE": 2,
+    "NEEDS_ONCALL": 1,
+    "NEEDS_DEV": 2,
+    "OBSERVE": 2,
+    "NO_ACTION": 1
+  },
+  "service_incident_mapping": {
+    "payment-api": 1,
+    "notification-worker": 2,
+    "order-service": 1,
+    "reporting-service": 1,
+    "user-service": 1,
+    "auth-service": 1,
+    "inventory-service": 1
+  },
+  "evaluation_criteria": {
+    "detection": {
+      "description": "Model must detect all 8 distinct incidents",
+      "expected_true_positives": 8,
+      "expected_false_negatives": 0,
+      "notes": "notification-worker has 2 DISTINCT incidents (Kafka lag vs RabbitMQ backlog)"
+    },
+    "severity": {
+      "description": "Model must correctly classify severity levels",
+      "critical_incidents": ["gt-incident-004", "gt-incident-005"],
+      "high_incidents": ["gt-incident-001", "gt-incident-003"],
+      "medium_incidents": [
+        "gt-incident-002",
+        "gt-incident-007",
+        "gt-incident-008"
+      ],
+      "low_incidents": ["gt-incident-006"]
+    },
+    "disposition": {
+      "description": "Model must recommend appropriate dispositions",
+      "escalate_required": ["gt-incident-004", "gt-incident-005"],
+      "no_action_required": ["gt-incident-006"]
+    },
+    "benign_false_positive_tolerance": {
+      "description": "user-service normal operations should NOT be flagged as HIGH/CRITICAL",
+      "acceptable": "severity=LOW, disposition=NO_ACTION or OBSERVE",
+      "unacceptable": "severity=HIGH/CRITICAL or disposition=ESCALATE/NEEDS_ONCALL"
+    }
+  },
+  "matching_rules": {
+    "description": "How to match predictions to ground truth incidents",
+    "method": "time_and_service_overlap",
+    "rules": [
+      "Prediction and ground truth must overlap in time",
+      "Prediction and ground truth must match on service",
+      "At least 50% temporal overlap required for match",
+      "Multiple predictions for same ground truth = false positives",
+      "Predictions with no ground truth match = false positives",
+      "Ground truth with no prediction match = false negatives"
+    ],
+    "special_cases": {
+      "notification-worker": "Must distinguish Kafka lag incident from RabbitMQ incident by time windows (no temporal overlap)"
+    }
+  }
+}

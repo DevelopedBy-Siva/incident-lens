@@ -214,16 +214,19 @@ def main():
         alpha=lora_config["alpha"],
         dropout=lora_config["dropout"],
         target_modules=tuple(lora_config["target_modules"]),
+        epochs=training_config["num_epochs"],  # Note: LoraTrainingProfile uses 'epochs'
         learning_rate=training_config["learning_rate"],
-        num_epochs=training_config["num_epochs"],
-        per_device_batch_size=training_config["per_device_train_batch_size"],
+        batch_size=training_config["per_device_train_batch_size"],
         gradient_accumulation_steps=training_config["gradient_accumulation_steps"],
-        max_seq_length=training_config["max_seq_length"],
-        warmup_steps=training_config["warmup_steps"],
+        max_sequence_length=training_config["max_seq_length"],
+        validation_fraction=config["data"]["eval_split"],
+        seed=config["data"]["random_seed"],
     )
     
-    # Create adapter output path
-    adapter_path = str(exp_dir / "adapter")
+    # Create adapter output path (trainer requires this directory to exist and be empty)
+    adapter_dir = exp_dir / "adapter"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    adapter_path = str(adapter_dir)
     
     # Create training request
     request = TrainingRequest(
