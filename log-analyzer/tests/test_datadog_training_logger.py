@@ -182,6 +182,31 @@ class DatadogLoggerTests(unittest.TestCase):
         self.assertEqual(log_entry["progress_percent"], 50.0)
         self.assertEqual(log_entry["training_loss"], 0.234567)
         self.assertEqual(log_entry["elapsed_seconds"], 123.5)
+        
+        # Verify visible message contains progress details
+        self.assertIn("50.0%", log_entry["message"])
+        self.assertIn("50/100", log_entry["message"])
+        self.assertIn("Training progress:", log_entry["message"])
+    
+    @patch("app.training.datadog_logger.requests.Session")
+    def test_progress_message_at_100_percent(self, mock_session_class):
+        """Test progress message format at 100% completion."""
+        mock_session = MagicMock()
+        mock_session_class.return_value = mock_session
+        
+        logger = DatadogLogger("api-key", "datadoghq.com", self.context)
+        logger.progress(
+            current_step=1786,
+            total_steps=1786,
+        )
+        
+        mock_session.post.assert_called_once()
+        payload = mock_session.post.call_args[1]["json"]
+        log_entry = payload[0]
+        
+        self.assertEqual(log_entry["progress_percent"], 100.0)
+        self.assertIn("100.0%", log_entry["message"])
+        self.assertIn("1786/1786", log_entry["message"])
     
     @patch("app.training.datadog_logger.requests.Session")
     def test_error_event_structure(self, mock_session_class):

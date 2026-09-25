@@ -196,6 +196,21 @@ class TrainingWorker:
             s3_bucket = os.getenv("S3_BUCKET", "").strip()
             if not s3_bucket:
                 raise TrainingPipelineError("S3_BUCKET not configured for EC2 training")
+            
+            # Get AWS region from environment or EC2 config
+            aws_region = os.getenv("AWS_REGION", "").strip()
+            if not aws_region and self.ec2_orchestrator:
+                # Try to get region from EC2 orchestrator configuration
+                try:
+                    aws_region = self.ec2_orchestrator.ec2_client.meta.region_name
+                except Exception:
+                    pass
+            
+            if not aws_region:
+                raise TrainingPipelineError(
+                    "AWS_REGION not configured. Set AWS_REGION environment variable "
+                    "for EC2 training to enable proper instance termination."
+                )
 
             # Get Git repository URL and current commit SHA
             git_repository_url = os.getenv(
@@ -212,6 +227,7 @@ class TrainingWorker:
                 dataset_storage_key=dataset.storage_key,
                 s3_bucket=s3_bucket,
                 database_url=os.getenv("DATABASE_URL", "").strip(),
+                aws_region=aws_region,
                 base_model=base_model,
                 git_repository_url=git_repository_url,
                 git_commit_sha=git_commit_sha,

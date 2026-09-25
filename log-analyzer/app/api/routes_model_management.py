@@ -42,6 +42,7 @@ from app.training.repositories import (
 from app.training.worker import (
     TrainingJobNotFoundError,
     TrainingJobStateError,
+    TrainingPipelineError,
     TrainingWorker,
 )
 
@@ -408,9 +409,10 @@ def run_training_job(
         # Determine response status based on execution mode
         if worker.use_ec2_remote and job.status == TrainingJobStatus.RUNNING:
             # EC2 remote mode: return 202 Accepted with running job
+            # Use mode="json" to properly serialize datetime objects to ISO strings
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
-                content=job_response.model_dump(),
+                content=job_response.model_dump(mode="json"),
             )
         else:
             # Local mode: return 200 OK with completed job
@@ -420,6 +422,11 @@ def run_training_job(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except TrainingJobStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TrainingPipelineError as exc:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Could not start this training run: {str(exc)}"
+        ) from exc
 
 
 @router.get("/model-artifacts", response_model=list[ModelArtifactResponse])

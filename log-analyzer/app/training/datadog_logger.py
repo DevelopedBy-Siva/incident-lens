@@ -123,32 +123,35 @@ class DatadogLogger:
                 )
             self.enabled = False
     
-    def info(self, event: str, attributes: dict[str, Any] | None = None) -> None:
+    def info(self, event: str, attributes: dict[str, Any] | None = None, message: str | None = None) -> None:
         """Log an info-level training event.
         
         Args:
             event: Event name (e.g., "training_started", "dataset_downloaded")
             attributes: Additional structured attributes
+            message: Custom visible message (optional, defaults to "Training event: {event}")
         """
-        self._log("info", event, attributes)
+        self._log("info", event, attributes, message=message)
     
-    def warning(self, event: str, attributes: dict[str, Any] | None = None) -> None:
+    def warning(self, event: str, attributes: dict[str, Any] | None = None, message: str | None = None) -> None:
         """Log a warning-level training event.
         
         Args:
             event: Event name
             attributes: Additional structured attributes
+            message: Custom visible message (optional)
         """
-        self._log("warn", event, attributes)
+        self._log("warn", event, attributes, message=message)
     
-    def error(self, event: str, attributes: dict[str, Any] | None = None) -> None:
+    def error(self, event: str, attributes: dict[str, Any] | None = None, message: str | None = None) -> None:
         """Log an error-level training event.
         
         Args:
             event: Event name (e.g., "training_failed")
             attributes: Additional structured attributes (never include full error messages with secrets)
+            message: Custom visible message (optional)
         """
-        self._log("error", event, attributes)
+        self._log("error", event, attributes, message=message)
     
     def progress(
         self,
@@ -180,13 +183,17 @@ class DatadogLogger:
         if elapsed_seconds is not None:
             attributes["elapsed_seconds"] = round(elapsed_seconds, 1)
         
-        self._log("info", "training_progress", attributes)
+        # Create visible progress message
+        message = f"Training progress: {progress_percent:.1f}% ({current_step}/{total_steps})"
+        
+        self._log("info", "training_progress", attributes, message=message)
     
     def _log(
         self,
         level: str,
         event: str,
         attributes: dict[str, Any] | None = None,
+        message: str | None = None,
     ) -> None:
         """Internal log method that sends to Datadog.
         
@@ -194,6 +201,7 @@ class DatadogLogger:
             level: Log level (info, warn, error)
             event: Event name
             attributes: Additional attributes
+            message: Custom visible message (optional, defaults to "Training event: {event}")
         """
         if not self.enabled or not self._session or not self._intake_url:
             return
@@ -214,11 +222,14 @@ class DatadogLogger:
                     if value is not None and isinstance(value, (str, int, float, bool)):
                         log_attributes[key] = value
             
+            # Use custom message if provided, otherwise default format
+            log_message = message if message else f"Training event: {event}"
+            
             log_entry = {
                 "ddsource": SOURCE_NAME,
                 "service": SERVICE_NAME,
                 "hostname": log_attributes.get("ec2_instance_id", "training-worker"),
-                "message": f"Training event: {event}",
+                "message": log_message,
                 "timestamp": timestamp,
                 "level": level,
                 **log_attributes,

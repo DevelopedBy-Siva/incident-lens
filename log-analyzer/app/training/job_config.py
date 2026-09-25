@@ -30,6 +30,9 @@ class TrainingJobConfig:
     # Database and API configuration
     database_url: str
     
+    # AWS configuration
+    aws_region: str
+    
     # Base model configuration
     base_model: str
     
@@ -83,6 +86,7 @@ def create_training_job_config(
     dataset_storage_key: str,
     s3_bucket: str,
     database_url: str,
+    aws_region: str,
     base_model: str,
     git_repository_url: str,
     git_commit_sha: str,
@@ -101,6 +105,7 @@ def create_training_job_config(
         dataset_storage_key: S3 storage key for dataset
         s3_bucket: S3 bucket name
         database_url: Database connection URL
+        aws_region: AWS region for EC2 termination and S3 access
         base_model: Base model name/path
         git_repository_url: Git repository URL to clone
         git_commit_sha: Git commit SHA to checkout
@@ -120,6 +125,7 @@ def create_training_job_config(
         dataset_storage_key=dataset_storage_key,
         s3_bucket=s3_bucket,
         database_url=database_url,
+        aws_region=aws_region,
         base_model=base_model,
         git_repository_url=git_repository_url,
         git_commit_sha=git_commit_sha,

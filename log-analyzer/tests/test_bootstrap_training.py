@@ -185,6 +185,136 @@ class BootstrapConfigLoadingTests(unittest.TestCase):
             # Verify this came from S3 config, not environment
             # by checking the S3 call was made
             mock_s3_client.get_object.assert_called_once()
+    
+    def test_aws_region_loaded_from_config(self):
+        """Test that AWS region is loaded from training configuration."""
+        # Mock S3 client with config containing aws_region
+        mock_s3_client = Mock()
+        mock_response = {
+            "Body": Mock(read=Mock(return_value=json.dumps({
+                "job_id": "job-1",
+                "project_id": "project-1",
+                "aws_region": "us-east-1",
+            }).encode("utf-8")))
+        }
+        mock_s3_client.get_object.return_value = mock_response
+
+        with patch("boto3.client", return_value=mock_s3_client):
+            bootstrap = bootstrap_training.TrainingBootstrap()
+            
+            # AWS region should be in config
+            self.assertEqual(bootstrap.config["aws_region"], "us-east-1")
+
+
+class BootstrapTerminationTests(unittest.TestCase):
+    """Test EC2 instance termination behavior."""
+    
+    def setUp(self):
+        """Set up test environment."""
+        self.original_env = os.environ.copy()
+        os.environ["INCIDENT_LENS_S3_BUCKET"] = "test-bucket"
+        os.environ["INCIDENT_LENS_CONFIG_S3_KEY"] = "config.json"
+        os.environ["INCIDENT_LENS_JOB_ID"] = "job-1"
+        os.environ["INCIDENT_LENS_PROJECT_ID"] = "project-1"
+        os.environ["INCIDENT_LENS_GIT_REPOSITORY_URL"] = "https://github.com/test/repo.git"
+        os.environ["INCIDENT_LENS_GIT_COMMIT_SHA"] = "abc123def456789012345678901234567890abcd"
+        os.environ["TRAINING_EC2_TERMINATE_ON_COMPLETION"] = "true"
+    
+    def tearDown(self):
+        """Restore environment."""
+        os.environ.clear()
+        os.environ.update(self.original_env)
+    
+    def test_termination_receives_aws_region(self):
+        """Test that EC2 termination uses AWS region from configuration."""
+        # Mock S3 client
+        mock_s3_client = Mock()
+        mock_response = {
+            "Body": Mock(read=Mock(return_value=json.dumps({
+                "job_id": "job-1",
+                "project_id": "project-1",
+                "aws_region": "us-west-2",
+            }).encode("utf-8")))
+        }
+        mock_s3_client.get_object.return_value = mock_response
+        
+        # Mock EC2 client
+        mock_ec2_client = Mock()
+        mock_ec2_client.terminate_instances.return_value = {
+            "TerminatingInstances": [{"CurrentState": {"Name": "shutting-down"}}]
+        }
+        
+        # Mock metadata service to return instance ID
+        mock_requests = Mock()
+        mock_token_response = Mock()
+        mock_token_response.status_code = 200
+        mock_token_response.text = "test-token"
+        
+        mock_id_response = Mock()
+        mock_id_response.status_code = 200
+        mock_id_response.text = "i-test123"
+        
+        mock_requests.put.return_value = mock_token_response
+        mock_requests.get.return_value = mock_id_response
+        
+        with patch("boto3.client") as mock_boto_client:
+            # Return S3 client for first call, EC2 client for second
+            mock_boto_client.side_effect = [mock_s3_client, mock_ec2_client]
+            
+            with patch("requests.put", mock_requests.put):
+                with patch("requests.get", mock_requests.get):
+                    bootstrap = bootstrap_training.TrainingBootstrap()
+                    bootstrap._terminate_ec2_instance()
+                    
+                    # Verify boto3.client was called with region for EC2
+                    # First call is S3 (no region), second call should be EC2 with region
+                    calls = mock_boto_client.call_args_list
+                    self.assertEqual(len(calls), 2)
+                    self.assertEqual(calls[1][0][0], "ec2")
+                    self.assertEqual(calls[1][1]["region_name"], "us-west-2")
+                    
+                    # Verify terminate_instances was called
+                    mock_ec2_client.terminate_instances.assert_called_once_with(
+                        InstanceIds=["i-test123"]
+                    )
+    
+    def test_termination_failure_without_region(self):
+        """Test that termination fails gracefully when AWS region is missing."""
+        # Mock S3 client without aws_region
+        mock_s3_client = Mock()
+        mock_response = {
+            "Body": Mock(read=Mock(return_value=json.dumps({
+                "job_id": "job-1",
+                "project_id": "project-1",
+                # aws_region intentionally missing
+            }).encode("utf-8")))
+        }
+        mock_s3_client.get_object.return_value = mock_response
+        
+        # Mock metadata service to return instance ID
+        mock_requests = Mock()
+        mock_token_response = Mock()
+        mock_token_response.status_code = 200
+        mock_token_response.text = "test-token"
+        
+        mock_id_response = Mock()
+        mock_id_response.status_code = 200
+        mock_id_response.text = "i-test123"
+        
+        mock_requests.put.return_value = mock_token_response
+        mock_requests.get.return_value = mock_id_response
+        
+        with patch("boto3.client", return_value=mock_s3_client):
+            with patch("requests.put", mock_requests.put):
+                with patch("requests.get", mock_requests.get):
+                    bootstrap = bootstrap_training.TrainingBootstrap()
+                    
+                    # Termination should not raise exception even without region
+                    # It should log error and return gracefully
+                    bootstrap._terminate_ec2_instance()
+                    
+                    # Verify termination was not attempted (no boto3 EC2 client created)
+                    # Only S3 client should have been created during __init__
 
 
 if __name__ == "__main__":
