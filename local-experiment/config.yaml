@@ -1,70 +1,96 @@
-# Local Experiment Configuration
-# Production-compatible defaults from IncidentLens
+model:
+  name: Qwen/Qwen3.5-4B
+  use_4bit: auto
+  trust_remote_code: false
 
-# Base Model (MUST match production: log-analyzer/app/shared/model_config.py)
-base_model: "Qwen/Qwen3.5-4B"
+policy:
+  version: impact-v4.1-compact-grounded
 
-# LoRA Configuration (from production LoraTrainingProfile)
-# See: log-analyzer/app/training/training_profile.py
-lora:
-  rank: 8
-  alpha: 16
-  dropout: 0.05
-  target_modules:
-    - "q_proj"
-    - "k_proj"
-    - "v_proj"
-    - "o_proj"
-    - "in_proj_qkv"
-    - "in_proj_z"
-    - "in_proj_b"
-    - "in_proj_a"
-    - "out_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
+  severity:
+    low: No meaningful production impact; benign or isolated transient behavior.
+    medium: Limited/localized degradation; service remains broadly available.
+    high: Material production impact, repeated live failures, major capacity loss/SLO breach, or urgent mitigation is warranted.
+    critical: Major/widespread or critical-path failure, severe security/data-integrity impact, or coordinated emergency response is required.
 
-# Training Parameters (from production defaults)
+  disposition:
+    NO_ACTION: Benign/non-incident only; recovery alone does not justify NO_ACTION.
+    OBSERVE: Minor/self-healing event worth monitoring; no fix or urgent response is currently needed.
+    NEEDS_DEV: Engineering fix/investigation is needed, but the urgent production condition is contained.
+    NEEDS_ONCALL: Immediate/near-term operational ownership, verification, or mitigation is warranted, even after recovery.
+    ESCALATE: Critical incident requiring coordinated urgent escalation or cross-team/security/data response.
+
+  rules:
+    - Judge severity from the maximum impact supported by the full sequence; later recovery does not erase earlier impact.
+    - Choose disposition separately from severity based on required ownership and follow-up.
+    - NEEDS_DEV means contained + engineering follow-up; NEEDS_ONCALL means operational action/verification is still warranted.
+    - Use critical/ESCALATE only with multiple concrete high-impact indicators; not from one generic error.
+
+  grounding_rules:
+    - State only facts supported by the supplied logs. Do not invent PagerDuty, incident command, failover, rollback, customer impact, data loss, outage scope, recovery state, or numeric impact.
+    - Do not infer customer impact from infrastructure/probe failure alone.
+    - Keep unproven root causes explicitly hypothetical.
+    - Do not invent P0/P1/P2 labels.
+    - next_steps must be a JSON array of strings only.
+
+
+dataset_builder:
+  source: dataset_v2.jsonl
+  output: dataset_v4.jsonl
+  seed: 42
+
 training:
-  learning_rate: 0.0001
-  num_epochs: 1
-  per_device_train_batch_size: 1
-  per_device_eval_batch_size: 1
+  data: dataset_v4.jsonl
+  output: null
+
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lora_target_modules: all-linear
+
+  learning_rate: 1.0e-4
+  epochs: 1
+  batch_size: 1
   gradient_accumulation_steps: 1
-  max_seq_length: 1024
-  warmup_steps: 10
+  max_sequence_length: 1024
+
+  validation_split: 0.10
+  split_strategy: group-stratified
+  group_normalize_source: true
+  seed: 42
+
   logging_steps: 10
-  save_steps: 100
-  eval_steps: 100
-  save_total_limit: 2
-  load_best_model_at_end: true
-  metric_for_best_model: "eval_loss"
-  greater_is_better: false
+  gradient_checkpointing: true
 
-# Data Split
-data:
-  train_split: 0.9
-  eval_split: 0.1
-  random_seed: 42
+  audit:
+    fail_on_quality_gate: true
+    min_chronological_pct: 99.0
+    require_all_severities: true
+    require_all_dispositions: true
+    require_recovered_high_urgency_examples: true
+    min_non_benign_multilabel_type_fraction: 0.75
+    require_zero_target_grounding_violations: true
+    max_duplicate_exact_target_pct: 15.0
+    max_non_benign_duplicate_summary_pct: 10.0
 
-# Generation Settings (for inference)
-generation:
-  max_new_tokens: 512
-  temperature: 0.1
-  top_p: 0.95
-  do_sample: true
-  repetition_penalty: 1.1
+inference:
+  max_new_tokens: 768
+  temperature: 0.0
 
-# QLoRA Quantization
-quantization:
-  load_in_4bit: true
-  bnb_4bit_compute_dtype: "float16"
-  bnb_4bit_quant_type: "nf4"
-  bnb_4bit_use_double_quant: true
+evaluation:
+  logs: evaluation.log
+  ground_truth: ground_truth_v1.json
+  output: null
+  mode: model-only
+  policy_version: impact-v4-evidence-grounded
 
-# Experiment Tracking
-experiment:
-  save_adapter: true
-  save_metrics: true
-  save_predictions: true
-  save_error_analysis: true
+  poor_text_f1_threshold: 0.40
+  detection:
+    line_overlap_f1_threshold: 0.30
+    temporal_overlap_threshold: 0.30
+
+  grouping:
+    max_gap_seconds: 300
+    info_context_seconds: 75
+    signal_match_threshold: 1.25
+    info_match_threshold: 1.75
+    min_shared_tokens: 1
