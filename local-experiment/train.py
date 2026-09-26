@@ -1,304 +1,319 @@
-#!/usr/bin/env python3
 """
-Local QLoRA training using production IncidentLens components.
+Training script for incident analysis model.
 
-Isolated from AWS: no S3, no EC2, no Datadog, no production database.
+Uses QLoRA fine-tuning with production-compatible system prompt.
 """
 
 import argparse
-import hashlib
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Any
 
+import torch
 import yaml
+from datasets import Dataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TrainingArguments,
+    Trainer,
+)
 
-# Add parent directory to path to import production modules
-sys.path.insert(0, str(Path(__file__).parent.parent / "log-analyzer"))
-
-from app.training.lora_trainer import TransformersPeftTrainingEngine
-from app.training.training_engine import TrainingRequest
-from app.training.training_profile import LoraTrainingProfile
-
-
-def get_git_sha() -> str:
-    """Get current git commit SHA."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return result.stdout.strip()
-    except Exception:
-        return "unknown"
+from data_loader import load_training_data, validate_training_data
 
 
-def get_file_sha256(path: Path) -> str:
-    """Calculate SHA256 hash of file."""
-    sha256 = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            sha256.update(chunk)
-    return sha256.hexdigest()
+# Production-compatible system prompt
+SYSTEM_PROMPT = """You are an expert SRE analyzing production incidents.
+
+You will receive incident metadata and sample logs. Analyze and respond with a JSON object:
+
+{
+  "severity": "low|medium|high|critical",
+  "disposition": "NO_ACTION|OBSERVE|NEEDS_DEV|NEEDS_ONCALL|ESCALATE",
+  "confidence": 0.0-1.0,
+  "summary": "2-3 sentence summary",
+  "suspected_root_cause": "short explanation or null",
+  "next_steps": ["step1", "step2", "step3"],
+  "ticket_title": "concise title under 100 chars",
+  "ticket_body": "detailed description for developers"
+}
+
+Severity rules:
+- CRITICAL: service down, data loss, OutOfMemoryError, heap exhaustion, segfaults
+- HIGH: database connection errors, NPE, major features broken, cascades
+- MEDIUM: partial degradation, intermittent errors
+- LOW: single occurrence, cosmetic, known noise
+
+Disposition rules:
+- ESCALATE: page on-call NOW (critical/high + widespread impact)
+- NEEDS_ONCALL: notify on-call during business hours
+- NEEDS_DEV: create dev ticket
+- OBSERVE: watch for recurrence
+- NO_ACTION: known noise, benign activity"""
 
 
-def load_config(config_path: Path) -> dict:
-    """Load experiment configuration."""
-    with config_path.open() as f:
-        return yaml.safe_load(f)
-
-
-def create_experiment_dir(output_dir: Path) -> Path:
-    """Create timestamped experiment directory."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    exp_dir = output_dir / timestamp
-    exp_dir.mkdir(parents=True, exist_ok=True)
-    return exp_dir
-
-
-def save_metadata(exp_dir: Path, config: dict, dataset_path: Path, git_sha: str):
-    """Save experiment metadata for reproducibility."""
-    import torch
-    import transformers
-    import peft
-    import bitsandbytes
+def format_training_example(example: Dict[str, str], tokenizer) -> Dict[str, str]:
+    """Format example for chat-based fine-tuning."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": example["prompt"]},
+        {"role": "assistant", "content": example["completion"]},
+    ]
     
+    # Use tokenizer's chat template
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    
+    return {"text": text}
+
+
+def prepare_training_dataset(
+    data_path: Path,
+    tokenizer,
+    max_length: int = 2048
+) -> Dataset:
+    """Load and prepare training dataset."""
+    print(f"Loading training data from {data_path}...")
+    examples = load_training_data(data_path)
+    
+    print(f"\nValidating {len(examples)} examples...")
+    report = validate_training_data(examples)
+    
+    print(f"\nValidation Results:")
+    print(f"  Total: {report['total_examples']}")
+    print(f"  Valid: {report['valid_examples']}")
+    print(f"  Invalid: {report['invalid_examples']}")
+    print(f"\nSeverity Distribution:")
+    for sev, count in report['severity_distribution'].items():
+        print(f"  {sev}: {count}")
+    print(f"\nDisposition Distribution:")
+    for disp, count in report['disposition_distribution'].items():
+        print(f"  {disp}: {count}")
+    print(f"\nBenign: {report['benign_count']}")
+    print(f"Actionable: {report['actionable_count']}")
+    
+    if report['invalid_examples'] > 0:
+        print(f"\n⚠️  Found {report['invalid_examples']} invalid examples!")
+        for error in report['errors'][:5]:  # Show first 5
+            print(f"  Example {error['example_index']}: {error['errors']}")
+        raise ValueError(f"Dataset validation failed with {report['invalid_examples']} errors")
+    
+    # Convert to training format
+    print("\nConverting to training format...")
+    training_data = [ex.to_training_format() for ex in examples]
+    
+    # Format with tokenizer
+    formatted = [format_training_example(ex, tokenizer) for ex in training_data]
+    
+    # Create HuggingFace dataset
+    dataset = Dataset.from_list(formatted)
+    
+    # Tokenize
+    def tokenize_fn(examples):
+        return tokenizer(
+            examples["text"],
+            truncation=True,
+            max_length=max_length,
+            padding=False,
+        )
+    
+    tokenized = dataset.map(
+        tokenize_fn,
+        batched=True,
+        remove_columns=dataset.column_names,
+    )
+    
+    return tokenized
+
+
+def train(args):
+    """Run training."""
+    # Load config
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
+    
+    model_config = config["model"]
+    lora_config = config["lora"]
+    training_config = config["training"]
+    
+    # Create output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(args.output) / f"train_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"\n{'='*60}")
+    print(f"IncidentLens Training")
+    print(f"{'='*60}")
+    print(f"Model: {model_config['base_model']}")
+    print(f"Dataset: {args.dataset}")
+    print(f"Output: {output_dir}")
+    print(f"{'='*60}\n")
+    
+    # Load tokenizer
+    print("Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_config["base_model"],
+        trust_remote_code=True,
+    )
+    
+    # Ensure padding token is set
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    # Prepare dataset
+    dataset = prepare_training_dataset(
+        Path(args.dataset),
+        tokenizer,
+        max_length=training_config.get("max_seq_length", 2048),
+    )
+    
+    print(f"\nPrepared {len(dataset)} training examples")
+    
+    # Quantization config for QLoRA
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
+    
+    # Load base model
+    print("\nLoading base model with 4-bit quantization...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_config["base_model"],
+        quantization_config=bnb_config,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+    
+    # Prepare for k-bit training
+    model = prepare_model_for_kbit_training(model)
+    
+    # LoRA config
+    peft_config = LoraConfig(
+        r=lora_config["r"],
+        lora_alpha=lora_config["alpha"],
+        target_modules=lora_config["target_modules"],
+        lora_dropout=lora_config["dropout"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    
+    # Apply LoRA
+    print("\nApplying LoRA adapters...")
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+    
+    # Training arguments
+    training_args = TrainingArguments(
+        output_dir=str(output_dir),
+        num_train_epochs=training_config["epochs"],
+        per_device_train_batch_size=training_config["batch_size"],
+        gradient_accumulation_steps=training_config["gradient_accumulation_steps"],
+        learning_rate=training_config["learning_rate"],
+        fp16=True,
+        logging_steps=training_config.get("logging_steps", 10),
+        save_strategy="epoch",
+        save_total_limit=2,
+        warmup_steps=training_config.get("warmup_steps", 100),
+        weight_decay=training_config.get("weight_decay", 0.01),
+        report_to="none",
+        remove_unused_columns=False,
+    )
+    
+    # Trainer
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+        tokenizer=tokenizer,
+    )
+    
+    # Save metadata
     metadata = {
-        "experiment_id": exp_dir.name,
-        "timestamp": datetime.now().isoformat(),
-        "git_sha": git_sha,
-        "dataset": {
-            "path": str(dataset_path),
-            "sha256": get_file_sha256(dataset_path),
-        },
-        "config": config,
-        "environment": {
-            "python_version": sys.version,
-            "torch_version": torch.__version__,
-            "transformers_version": transformers.__version__,
-            "peft_version": peft.__version__,
-            "bitsandbytes_version": bitsandbytes.__version__,
-            "cuda_available": torch.cuda.is_available(),
-            "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
-            "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-        }
+        "training_started": datetime.now().isoformat(),
+        "base_model": model_config["base_model"],
+        "dataset": str(args.dataset),
+        "dataset_size": len(dataset),
+        "lora_config": lora_config,
+        "training_config": training_config,
+        "git_sha": os.popen("git rev-parse HEAD").read().strip(),
+        "pytorch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "device": str(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"),
     }
     
-    with (exp_dir / "metadata.json").open("w") as f:
+    with open(output_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
     
-    return metadata
-
-
-def print_system_info():
-    """Print GPU and system information."""
-    import torch
+    # Train
+    print("\n" + "="*60)
+    print("Starting training...")
+    print("="*60 + "\n")
     
-    print("\n" + "=" * 80)
-    print("SYSTEM INFORMATION")
-    print("=" * 80)
-    print(f"Python: {sys.version.split()[0]}")
-    print(f"PyTorch: {torch.__version__}")
-    print(f"CUDA available: {torch.cuda.is_available()}")
+    trainer.train()
     
-    if torch.cuda.is_available():
-        print(f"CUDA version: {torch.version.cuda}")
-        print(f"GPU count: {torch.cuda.device_count()}")
-        for i in range(torch.cuda.device_count()):
-            print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
-            props = torch.cuda.get_device_properties(i)
-            print(f"    Memory: {props.total_memory / 1024**3:.1f} GB")
-    else:
-        print("⚠️  WARNING: No GPU detected - training will be extremely slow!")
+    # Save final model
+    print("\nSaving adapter...")
+    adapter_path = output_dir / "adapter"
+    trainer.model.save_pretrained(adapter_path)
+    tokenizer.save_pretrained(adapter_path)
     
-    print("=" * 80 + "\n")
-
-
-def load_and_validate_dataset(dataset_path: Path) -> tuple[bytes, int]:
-    """Load dataset and count records."""
-    if not dataset_path.exists():
-        print(f"ERROR: Dataset not found: {dataset_path}")
-        sys.exit(1)
+    # Update metadata
+    metadata["training_completed"] = datetime.now().isoformat()
+    metadata["adapter_path"] = str(adapter_path)
     
-    with dataset_path.open("rb") as f:
-        content = f.read()
+    with open(output_dir / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
     
-    # Count records
-    record_count = 0
-    for line in content.decode("utf-8").splitlines():
-        if line.strip():
-            record_count += 1
+    print(f"\n{'='*60}")
+    print(f"Training complete!")
+    print(f"Adapter saved to: {adapter_path}")
+    print(f"{'='*60}\n")
     
-    return content, record_count
+    return output_dir
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Local QLoRA training")
+    parser = argparse.ArgumentParser(description="Train incident analysis model")
     parser.add_argument(
         "--config",
-        type=Path,
-        default=Path("config.yaml"),
-        help="Configuration file (default: config.yaml)"
+        type=str,
+        default="config.yaml",
+        help="Path to config file",
     )
     parser.add_argument(
         "--dataset",
-        type=Path,
-        default=Path("data/train.jsonl"),
-        help="Training dataset (default: data/train.jsonl)"
+        type=str,
+        required=True,
+        help="Path to training dataset (JSONL)",
     )
     parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path("results"),
-        help="Output directory (default: results/)"
-    )
-    parser.add_argument(
-        "--validate-only",
-        action="store_true",
-        help="Only validate dataset, don't train"
+        "--output",
+        type=str,
+        default="results",
+        help="Output directory for trained model",
     )
     
     args = parser.parse_args()
     
-    # Load configuration
-    if not args.config.exists():
-        print(f"ERROR: Config not found: {args.config}")
+    if not Path(args.dataset).exists():
+        print(f"❌ Dataset not found: {args.dataset}")
         sys.exit(1)
     
-    config = load_config(args.config)
-    
-    # Print system info
-    print_system_info()
-    
-    # Validate dataset
-    print("Validating dataset...")
-    validate_result = subprocess.run(
-        [sys.executable, "validate_dataset.py", "--dataset", str(args.dataset)],
-        cwd=Path(__file__).parent
-    )
-    
-    if validate_result.returncode != 0:
-        print("\n❌ Dataset validation failed!")
+    if not Path(args.config).exists():
+        print(f"❌ Config not found: {args.config}")
         sys.exit(1)
     
-    if args.validate_only:
-        print("\n✅ Dataset validation passed - exiting (--validate-only)")
-        sys.exit(0)
-    
-    # Load dataset
-    print(f"\nLoading dataset: {args.dataset}")
-    dataset_content, record_count = load_and_validate_dataset(args.dataset)
-    print(f"  Records: {record_count}")
-    print(f"  Size: {len(dataset_content) / 1024 / 1024:.2f} MB")
-    
-    # Create experiment directory
-    exp_dir = create_experiment_dir(args.output_dir)
-    print(f"\nExperiment directory: {exp_dir}")
-    
-    # Save metadata
-    git_sha = get_git_sha()
-    metadata = save_metadata(exp_dir, config, args.dataset, git_sha)
-    print(f"Git SHA: {git_sha}")
-    
-    # Create LoRA profile from config
-    lora_config = config["lora"]
-    training_config = config["training"]
-    
-    profile = LoraTrainingProfile(
-        rank=lora_config["rank"],
-        alpha=lora_config["alpha"],
-        dropout=lora_config["dropout"],
-        target_modules=tuple(lora_config["target_modules"]),
-        epochs=training_config["num_epochs"],  # Note: LoraTrainingProfile uses 'epochs'
-        learning_rate=training_config["learning_rate"],
-        batch_size=training_config["per_device_train_batch_size"],
-        gradient_accumulation_steps=training_config["gradient_accumulation_steps"],
-        max_sequence_length=training_config["max_seq_length"],
-        validation_fraction=config["data"]["eval_split"],
-        seed=config["data"]["random_seed"],
-    )
-    
-    # Create adapter output path (trainer requires this directory to exist and be empty)
-    adapter_dir = exp_dir / "adapter"
-    adapter_dir.mkdir(parents=True, exist_ok=True)
-    adapter_path = str(adapter_dir)
-    
-    # Create training request
-    request = TrainingRequest(
-        project_id="local-experiment",
-        dataset_id=args.dataset.stem,
-        dataset_version="local",
-        base_model=config["base_model"],
-        dataset_content=dataset_content,
-        expected_record_count=record_count,
-        adapter_output_path=adapter_path,
-        profile=profile,
-        progress_callback=None
-    )
-    
-    # Train!
-    print("\n" + "=" * 80)
-    print("STARTING TRAINING")
-    print("=" * 80)
-    print(f"Base model: {config['base_model']}")
-    print(f"LoRA rank: {lora_config['rank']}, alpha: {lora_config['alpha']}")
-    print(f"Learning rate: {training_config['learning_rate']}")
-    print(f"Epochs: {training_config['num_epochs']}")
-    print(f"Batch size: {training_config['per_device_train_batch_size']}")
-    print(f"Gradient accumulation: {training_config['gradient_accumulation_steps']}")
-    print(f"Effective batch size: {training_config['per_device_train_batch_size'] * training_config['gradient_accumulation_steps']}")
-    print("=" * 80 + "\n")
-    
-    engine = TransformersPeftTrainingEngine()
-    
-    try:
-        result = engine.train(request)
-        
-        if not result.succeeded:
-            print(f"\n❌ Training failed: {result.error}")
-            sys.exit(1)
-        
-        print("\n" + "=" * 80)
-        print("TRAINING COMPLETE")
-        print("=" * 80)
-        print(f"Adapter saved: {result.adapter_path}")
-        
-        # Save training result
-        result_data = {
-            "succeeded": result.succeeded,
-            "engine": result.engine,
-            "adapter_path": result.adapter_path,
-            "metrics": result.metrics,
-            "framework_versions": result.framework_versions,
-            "error": result.error,
-        }
-        
-        with (exp_dir / "training_result.json").open("w") as f:
-            json.dump(result_data, f, indent=2)
-        
-        # Print metrics
-        if result.metrics:
-            print("\nTraining Metrics:")
-            for key, value in result.metrics.items():
-                if isinstance(value, float):
-                    print(f"  {key}: {value:.6f}")
-                else:
-                    print(f"  {key}: {value}")
-        
-        print("\n" + "=" * 80)
-        print(f"Experiment saved to: {exp_dir}")
-        print("=" * 80)
-        
-    except Exception as e:
-        print(f"\n❌ Training error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    train(args)
 
 
 if __name__ == "__main__":

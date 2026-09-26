@@ -1,519 +1,460 @@
-# Local Experiment Workspace
+# IncidentLens Local Experiment Harness
 
-**Isolated QLoRA training and evaluation for IncidentLens incident detection models.**
+A simple, focused training and evaluation framework for the IncidentLens incident analysis model.
 
-This workspace allows iterating on datasets, prompts, and hyperparameters on a local high-GPU machine without repeatedly paying for AWS EC2 training. It reuses production IncidentLens training components but operates completely offline without AWS/S3/Datadog/database dependencies.
+## What is IncidentLens?
 
-## Requirements
+**IncidentLens** is an AI-powered incident response system that analyzes production log streams and provides structured incident analysis.
 
-- Linux machine with NVIDIA GPU (CUDA-capable)
-- Python 3.10+
-- ~24GB GPU VRAM (for Qwen2.5-3B with QLoRA)
-- ~50GB disk space
+The core task:
 
-## Installation
+- Given production-style logs for a service
+- Recognize meaningful operational incidents
+- Distinguish incidents from normal production noise
+- Assess severity (low/medium/high/critical)
+- Determine appropriate operational disposition (NO_ACTION/OBSERVE/NEEDS_DEV/NEEDS_ONCALL/ESCALATE)
+- Summarize what happened, infer root cause, recommend next steps
 
-### 1. Create Virtual Environment
+## What We're Training
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
+A small language model (Qwen2.5-3B-Instruct) fine-tuned with QLoRA to analyze candidate incident sequences from service logs and produce structured incident analysis.
+
+**One model invocation represents:**
+"Analyze this candidate incident sequence from this service."
+
+The model receives:
+
+- Service name and environment
+- Incident metadata (count, timestamps)
+- Sample log lines from the incident window
+- Related incidents (if any)
+
+The model produces:
+
+```json
+{
+  "severity": "low|medium|high|critical",
+  "disposition": "NO_ACTION|OBSERVE|NEEDS_DEV|NEEDS_ONCALL|ESCALATE",
+  "confidence": 0.0-1.0,
+  "summary": "2-3 sentence summary",
+  "suspected_root_cause": "explanation or null",
+  "next_steps": ["action1", "action2", "action3"],
+  "ticket_title": "concise title",
+  "ticket_body": "detailed description"
+}
 ```
 
-### 2. Install Dependencies
+## What We're Evaluating
 
-```bash
-pip install -r requirements.txt
+Whether the fine-tuned model can:
+
+1. **Detect incidents** - Distinguish real incidents from normal noise
+2. **Classify severity correctly** - Critical vs high vs medium vs low
+3. **Recommend appropriate disposition** - Escalate, notify on-call, create ticket, observe, or no action
+4. **Produce valid structured output** - Complete, parseable JSON with all required fields
+5. **Provide useful analysis** - Meaningful summaries, root causes, and next steps
+
+## Architecture
+
+### Pipeline Overview
+
+```
+Training Data (dataset_v2.jsonl)
+         ↓
+    Validation
+         ↓
+   QLoRA Fine-tuning
+         ↓
+      Adapter
+
+Evaluation Log (evaluation.log)
+         ↓
+   Group by Service
+         ↓
+  Detect Incident Windows (production clustering)
+         ↓
+   Generate Candidates
+         ↓
+    Model Inference
+         ↓
+   Structured Output
+         ↓
+ Compare vs Ground Truth
+         ↓
+      Metrics
 ```
 
-### 3. Install IncidentLens Dependencies
+### Key Design Principles
 
-The experiment harness reuses production training components from the parent `log-analyzer` directory. Ensure the parent environment is available or install:
-
-```bash
-pip install -e ../log-analyzer
-```
+1. **Uses Production Logic**: Reuses production parser, signatures, and clustering (2-minute time windows)
+2. **Stage-Specific Metrics**: Separates candidate detection quality from model analysis quality
+3. **Runs Locally**: No AWS, S3, EC2, PostgreSQL, or Docker required
+4. **Simple**: Focused on the actual IncidentLens task, not generic log clustering research
 
 ## Directory Structure
 
 ```
 local-experiment/
-├── config.yaml              # Experiment configuration
-├── requirements.txt         # Python dependencies
-├── validate_dataset.py      # Dataset quality validation
-├── train.py                 # QLoRA training script
-├── evaluate.py              # Inference and evaluation
-├── metrics.py               # Metric calculation
-├── compare.py               # Compare experiment runs
-├── run_experiment.py        # Full pipeline orchestrator
-├── README.md                # This file
+├── config.yaml                    # Model, LoRA, training, generation config
+├── data/
+│   └── evaluation.log            # Evaluation log stream
+├── ground_truth/
+│   └── evaluation.json           # Known incidents for evaluation
+├── results/                       # Experiment outputs (gitignored)
 │
-├── data/                    # Place your data here
-│   ├── train.jsonl          # Training dataset (YOU provide)
-│   └── evaluation.log       # Evaluation logs (optional, YOU provide)
+├── data_loader.py                # Training data loader & validation
+├── log_parser.py                 # Log parsing (reuses production parser)
+├── incident_detector.py          # Incident windowing (production clustering)
+├── metrics.py                    # Metrics computation & error analysis
 │
-├── ground_truth/            # Optional ground truth for evaluation
-│   └── evaluation.json      # Expected incidents (optional, YOU provide)
+├── train.py                      # QLoRA fine-tuning script
+├── evaluate.py                   # Evaluation pipeline
+├── validate_dataset.py           # Dataset validation
+├── validate_ground_truth.py      # Ground truth validation
+├── run_experiment.py             # End-to-end orchestrator
+├── compare.py                    # Compare two experiments
 │
-└── results/                 # Experiment outputs (auto-generated)
-    └── 20260925_120000/     # Timestamped experiment
-        ├── adapter/         # Trained LoRA adapter
-        ├── metadata.json    # Experiment metadata
-        ├── training_result.json
-        ├── predictions.jsonl
-        ├── metrics.json
-        ├── error_analysis.json
-        └── report.txt
+├── test_experiment.py            # Comprehensive tests
+└── README.md                     # This file
 ```
 
-## Data Preparation
+## Quick Start
 
-### ⚠️ CRITICAL: Training and Evaluation Data MUST Be Separate
+### Prerequisites
 
-**Training data** and **evaluation data** must be completely separate to get valid metrics:
+```bash
+# Python 3.10+
+# GPU recommended for training (CPU works but slow)
 
-- **Training:** `data/train.jsonl` (structured JSONL with expected outputs)
-- **Evaluation:** `data/evaluation.log` (raw log file, NEVER seen during training)
-
-### Training Dataset
-
-Place your training dataset as `data/train.jsonl`. Each line must be a JSON object with:
-
-```json
-{
-  "input": {
-    "logs": ["2024-01-01T00:00:00Z ERROR service crashed", "..."],
-    "service": "payment-api",
-    "environment": "prod",
-    "count": 5,
-    "metadata": {"incident_type": "crash", "region": "us-east-1"}
-  },
-  "expected_output": {
-    "severity": "high",
-    "disposition": "NEEDS_ONCALL",
-    "confidence": 0.85,
-    "summary": "Service crash detected...",
-    "suspected_root_cause": "Memory leak...",
-    "next_steps": ["Restart service", "Check memory metrics"],
-    "ticket_title": "Payment API crash",
-    "ticket_body": "Detailed investigation needed..."
-  }
-}
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-**Schema Requirements:**
-- `severity`: `low`, `medium`, `high`, or `critical` (NOT "benign")
-- `disposition`: `NO_ACTION`, `OBSERVE`, `NEEDS_DEV`, `NEEDS_ONCALL`, or `ESCALATE`
-- `confidence`: float between 0.0 and 1.0
-- All 8 fields required: severity, disposition, confidence, summary, suspected_root_cause, next_steps, ticket_title, ticket_body
+### 1. Validate Data
 
-Benign/no-incident examples should use:
-```json
-{
-  "severity": "low",
-  "disposition": "NO_ACTION",
-  "next_steps": [],
-  "ticket_title": "",
-  "ticket_body": ""
-}
+```bash
+# Validate training dataset
+python validate_dataset.py --dataset ../data/dataset_v2.jsonl
+
+# Validate ground truth
+python validate_ground_truth.py --ground-truth ground_truth/evaluation.json
 ```
 
-### Evaluation Data
+### 2. Run Full Experiment
 
-**Evaluation MUST use unseen raw log files**, not the training JSONL:
-
-**File:** `data/evaluation.log`
-
-**Format:** Raw log lines (one per line), similar to production logs:
-
-```
-2026-09-25T10:30:00.123Z ERROR [payment-api] connection timeout to database
-2026-09-25T10:30:01.456Z WARN [payment-api] retry attempt 1 failed
-2026-09-25T10:30:02.789Z ERROR [payment-api] transaction aborted after 3 retries
-2026-09-25T10:35:00.000Z INFO [user-service] heartbeat ok
+```bash
+python run_experiment.py \
+  --dataset ../data/dataset_v2.jsonl \
+  --evaluation-log data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --name baseline_experiment
 ```
 
-**Expected format:** `TIMESTAMP LEVEL [service] message`
+This will:
 
-The evaluation script will:
-1. Parse raw log lines
-2. Cluster logs by service (simplified incident detection)
-3. Run inference on each incident cluster
-4. Generate predictions
+1. Validate dataset and ground truth
+2. Train model with QLoRA
+3. Evaluate on unseen logs
+4. Generate metrics and error analysis
 
-**DO NOT:**
-- ❌ Use training JSONL for evaluation
-- ❌ Include evaluation logs in training data
-- ❌ Evaluate on the same data you trained on
+Results saved to: `results/baseline_experiment/`
 
-### Ground Truth (Optional)
+### 3. View Results
 
-If you want quantitative metrics, provide:
+```bash
+# View metrics
+cat results/baseline_experiment/metrics.json
 
-**File:** `ground_truth/evaluation.json`
+# View error analysis
+cat results/baseline_experiment/evaluation/eval_*/error_analysis.json
 
-**Format:**
-```json
-{
-  "incidents": [
-    {
-      "id": "incident-001",
-      "service": "payment-api",
-      "severity": "high",
-      "disposition": "NEEDS_ONCALL",
-      "start_time": "2026-09-25T10:30:00Z",
-      "end_time": "2026-09-25T10:35:00Z"
-    }
-  ]
-}
+# View incident candidates (debugging)
+cat results/baseline_experiment/evaluation/eval_*/incident_candidates.jsonl
 ```
 
-If no ground truth is provided:
-- Evaluation will still run inference
-- Predictions will be saved
-- Basic stats will be reported (log count, cluster count, latency)
-- But no precision/recall/F1 metrics
+### 4. Compare Experiments
+
+```bash
+python compare.py results/baseline_experiment results/improved_experiment
+```
+
+## Individual Commands
+
+### Train Only
+
+```bash
+python train.py \
+  --config config.yaml \
+  --dataset ../data/dataset_v2.jsonl \
+  --output results
+```
+
+Output: `results/train_TIMESTAMP/adapter/`
+
+### Evaluate Only
+
+```bash
+python evaluate.py \
+  --config config.yaml \
+  --logs data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --adapter results/train_TIMESTAMP/adapter \
+  --output results
+```
+
+### Evaluate Base Model (No Fine-tuning)
+
+```bash
+python evaluate.py \
+  --config config.yaml \
+  --logs data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --output results
+```
+
+Note: Omit `--adapter` to evaluate base model without fine-tuning.
 
 ## Configuration
 
 Edit `config.yaml` to adjust:
 
-### Model Selection
-
 ```yaml
-base_model: "Qwen/Qwen2.5-3B-Instruct"  # or "Qwen/Qwen2.5-7B-Instruct"
-```
+model:
+  base_model: "Qwen/Qwen2.5-3B-Instruct" # Change model
 
-### LoRA Hyperparameters
-
-```yaml
 lora:
-  rank: 16         # LoRA rank (8, 16, 32, 64)
-  alpha: 32        # LoRA alpha (typically 2x rank)
-  dropout: 0.05    # LoRA dropout
-```
+  r: 16 # LoRA rank
+  alpha: 32 # LoRA alpha
+  dropout: 0.05
 
-### Training Parameters
-
-```yaml
 training:
-  learning_rate: 0.0002
-  num_epochs: 3
-  per_device_train_batch_size: 1
-  gradient_accumulation_steps: 8  # Effective batch size = 1 * 8 = 8
-  max_seq_length: 4096
-```
+  epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
 
-### Generation Settings
-
-```yaml
 generation:
-  max_new_tokens: 512
-  temperature: 0.1    # Lower = more deterministic
-  top_p: 0.95
-  repetition_penalty: 1.1
+  max_new_tokens: 800
+  temperature: 0.2
 ```
 
-## Usage
+## Metrics Explained
 
-### Validate Training Dataset
+### Detection Metrics
 
-Before training, validate your training dataset:
+- **Precision**: Of incidents predicted, what % were real?
+- **Recall**: Of real incidents, what % were detected?
+- **F1**: Harmonic mean of precision and recall
+
+### Severity Metrics
+
+- **Accuracy**: % of matched incidents with correct severity
+- **Macro F1**: Average F1 across severity classes
+
+### Disposition Metrics
+
+- **Accuracy**: % of matched incidents with correct disposition
+- **Macro F1**: Average F1 across disposition classes
+
+### Structured Output Metrics
+
+- **Valid JSON Rate**: % of predictions that produced parseable JSON
+- **Field Completion**: % of predictions with non-empty required fields
+
+### Stage-Specific Metrics
+
+**Candidate Detection**: Did we identify the right incident windows?
+
+- Uses production clustering (signature-based, 2-minute windows)
+- Separate from model quality
+
+**Model Analysis**: Given correct incident window, did model classify correctly?
+
+- Severity/disposition accuracy
+- Structured output validity
+
+**End-to-End**: Complete pipeline performance
+
+- Detection × Analysis
+
+## Ground Truth
+
+Ground truth (`ground_truth/evaluation.json`) describes known incidents in the evaluation log:
+
+```json
+{
+  "incidents": [
+    {
+      "incident_id": "gt-incident-001",
+      "service": "payment-api",
+      "severity": "high",
+      "disposition": "NEEDS_ONCALL",
+      "start_time": "2026-09-25T10:00:00Z",
+      "end_time": "2026-09-25T10:02:45Z",
+      "description": "Database connection pool exhaustion",
+      "log_line_markers": ["connection pool exhausted"]
+    }
+  ]
+}
+```
+
+Predictions are matched to ground truth using:
+
+- Service name match
+- Temporal overlap ≥ 50%
+- Best match per ground truth incident
+
+## Training Data
+
+Training data (`../data/dataset_v2.jsonl`) contains examples with:
+
+```json
+{
+  "input": {
+    "service": "checkout-api",
+    "environment": "prod",
+    "count": 52,
+    "logs": ["...", "..."],
+    "related_incidents": []
+  },
+  "expected_output": {
+    "severity": "high",
+    "disposition": "NEEDS_ONCALL",
+    "confidence": 0.89,
+    "summary": "...",
+    "suspected_root_cause": "...",
+    "next_steps": ["...", "..."],
+    "ticket_title": "...",
+    "ticket_body": "..."
+  }
+}
+```
+
+2200 examples covering:
+
+- Various severities (low/medium/high/critical)
+- All dispositions (NO_ACTION through ESCALATE)
+- Different incident types (OOM, DB errors, deployments, latency, etc.)
+- Benign examples (normal operations that should be NO_ACTION)
+
+## Testing
 
 ```bash
-python validate_dataset.py --dataset data/train.jsonl
+# Run all tests
+python test_experiment.py
+
+# Or with pytest directly
+pytest test_experiment.py -v
 ```
 
-This checks:
-- Schema validity (8 required fields)
-- No "benign" severity values
-- Severity/disposition vocabularies
-- Confidence ranges
-- Actionable incidents have required details
-- Duplicate analysis
-- Log sequence statistics
+Tests cover:
 
-### Train Adapter
+- Data loading and validation
+- Log parsing and service grouping
+- Incident detection and clustering
+- Metrics computation
+- Temporal overlap matching
+- No AWS/database dependencies
 
-Train a LoRA adapter on the training dataset:
+## Production Alignment
 
-```bash
-python train.py \
-  --config config.yaml \
-  --dataset data/train.jsonl \
-  --output-dir results
-```
+This experiment harness closely follows production IncidentLens:
 
-This will:
-1. Validate the dataset
-2. Print system/GPU information
-3. Load base model with QLoRA quantization
-4. Fine-tune using LoRA
-5. Save adapter to `results/<timestamp>/adapter/`
-6. Save metadata and metrics
-
-**Training takes ~30-60 minutes** for 2200 examples on a single A100 GPU (3 epochs).
-
-**IMPORTANT:** This only uses `data/train.jsonl`. Evaluation data is NOT touched during training.
-
-### Evaluate Adapter on Unseen Logs
-
-Evaluate a trained adapter on **raw unseen log files**:
-
-```bash
-python evaluate.py \
-  --adapter results/20260925_120000/adapter \
-  --logs data/evaluation.log \
-  --ground-truth ground_truth/evaluation.json \
-  --config config.yaml \
-  --output results/20260925_120000
-```
-
-**CRITICAL:** The `--logs` parameter must point to a **raw log file**, NOT the training JSONL!
-
-This will:
-1. Load raw log file (NOT training data)
-2. Parse log lines
-3. Cluster logs by service (simplified incident detection)
-4. Run inference on incident clusters
-5. Save predictions and summary
-
-**The evaluation script has a safety check** - it will refuse to run if you accidentally point to `train.jsonl`.
-
-### Run Complete Experiment
-
-Run the full pipeline (validate → train → evaluate):
-
-```bash
-python run_experiment.py \
-  --config config.yaml \
-  --dataset data/train.jsonl \
-  --evaluation-log data/evaluation.log \
-  --ground-truth ground_truth/evaluation.json
-```
-
-Or evaluate an existing adapter without retraining:
-
-```bash
-python run_experiment.py \
-  --config config.yaml \
-  --dataset data/train.jsonl \
-  --evaluation-log data/evaluation.log \
-  --skip-training \
-  --adapter results/20260925_120000/adapter
-```
-
-**Safety:** The script will fail if training and evaluation files are the same.
-
-### Compare Experiments
-
-Compare multiple experiment runs:
-
-```bash
-python compare.py \
-  results/20260925_120000 \
-  results/20260925_130000 \
-  results/20260925_140000
-```
-
-This shows:
-- Detection F1, severity accuracy, disposition F1
-- Inference latency
-- Configuration differences between runs
-
-## Interpreting Results
-
-### Metrics
-
-Key metrics from `results/<experiment>/metrics.json`:
-
-**Detection (binary: incident vs no-incident)**
-- Precision: fraction of predicted incidents that were real
-- Recall: fraction of real incidents that were detected
-- F1: harmonic mean of precision and recall
-- TP/FP/FN/TN counts
-
-**Severity Classification**
-- Accuracy: fraction of correct severity predictions
-- Macro F1: average F1 across all severity classes
-- Per-class precision/recall/F1
-
-**Disposition Classification**
-- Accuracy: fraction of correct disposition predictions
-- Macro F1: average F1 across all dispositions
-
-**Structured Output**
-- Valid JSON rate: fraction of responses that parsed successfully
-- Field completion rates: how often each field is present
-
-**Latency**
-- Mean, P50, P95, P99 inference time in milliseconds
-
-### Error Analysis
-
-Inspect `results/<experiment>/error_analysis.json`:
-
-**False Positives**
-- Logs where model predicted incident but ground truth was benign
-- Check for pattern: are specific log types triggering false alarms?
-
-**False Negatives**
-- Logs where model missed a real incident
-- Check for pattern: are specific incident types being missed?
-
-**Severity Errors**
-- Incidents where severity was wrong (e.g., predicted medium but was high)
-- Check if errors are systematic (e.g., consistently under-predicting severity)
-
-### Predictions
-
-Review `results/<experiment>/predictions.jsonl`:
-- Raw model outputs
-- Parsed structured responses
-- Per-example latency
-
-## Experiment Workflow
-
-### Baseline Run
-
-1. Start with production config (default `config.yaml`)
-2. Run baseline experiment:
-   ```bash
-   python run_experiment.py --dataset data/train.jsonl
-   ```
-3. Record baseline metrics
-
-### Iterate on Hyperparameters
-
-Create variant configs:
-
-```bash
-cp config.yaml config_rank32.yaml
-# Edit config_rank32.yaml: set lora.rank = 32
-
-python run_experiment.py --config config_rank32.yaml --dataset data/train.jsonl
-```
-
-Compare:
-```bash
-python compare.py results/baseline results/rank32
-```
-
-### Iterate on Dataset
-
-If metrics show specific errors:
-1. Fix dataset generator
-2. Regenerate dataset
-3. Retrain:
-   ```bash
-   python run_experiment.py --dataset data/train_v3.jsonl
-   ```
-
-### Test Prompt Changes
-
-To test prompt changes, you'll need to modify the system prompt in production code (`app/training/lora_trainer.py`) since the local experiment reuses that component.
-
-## Reproducibility
-
-Each experiment saves:
-- `metadata.json`: Git SHA, dataset SHA256, config, environment versions
-- `training_result.json`: Training metrics and adapter path
-- `config.yaml` snapshot (via metadata)
-
-To reproduce an experiment:
-1. Check out the same Git SHA
-2. Use the same dataset (verify SHA256)
-3. Use the same config
-4. Run training with same random seed (set in `config.yaml` → `data.random_seed`)
-
-## Production Integration
-
-Once you've identified a better model/dataset/config locally:
-
-1. **Update production dataset** (`../data/dataset_v2.jsonl`)
-2. **Update training config** if needed
-3. **Trigger production retraining** on AWS EC2:
-   ```bash
-   cd ../log-analyzer
-   # Follow production training workflow
-   ```
-4. **Create new AMI** with updated adapter
-5. **Deploy to production**
-
-## Limitations
-
-This local workspace is **simplified** compared to production:
-
-### What It Does
-✅ Uses production training code (TransformersPeftTrainingEngine)  
-✅ Uses production LoRA profiles and hyperparameters  
-✅ Trains identical adapters to production  
-✅ Evaluates with same inference prompt/parsing  
-
-### What It Doesn't Do
-❌ Does not connect to production PostgreSQL/Neon  
-❌ Does not upload to S3  
-❌ Does not launch/terminate EC2  
-❌ Does not send Datadog logs  
-❌ Does not perform production-style log clustering/investigation  
-
-For **full production-style evaluation** with clustering and multi-turn investigation, use the `log-analyzer` pipeline directly.
+| Component            | Production                    | Experiment         |
+| -------------------- | ----------------------------- | ------------------ |
+| Log Parser           | `app/data/parser.py`          | Imported directly  |
+| Signature Generation | `app/data/signatures.py`      | Imported directly  |
+| Clustering           | 2-min window, signature-based | Same algorithm     |
+| System Prompt        | `app/serving/investigator.py` | Matching structure |
+| Output Schema        | `IncidentAnalysis` model      | Identical fields   |
 
 ## Troubleshooting
 
-### Out of Memory
+### Out of Memory During Training
 
-If training fails with OOM:
-- Reduce `per_device_train_batch_size` (try 1)
-- Reduce `max_seq_length` (try 2048)
-- Use smaller base model (Qwen2.5-1.5B)
-- Increase `gradient_accumulation_steps` to compensate
+Reduce batch size in `config.yaml`:
 
-### Slow Training
+```yaml
+training:
+  batch_size: 2 # Reduce from 4
+  gradient_accumulation_steps: 8 # Increase to maintain effective batch size
+```
 
-- Enable CUDA: check `torch.cuda.is_available()`
-- Use smaller dataset for iteration
-- Reduce `num_epochs`
+### Parse Failures During Evaluation
 
-### Invalid JSON Responses
+Check:
 
-If model produces unparseable JSON:
-- Increase training data
-- Add more JSON examples
-- Adjust `temperature` (lower = more deterministic)
-- Check prompt formatting
+1. Model output format (look at `predictions.json` → `raw_output`)
+2. Generation parameters (try lower `temperature`)
+3. `max_new_tokens` (may need more tokens for full JSON)
 
-### Poor Metrics
+### Low Detection Recall
 
-- Check dataset quality with `validate_dataset.py`
-- Verify ground truth matches expected format
-- Inspect error analysis for systematic issues
-- Try increasing training epochs or learning rate
+Possible causes:
 
-## Files Reference
+1. Incident windowing not matching ground truth boundaries
+2. Check `incident_candidates.jsonl` to see what windows were detected
+3. Production clustering may group differently than expected
 
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Experiment hyperparameters |
-| `requirements.txt` | Python dependencies |
-| `validate_dataset.py` | Dataset quality checks |
-| `train.py` | QLoRA training |
-| `evaluate.py` | Inference and evaluation |
-| `metrics.py` | Metric calculation library |
-| `compare.py` | Multi-experiment comparison |
-| `run_experiment.py` | Full pipeline orchestrator |
-| `data/train.jsonl` | Training dataset (you provide) |
-| `ground_truth/evaluation.json` | Ground truth (optional) |
-| `results/<timestamp>/` | Experiment outputs |
+### Low Severity/Disposition Accuracy
 
-## Support
+Model may need:
 
-For questions about:
-- **Dataset format**: See production `data/dataset_v2.jsonl` and generator
-- **Training issues**: Check production `app/training/lora_trainer.py`
-- **Inference format**: Check production `app/serving/investigator.py`
-- **Metrics**: Review `metrics.py` implementation
+1. More training data for rare classes
+2. Better prompt engineering
+3. Larger base model
+4. More training epochs
+
+## Limitations
+
+1. **Local-only**: This is a development/research harness, not production
+2. **Simplified context**: No real-time related incidents, runbooks, or root-cause chaining
+3. **Static evaluation**: Uses pre-generated logs, not live streams
+4. **No cross-service reasoning**: Each service analyzed independently
+
+## FAQ
+
+**Q: Why not use the existing production training pipeline?**  
+A: Production training requires AWS infrastructure. This runs locally for fast iteration.
+
+**Q: Why signature-based clustering instead of embeddings?**  
+A: That's what production uses. This experiment matches production behavior.
+
+**Q: Can I use a different base model?**  
+A: Yes, edit `config.yaml`. Tested with Qwen2.5-3B and Qwen2.5-7B.
+
+**Q: How long does training take?**  
+A: ~30-60 minutes on a single GPU (RTX 3090 or similar) for 3 epochs on 2200 examples.
+
+**Q: Can I run without GPU?**  
+A: Yes, but training will be very slow. Evaluation is feasible on CPU.
+
+**Q: What if I want to add more training data?**  
+A: Add to `dataset_v2.jsonl` following the schema, then run `validate_dataset.py`.
+
+**Q: How do I know if my model is better?**  
+A: Use `compare.py` to see metric deltas. Focus on detection F1, severity accuracy, and disposition accuracy.
+
+## Next Steps
+
+After running experiments:
+
+1. **Review error analysis** - Understand false positives and false negatives
+2. **Iterate on training data** - Add examples for failure modes
+3. **Tune hyperparameters** - Adjust LoRA rank, learning rate, epochs
+4. **Try different models** - Test Qwen2.5-7B or Llama-3.2-3B
+5. **Compare results** - Use `compare.py` to quantify improvements
+
+## Contributing
+
+When modifying the experiment harness:
+
+1. Keep it simple - no unnecessary abstractions
+2. Match production behavior - import production modules when possible
+3. Run tests - `python test_experiment.py`
+4. Validate data - run validation scripts before committing data changes
+5. Document changes - update this README
 
 ## License
 
-Same as IncidentLens parent project.
+See main repository LICENSE.

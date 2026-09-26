@@ -1,267 +1,207 @@
-#!/usr/bin/env python3
 """
-Validate training dataset quality and report statistics.
+Validate training dataset.
+
+Checks schema, distributions, and data quality.
 """
 
 import argparse
 import hashlib
 import json
-import re
 import sys
-from collections import Counter
 from pathlib import Path
 
-
-def normalize_for_duplicate_detection(example: dict) -> str:
-    """Normalize example to detect template duplicates."""
-    ex_str = json.dumps(example, sort_keys=True)
-    
-    # Remove variable elements
-    ex_str = re.sub(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z', 'TIMESTAMP', ex_str)
-    ex_str = re.sub(r'-\w{4}', '-XXXX', ex_str)
-    ex_str = re.sub(r'trace=\w+', 'trace=TRACE', ex_str)
-    ex_str = re.sub(r'req_\w+', 'req_REQ', ex_str)
-    ex_str = re.sub(r'host=\S+', 'host=HOST', ex_str)
-    ex_str = re.sub(r'uptime=\d+s', 'uptime=XXXs', ex_str)
-    ex_str = re.sub(r'duration=[\d.]+ms', 'duration=XXms', ex_str)
-    ex_str = re.sub(r'lag=\d+', 'lag=XXX', ex_str)
-    ex_str = re.sub(r'p\d{2}=\d+ms', 'pXX=XXms', ex_str)
-    ex_str = re.sub(r'baseline=\d+ms', 'baseline=XXms', ex_str)
-    ex_str = re.sub(r'depth=\d+', 'depth=XXX', ex_str)
-    ex_str = re.sub(r'items=\d+', 'items=XXX', ex_str)
-    ex_str = re.sub(r'batch=\d+', 'batch=XXX', ex_str)
-    ex_str = re.sub(r'replicas=\d+', 'replicas=X', ex_str)
-    ex_str = re.sub(r'v\d+\.\d+\.\d+', 'vX.X.X', ex_str)
-    
-    return hashlib.sha256(ex_str.encode()).hexdigest()
+from data_loader import load_training_data, validate_training_data
 
 
-def validate_schema(examples: list[dict]) -> tuple[bool, list[str]]:
-    """Validate canonical 8-field schema."""
-    errors = []
-    valid_severities = {"low", "medium", "high", "critical"}
-    valid_dispositions = {"NO_ACTION", "OBSERVE", "NEEDS_DEV", "NEEDS_ONCALL", "ESCALATE"}
+def compute_file_hash(path: Path) -> str:
+    """Compute SHA256 hash of file."""
+    sha256 = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def check_for_duplicates(examples) -> dict:
+    """Check for duplicate or near-duplicate examples."""
+    seen_prompts = {}
+    duplicates = []
     
-    required_output_fields = {
-        "severity", "disposition", "confidence", "summary",
-        "suspected_root_cause", "next_steps", "ticket_title", "ticket_body"
+    for idx, example in enumerate(examples):
+        # Create a simple hash of the logs
+        log_hash = hashlib.md5(
+            "".join(sorted(example.logs)).encode()
+        ).hexdigest()
+        
+        if log_hash in seen_prompts:
+            duplicates.append({
+                "example_index": idx,
+                "duplicate_of": seen_prompts[log_hash],
+                "service": example.service,
+            })
+        else:
+            seen_prompts[log_hash] = idx
+    
+    return {
+        "duplicate_count": len(duplicates),
+        "duplicates": duplicates[:10],  # Show first 10
+    }
+
+
+def analyze_dataset_balance(examples) -> dict:
+    """Analyze dataset balance and potential issues."""
+    analysis = {
+        "total": len(examples),
+        "by_service": {},
+        "by_severity": {},
+        "by_disposition": {},
+        "benign_vs_actionable": {},
+        "field_completeness": {},
     }
     
-    for i, example in enumerate(examples, 1):
-        # Check structure
-        if "input" not in example or "expected_output" not in example:
-            errors.append(f"Record {i}: missing 'input' or 'expected_output'")
-            continue
-        
-        output = example["expected_output"]
-        
-        # Check required fields present
-        missing = required_output_fields - set(output.keys())
-        if missing:
-            errors.append(f"Record {i}: missing fields {missing}")
-        
-        # Validate severity
-        severity = output.get("severity", "")
-        if severity == "benign":
-            errors.append(f"Record {i}: INVALID severity 'benign' - use 'low' with NO_ACTION instead")
-        elif severity not in valid_severities:
-            errors.append(f"Record {i}: invalid severity '{severity}' - must be {valid_severities}")
-        
-        # Validate disposition
-        disposition = output.get("disposition", "")
-        if disposition not in valid_dispositions:
-            errors.append(f"Record {i}: invalid disposition '{disposition}' - must be {valid_dispositions}")
-        
-        # Validate confidence
-        confidence = output.get("confidence")
-        if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
-            errors.append(f"Record {i}: confidence must be float in [0, 1], got {confidence}")
-        
-        # Validate next_steps
-        if not isinstance(output.get("next_steps"), list):
-            errors.append(f"Record {i}: next_steps must be a list")
-        
-        # Validate actionable incidents have details
-        if disposition in {"NEEDS_DEV", "NEEDS_ONCALL", "ESCALATE"}:
-            if not output.get("ticket_title", "").strip():
-                errors.append(f"Record {i}: actionable incident ({disposition}) missing ticket_title")
-            if not output.get("ticket_body", "").strip():
-                errors.append(f"Record {i}: actionable incident ({disposition}) missing ticket_body")
-            if not output.get("next_steps"):
-                errors.append(f"Record {i}: actionable incident ({disposition}) missing next_steps")
+    # Count by service
+    for ex in examples:
+        service = ex.service
+        analysis["by_service"][service] = analysis["by_service"].get(service, 0) + 1
     
-    return len(errors) == 0, errors
+    # Count by severity
+    for ex in examples:
+        sev = ex.severity
+        analysis["by_severity"][sev] = analysis["by_severity"].get(sev, 0) + 1
+    
+    # Count by disposition
+    for ex in examples:
+        disp = ex.disposition
+        analysis["by_disposition"][disp] = analysis["by_disposition"].get(disp, 0) + 1
+    
+    # Benign vs actionable
+    benign_count = sum(
+        1 for ex in examples
+        if ex.disposition in ["NO_ACTION", "OBSERVE"]
+    )
+    actionable_count = len(examples) - benign_count
+    
+    analysis["benign_vs_actionable"] = {
+        "benign": benign_count,
+        "actionable": actionable_count,
+        "ratio": benign_count / len(examples) if examples else 0,
+    }
+    
+    # Field completeness
+    fields = ["summary", "suspected_root_cause", "next_steps", "ticket_title", "ticket_body"]
+    for field in fields:
+        non_empty = 0
+        for ex in examples:
+            value = getattr(ex, field, None)
+            if value and value not in ["", []]:
+                non_empty += 1
+        analysis["field_completeness"][field] = non_empty / len(examples) if examples else 0
+    
+    return analysis
 
 
-def analyze_dataset(dataset_path: Path) -> dict:
-    """Comprehensive dataset analysis."""
-    examples = []
+def validate(args):
+    """Run validation."""
+    dataset_path = Path(args.dataset)
     
-    with dataset_path.open('r') as f:
-        for line_num, line in enumerate(f, 1):
-            if not line.strip():
-                continue
-            try:
-                examples.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                print(f"ERROR: Line {line_num}: Invalid JSON - {e}")
-                sys.exit(1)
+    if not dataset_path.exists():
+        print(f"❌ Dataset not found: {dataset_path}")
+        sys.exit(1)
     
-    if not examples:
-        print("ERROR: Dataset is empty")
+    print(f"\n{'='*60}")
+    print(f"Dataset Validation")
+    print(f"{'='*60}")
+    print(f"Dataset: {dataset_path}")
+    print(f"{'='*60}\n")
+    
+    # Compute hash
+    print("Computing dataset hash...")
+    file_hash = compute_file_hash(dataset_path)
+    print(f"  SHA256: {file_hash}\n")
+    
+    # Load data
+    print("Loading dataset...")
+    try:
+        examples = load_training_data(dataset_path)
+        print(f"  Loaded {len(examples)} examples\n")
+    except Exception as e:
+        print(f"❌ Failed to load dataset: {e}")
         sys.exit(1)
     
     # Validate schema
-    valid, errors = validate_schema(examples)
+    print("Validating schema...")
+    report = validate_training_data(examples)
     
-    # Statistics
-    severity_counts = Counter()
-    disposition_counts = Counter()
-    incident_type_counts = Counter()
-    log_counts = []
+    print(f"\nValidation Results:")
+    print(f"  Total: {report['total_examples']}")
+    print(f"  Valid: {report['valid_examples']} ✓")
+    print(f"  Invalid: {report['invalid_examples']} {'✗' if report['invalid_examples'] > 0 else ''}")
     
-    no_action_benign = 0
+    if report['invalid_examples'] > 0:
+        print(f"\n⚠️  Validation Errors:")
+        for error in report['errors'][:10]:  # Show first 10
+            print(f"    Example {error['example_index']}: {error['errors']}")
+        if len(report['errors']) > 10:
+            print(f"    ... and {len(report['errors']) - 10} more")
     
-    for example in examples:
-        output = example["expected_output"]
-        inp = example["input"]
-        
-        severity = output.get("severity", "unknown")
-        disposition = output.get("disposition", "unknown")
-        
-        severity_counts[severity] += 1
-        disposition_counts[disposition] += 1
-        
-        if severity == "low" and disposition == "NO_ACTION":
-            no_action_benign += 1
-        
-        incident_type = inp.get("metadata", {}).get("incident_type", "unknown")
-        incident_type_counts[incident_type] += 1
-        
-        log_counts.append(len(inp.get("logs", [])))
+    print(f"\nSeverity Distribution:")
+    for sev, count in sorted(report['severity_distribution'].items()):
+        pct = count / report['total_examples'] * 100
+        print(f"  {sev:8s}: {count:4d} ({pct:5.1f}%)")
     
-    # Duplicate detection
-    exact_hashes = [hashlib.sha256(json.dumps(ex, sort_keys=True).encode()).hexdigest() for ex in examples]
-    exact_counter = Counter(exact_hashes)
-    exact_duplicates = sum(1 for count in exact_counter.values() if count > 1)
+    print(f"\nDisposition Distribution:")
+    for disp, count in sorted(report['disposition_distribution'].items()):
+        pct = count / report['total_examples'] * 100
+        print(f"  {disp:12s}: {count:4d} ({pct:5.1f}%)")
     
-    normalized_hashes = [normalize_for_duplicate_detection(ex) for ex in examples]
-    normalized_counter = Counter(normalized_hashes)
+    print(f"\nBenign vs Actionable:")
+    print(f"  Benign (NO_ACTION/OBSERVE): {report['benign_count']}")
+    print(f"  Actionable: {report['actionable_count']}")
     
-    return {
-        "valid": valid,
-        "errors": errors,
-        "total": len(examples),
-        "severity_counts": dict(severity_counts),
-        "disposition_counts": dict(disposition_counts),
-        "incident_type_counts": dict(incident_type_counts),
-        "no_action_benign": no_action_benign,
-        "log_counts": {
-            "min": min(log_counts) if log_counts else 0,
-            "max": max(log_counts) if log_counts else 0,
-            "avg": sum(log_counts) / len(log_counts) if log_counts else 0,
-            "single_log": sum(1 for x in log_counts if x == 1),
-            "multi_log_2_3": sum(1 for x in log_counts if 2 <= x <= 3),
-            "multi_log_4plus": sum(1 for x in log_counts if x >= 4),
-        },
-        "duplicates": {
-            "exact": exact_duplicates,
-            "unique_templates": len(normalized_counter),
-            "most_common_template_count": normalized_counter.most_common(1)[0][1] if normalized_counter else 0,
-        }
-    }
-
-
-def print_report(stats: dict):
-    """Print human-readable validation report."""
-    print("=" * 80)
-    print("DATASET VALIDATION REPORT")
-    print("=" * 80)
+    # Check for duplicates
+    print(f"\nChecking for duplicates...")
+    dup_report = check_for_duplicates(examples)
+    if dup_report['duplicate_count'] > 0:
+        print(f"  ⚠️  Found {dup_report['duplicate_count']} potential duplicates")
+    else:
+        print(f"  No duplicates found ✓")
     
-    if not stats["valid"]:
-        print("\n❌ VALIDATION FAILED")
-        print(f"\nErrors found: {len(stats['errors'])}")
-        for error in stats["errors"][:10]:
-            print(f"  • {error}")
-        if len(stats["errors"]) > 10:
-            print(f"  ... and {len(stats['errors']) - 10} more errors")
-        print("\n" + "=" * 80)
-        return
+    # Analyze balance
+    print(f"\nDataset Balance Analysis:")
+    balance = analyze_dataset_balance(examples)
     
-    print("\n✅ SCHEMA VALIDATION PASSED")
+    print(f"  Services: {len(balance['by_service'])}")
+    if len(balance['by_service']) <= 10:
+        for service, count in sorted(balance['by_service'].items(), key=lambda x: -x[1])[:10]:
+            print(f"    {service}: {count}")
     
-    print(f"\nTotal Records: {stats['total']}")
+    print(f"\n  Field Completeness:")
+    for field, rate in balance['field_completeness'].items():
+        print(f"    {field:20s}: {rate*100:5.1f}%")
     
-    print("\nSeverity Distribution:")
-    total = stats['total']
-    for sev in ['low', 'medium', 'high', 'critical']:
-        count = stats['severity_counts'].get(sev, 0)
-        pct = 100 * count / total if total else 0
-        print(f"  {sev:10s} {count:5d} ({pct:5.1f}%)")
-    
-    print(f"\n  No-action/benign (low+NO_ACTION): {stats['no_action_benign']} ({100*stats['no_action_benign']/total:.1f}%)")
-    
-    print("\nDisposition Distribution:")
-    for disp in sorted(stats['disposition_counts'].keys()):
-        count = stats['disposition_counts'][disp]
-        pct = 100 * count / total if total else 0
-        print(f"  {disp:15s} {count:5d} ({pct:5.1f}%)")
-    
-    print("\nTop 10 Incident Types:")
-    sorted_types = sorted(stats['incident_type_counts'].items(), key=lambda x: x[1], reverse=True)
-    for inc_type, count in sorted_types[:10]:
-        pct = 100 * count / total if total else 0
-        print(f"  {inc_type:45s} {count:4d} ({pct:5.1f}%)")
-    
-    if len(sorted_types) > 10:
-        print(f"  ... and {len(sorted_types) - 10} more types")
-    
-    log_stats = stats['log_counts']
-    print("\nLog Sequence Statistics:")
-    print(f"  Minimum:      {log_stats['min']}")
-    print(f"  Maximum:      {log_stats['max']}")
-    print(f"  Average:      {log_stats['avg']:.1f}")
-    print(f"  Single log:   {log_stats['single_log']} ({100*log_stats['single_log']/total:.1f}%)")
-    print(f"  2-3 logs:     {log_stats['multi_log_2_3']} ({100*log_stats['multi_log_2_3']/total:.1f}%)")
-    print(f"  4+ logs:      {log_stats['multi_log_4plus']} ({100*log_stats['multi_log_4plus']/total:.1f}%)")
-    
-    dup_stats = stats['duplicates']
-    print("\nDuplicate Analysis:")
-    print(f"  Exact duplicates: {dup_stats['exact']}")
-    print(f"  Unique templates: {dup_stats['unique_templates']}")
-    print(f"  Most repeated template: {dup_stats['most_common_template_count']} occurrences")
-    
-    print("\n" + "=" * 80)
+    # Summary
+    print(f"\n{'='*60}")
+    if report['invalid_examples'] == 0:
+        print("✓ Dataset validation PASSED")
+        print(f"{'='*60}\n")
+        sys.exit(0)
+    else:
+        print(f"✗ Dataset validation FAILED ({report['invalid_examples']} invalid examples)")
+        print(f"{'='*60}\n")
+        sys.exit(1)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Validate training dataset")
     parser.add_argument(
         "--dataset",
-        type=Path,
-        default=Path("data/train.jsonl"),
-        help="Path to training dataset (default: data/train.jsonl)"
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output report as JSON"
+        type=str,
+        default="../data/dataset_v2.jsonl",
+        help="Path to training dataset",
     )
     
     args = parser.parse_args()
-    
-    if not args.dataset.exists():
-        print(f"ERROR: Dataset not found: {args.dataset}")
-        sys.exit(1)
-    
-    stats = analyze_dataset(args.dataset)
-    
-    if args.json:
-        print(json.dumps(stats, indent=2))
-    else:
-        print_report(stats)
-    
-    sys.exit(0 if stats["valid"] else 1)
+    validate(args)
 
 
 if __name__ == "__main__":

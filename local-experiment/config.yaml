@@ -1,70 +1,43 @@
-# Local Experiment Configuration
-# Production-compatible defaults from IncidentLens
+# IncidentLens Local Experiment Configuration
 
-# Base Model (MUST match production: log-analyzer/app/shared/model_config.py)
-base_model: "Qwen/Qwen3.5-4B"
+# Model settings
+model:
+  base_model: "Qwen/Qwen2.5-3B-Instruct"
+  # Alternative models:
+  # base_model: "Qwen/Qwen2.5-7B-Instruct"
+  # base_model: "meta-llama/Llama-3.2-3B-Instruct"
 
-# LoRA Configuration (from production LoraTrainingProfile)
-# See: log-analyzer/app/training/training_profile.py
+# LoRA configuration for QLoRA fine-tuning
 lora:
-  rank: 8
-  alpha: 16
-  dropout: 0.05
-  target_modules:
+  r: 16 # LoRA rank
+  alpha: 32 # LoRA alpha (typically 2*r)
+  dropout: 0.05 # LoRA dropout
+  target_modules: # Modules to apply LoRA
     - "q_proj"
     - "k_proj"
     - "v_proj"
     - "o_proj"
-    - "in_proj_qkv"
-    - "in_proj_z"
-    - "in_proj_b"
-    - "in_proj_a"
-    - "out_proj"
     - "gate_proj"
     - "up_proj"
     - "down_proj"
 
-# Training Parameters (from production defaults)
+# Training configuration
 training:
-  learning_rate: 0.0001
-  num_epochs: 1
-  per_device_train_batch_size: 1
-  per_device_eval_batch_size: 1
-  gradient_accumulation_steps: 1
-  max_seq_length: 1024
-  warmup_steps: 10
+  epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4 # Effective batch size = batch_size * gradient_accumulation_steps
+  learning_rate: 2.0e-4
+  max_seq_length: 2048
+  warmup_steps: 100
+  weight_decay: 0.01
   logging_steps: 10
-  save_steps: 100
-  eval_steps: 100
-  save_total_limit: 2
-  load_best_model_at_end: true
-  metric_for_best_model: "eval_loss"
-  greater_is_better: false
 
-# Data Split
-data:
-  train_split: 0.9
-  eval_split: 0.1
-  random_seed: 42
-
-# Generation Settings (for inference)
+# Generation configuration for inference
 generation:
-  max_new_tokens: 512
-  temperature: 0.1
-  top_p: 0.95
-  do_sample: true
-  repetition_penalty: 1.1
+  max_new_tokens: 800 # Max tokens to generate
+  temperature: 0.2 # Lower = more deterministic
+  top_p: 0.9 # Nucleus sampling threshold
 
-# QLoRA Quantization
-quantization:
-  load_in_4bit: true
-  bnb_4bit_compute_dtype: "float16"
-  bnb_4bit_quant_type: "nf4"
-  bnb_4bit_use_double_quant: true
-
-# Experiment Tracking
-experiment:
-  save_adapter: true
-  save_metrics: true
-  save_predictions: true
-  save_error_analysis: true
+# Evaluation configuration
+evaluation:
+  min_temporal_overlap: 0.5 # Minimum overlap to match prediction with ground truth
