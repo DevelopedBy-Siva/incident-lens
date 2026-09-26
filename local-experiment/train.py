@@ -22,6 +22,7 @@ from transformers import (
     BitsAndBytesConfig,
     TrainingArguments,
     Trainer,
+    DataCollatorForLanguageModeling,
 )
 
 from data_loader import load_training_data, validate_training_data
@@ -229,12 +230,18 @@ def train(args):
         remove_unused_columns=False,
     )
     
+    # Data collator for language modeling
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False,  # Causal LM, not masked LM
+    )
+    
     # Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
-        tokenizer=tokenizer,
+        data_collator=data_collator,
     )
     
     # Save metadata
