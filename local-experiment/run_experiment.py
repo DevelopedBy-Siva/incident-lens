@@ -38,7 +38,7 @@ def run_experiment(args):
     
     # Resolve paths
     config_path = Path(args.config).resolve()
-    dataset_path = Path(args.dataset).resolve()
+    dataset_path = Path(args.dataset).resolve() if args.dataset else None
     eval_log_path = Path(args.evaluation_log).resolve()
     ground_truth_path = Path(args.ground_truth).resolve()
     output_dir = Path(args.output).resolve()
@@ -53,7 +53,8 @@ def run_experiment(args):
     print(f"IncidentLens Experiment: {experiment_name}")
     print(f"{'='*60}")
     print(f"Config: {config_path}")
-    print(f"Dataset: {dataset_path}")
+    if dataset_path:
+        print(f"Dataset: {dataset_path}")
     print(f"Evaluation log: {eval_log_path}")
     print(f"Ground truth: {ground_truth_path}")
     print(f"Output: {experiment_dir}")
@@ -64,7 +65,7 @@ def run_experiment(args):
         "experiment_name": experiment_name,
         "started_at": datetime.now().isoformat(),
         "config": str(config_path),
-        "dataset": str(dataset_path),
+        "dataset": str(dataset_path) if dataset_path else None,
         "evaluation_log": str(eval_log_path),
         "ground_truth": str(ground_truth_path),
         "steps_completed": [],
@@ -238,8 +239,7 @@ Examples:
     parser.add_argument(
         "--dataset",
         type=str,
-        required=True,
-        help="Path to training dataset (JSONL)",
+        help="Path to training dataset (JSONL, required unless --skip-training)",
     )
     parser.add_argument(
         "--evaluation-log",
@@ -287,9 +287,14 @@ Examples:
         print(f"❌ Config not found: {args.config}")
         sys.exit(1)
     
-    if not Path(args.dataset).exists():
-        print(f"❌ Dataset not found: {args.dataset}")
-        sys.exit(1)
+    # Dataset is required unless skipping training
+    if not args.skip_training:
+        if not args.dataset:
+            print(f"❌ --dataset is required unless --skip-training is used")
+            sys.exit(1)
+        if not Path(args.dataset).exists():
+            print(f"❌ Dataset not found: {args.dataset}")
+            sys.exit(1)
     
     if not Path(args.evaluation_log).exists():
         print(f"❌ Evaluation log not found: {args.evaluation_log}")
