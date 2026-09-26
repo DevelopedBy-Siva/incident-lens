@@ -21,13 +21,23 @@ def load_ground_truth(path: Path) -> Dict[str, Any]:
 
 
 def parse_timestamp(ts_str: str) -> datetime:
-    """Parse ISO timestamp."""
+    """Parse ISO timestamp and ensure it's timezone-aware."""
+    from datetime import timezone
+    
     if not ts_str:
-        return datetime.min
+        return datetime.min.replace(tzinfo=timezone.utc)
+    
     # Handle both with and without 'Z' suffix
     if ts_str.endswith('Z'):
         ts_str = ts_str[:-1] + '+00:00'
-    return datetime.fromisoformat(ts_str)
+    
+    dt = datetime.fromisoformat(ts_str)
+    
+    # If timezone-naive, assume UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    return dt
 
 
 def temporal_overlap(

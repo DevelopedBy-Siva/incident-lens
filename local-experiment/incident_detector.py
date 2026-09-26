@@ -44,13 +44,25 @@ class IncidentCandidate:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
+        from datetime import timezone
+        
+        # Ensure timezone-aware timestamps
+        first_seen_aware = self.first_seen
+        last_seen_aware = self.last_seen
+        
+        if first_seen_aware and first_seen_aware.tzinfo is None:
+            first_seen_aware = first_seen_aware.replace(tzinfo=timezone.utc)
+        
+        if last_seen_aware and last_seen_aware.tzinfo is None:
+            last_seen_aware = last_seen_aware.replace(tzinfo=timezone.utc)
+        
         return {
             "incident_id": self.incident_id,
             "service": self.service,
             "environment": self.environment,
             "signature": self.signature,
-            "first_seen": self.first_seen.isoformat() if self.first_seen else None,
-            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            "first_seen": first_seen_aware.isoformat() if first_seen_aware else None,
+            "last_seen": last_seen_aware.isoformat() if last_seen_aware else None,
             "count": self.count,
             "sample_lines": self.sample_lines,
             "grouping_metadata": self.grouping_metadata,
