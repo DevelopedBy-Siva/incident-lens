@@ -17,7 +17,7 @@ from data_loader import TrainingExample, load_training_data, validate_training_d
 from log_parser import parse_log_line, extract_service_from_log, group_logs_by_service
 
 # Test incident detector
-from incident_detector import detect_incidents_in_service_logs, temporal_overlap
+from incident_detector import detect_incidents_in_service_logs
 
 # Test metrics
 from metrics import (
@@ -26,6 +26,7 @@ from metrics import (
     compute_severity_metrics,
     compute_disposition_metrics,
     parse_timestamp,
+    temporal_overlap,
 )
 
 

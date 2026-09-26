@@ -62,8 +62,11 @@ class TrainingExample:
         if not self.summary or not self.summary.strip():
             errors.append("Missing or empty summary")
 
-        if not self.next_steps or not isinstance(self.next_steps, list):
-            errors.append("Missing or invalid next_steps")
+        # next_steps must be a list (can be empty for NO_ACTION/OBSERVE)
+        if not isinstance(self.next_steps, list):
+            errors.append("next_steps must be a list")
+        elif self.disposition not in ["NO_ACTION", "OBSERVE"] and len(self.next_steps) == 0:
+            errors.append(f"next_steps cannot be empty for {self.disposition}")
 
         # Validate NO_ACTION examples don't require tickets
         if self.disposition == "NO_ACTION":

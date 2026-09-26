@@ -1,268 +1,206 @@
-# Quick Start: Fixed Evaluation Pipeline
+# Quick Start Guide
 
-## Summary
-
-The evaluation pipeline has been completely fixed. The old pipeline used **service-only grouping** (producing 22 clusters) instead of **signature-based grouping** (production behavior). This made proper evaluation impossible.
-
-**Status:** ✅ Pipeline fixed and validated. Ready for training + evaluation.
-
----
-
-## What Was Fixed
-
-| Issue | Old Behavior | New Behavior |
-|-------|-------------|--------------|
-| **Grouping** | Service-only (22 clusters) | Signature-based (28+ incidents) |
-| **Multiple incidents/service** | ❌ Not supported | ✅ Supported |
-| **JSON parsing** | Basic extraction | Comprehensive error handling |
-| **Latency** | ~48s (repeated loads) | <5s (single load) |
-| **Ground truth** | Not validated | Validated correct |
-| **Metrics** | Unreliable | Deterministic |
-
----
-
-## Quick Start Commands
-
-### 1. Train a Model
+## Prerequisites
 
 ```bash
-cd /Users/sivasanker/Code/incident-lens/local-experiment
+# Ensure you're in the virtual environment
+source ../.venv/bin/activate  # or appropriate path
 
-# Basic training
-python train.py \
-  --config config.yaml \
-  --output results/$(date +%Y%m%d_%H%M%S)
+# Install dependencies (if not already installed)
+pip install -r requirements.txt
 ```
 
-### 2. Run Fixed Evaluation
+## 1. Validate Your Data (Recommended)
 
 ```bash
-# Replace TIMESTAMP with your training run directory
-TIMESTAMP="20260925_170104"  # Example
+# Validate training dataset (2200 examples)
+python validate_dataset.py --dataset ../data/dataset_v2.jsonl
 
-python evaluate_v2.py \
-  --adapter results/${TIMESTAMP}/adapter \
+# Validate ground truth (8 incidents)
+python validate_ground_truth.py --ground-truth ground_truth/evaluation.json
+```
+
+Expected output:
+
+- ✓ Dataset validation PASSED (2200 valid examples)
+- ✓ Ground truth validation PASSED (8 incidents)
+
+## 2. Run Tests (Optional)
+
+```bash
+python -m pytest test_experiment.py -v
+```
+
+Expected: 22 tests pass
+
+## 3. Run a Baseline Experiment
+
+```bash
+# Full pipeline: validate → train → evaluate
+python run_experiment.py \
+  --dataset ../data/dataset_v2.jsonl \
+  --evaluation-log data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --name baseline_qwen3b
+```
+
+This will:
+
+1. Validate dataset and ground truth
+2. Train with QLoRA (3 epochs, ~30-60 min on GPU)
+3. Evaluate on unseen logs
+4. Generate metrics and error analysis
+
+Results saved to: `results/baseline_qwen3b/`
+
+## 4. View Results
+
+```bash
+# Quick metrics summary
+cat results/baseline_qwen3b/metrics.json | jq '.summary'
+
+# Full metrics
+cat results/baseline_qwen3b/metrics.json | jq '.'
+
+# Error analysis
+cat results/baseline_qwen3b/evaluation/eval_*/error_analysis.json | jq '.false_positives, .false_negatives'
+
+# Incident candidates (for debugging)
+head -5 results/baseline_qwen3b/evaluation/eval_*/incident_candidates.jsonl
+```
+
+## 5. Iterate and Compare
+
+```bash
+# Modify config.yaml (e.g., increase epochs, change model)
+# Run another experiment
+python run_experiment.py \
+  --dataset ../data/dataset_v2.jsonl \
+  --evaluation-log data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --name improved_qwen3b
+
+# Compare results
+python compare.py results/baseline_qwen3b results/improved_qwen3b
+```
+
+## Common Workflows
+
+### Evaluate Base Model Without Fine-tuning
+
+```bash
+python evaluate.py \
   --logs data/evaluation.log \
   --ground-truth ground_truth/evaluation.json \
-  --config config.yaml \
-  --output results/${TIMESTAMP}_eval \
-  --merge-gap 5
+  --output results/base_model_only
 ```
 
-### 3. Review Results
+### Re-evaluate Existing Adapter
 
 ```bash
-# View incident candidates
-cat results/${TIMESTAMP}_eval/incident_candidates.jsonl | jq '.' | head -50
-
-# Check metrics
-cat results/${TIMESTAMP}_eval/metrics.json | jq '.'
-
-# Find parse failures
-cat results/${TIMESTAMP}_eval/predictions.jsonl | \
-  jq -r 'select(.parse_status != "success") | .incident_id'
-
-# View a specific prediction
-cat results/${TIMESTAMP}_eval/predictions.jsonl | \
-  jq 'select(.index == 0)'
+python run_experiment.py \
+  --skip-training \
+  --adapter results/baseline_qwen3b/training/train_*/adapter \
+  --evaluation-log data/evaluation.log \
+  --ground-truth ground_truth/evaluation.json \
+  --name baseline_reeval
 ```
 
----
-
-## Tuning Parameters
-
-### Merge Gap (Consolidates Fragmented Incidents)
+### Train Only (No Evaluation)
 
 ```bash
-# Conservative (matches production 2-min window)
---merge-gap 2
-
-# Moderate (recommended start)
---merge-gap 5
-
-# Aggressive (long-running incidents)
---merge-gap 10
+python train.py \
+  --dataset ../data/dataset_v2.jsonl \
+  --output results/train_only
 ```
 
-**Effect:** Higher gap = fewer candidates, better for long incidents, risk of merging unrelated issues.
+## Key Files to Inspect
 
-### Generation Settings
+After running an experiment:
 
-Edit `config.yaml`:
-```yaml
-generation:
-  max_new_tokens: 512     # Increase if JSON truncated
-  temperature: 0.1        # Lower = more deterministic
-  top_p: 0.95            # Reduce for stricter sampling
-  repetition_penalty: 1.1 # Increase if repetitive
 ```
-
----
-
-## Expected Results
-
-### Baseline Expectations
-
-With properly fixed pipeline:
-
-```yaml
-Clustering:
-  incident_candidates: 15-30 (depends on merge_gap)
-  services: 6-8
-
-Parsing:
-  valid_json_rate: >0.80 (target >0.90)
-  parse_failure_rate: <0.20 (target <0.10)
-
-Detection:
-  precision: >0.80
-  recall: >0.85
-  f1: >0.82
-
-Severity:
-  accuracy: >0.75
-  macro_f1: >0.70
-
-Latency:
-  mean_ms: <5000 (vs ~48000 before)
-  p95_ms: <8000 (vs ~51500 before)
+results/baseline_qwen3b/
+├── experiment_metadata.json       # Experiment config & timestamps
+├── metrics.json                   # All metrics (copied for easy access)
+├── training/
+│   └── train_TIMESTAMP/
+│       ├── adapter/               # Trained LoRA adapter
+│       ├── metadata.json          # Training metadata
+│       └── checkpoint-*/          # Training checkpoints
+└── evaluation/
+    └── eval_TIMESTAMP/
+        ├── incident_candidates.jsonl  # Detected incident windows
+        ├── predictions.json           # Model predictions & raw outputs
+        ├── metrics.json               # Evaluation metrics
+        ├── error_analysis.json        # FP/FN/mismatches
+        └── metadata.json              # Evaluation metadata
 ```
-
----
-
-## Comparison: Old vs New Pipeline
-
-### Old Pipeline (evaluate.py)
-
-```python
-def cluster_logs_by_service(parsed_logs):
-    clusters = defaultdict(list)
-    for log in parsed_logs:
-        clusters[log["service"]].append(log)  # ❌ Service-only
-    return dict(clusters)
-```
-
-**Result:** 22 service clusters, massive information loss
-
-### New Pipeline (evaluate_v2.py)
-
-```python
-from incident_clustering import cluster_logs  # ✅ Signature-based
-incidents = cluster_logs(error_logs, time_window_minutes=2)
-incidents = merge_adjacent_incidents(incidents, max_gap_minutes=5)
-```
-
-**Result:** 28+ incident candidates, proper incident separation
-
----
-
-## Test Without Model
-
-Validate the pipeline works without training:
-
-```bash
-python test_evaluation_pipeline.py
-```
-
-**Expected output:**
-```
-✅ All tests completed
-✅ Signature-based clustering working
-✅ Multiple incidents per service detected
-✅ Ground truth matching functional
-✅ Metrics calculation working
-🎉 Pipeline validation PASSED
-```
-
----
 
 ## Troubleshooting
 
-### Too Many Candidates
+### Out of Memory During Training
+
+Edit `config.yaml`:
+
+```yaml
+training:
+  batch_size: 2 # Reduce from 4
+  gradient_accumulation_steps: 8 # Increase to maintain effective batch size
+```
+
+### Low Parse Rate
+
+Check raw outputs:
 
 ```bash
-# Increase merge gap
-python evaluate_v2.py --merge-gap 10 ...
+cat results/baseline_qwen3b/evaluation/eval_*/predictions.json | \
+  jq '.predictions[] | select(.parse_success == false) | .raw_output' | head -20
 ```
 
-### Parse Failures >20%
+Try adjusting generation config in `config.yaml`:
 
-1. Check raw outputs:
+```yaml
+generation:
+  max_new_tokens: 1000 # Increase from 800
+  temperature: 0.1 # Decrease from 0.2 for more deterministic output
+```
+
+### Adapter Not Found
+
+Make sure training completed successfully:
+
 ```bash
-cat results/*/predictions.jsonl | jq '.raw_response' | head -10
+ls -la results/baseline_qwen3b/training/train_*/adapter/
 ```
 
-2. Adjust prompt in `evaluate_v2.py`:
-```python
-system_prompt = """You MUST respond with ONLY a JSON object.
-Do not include reasoning or explanations..."""
-```
+Should contain: `adapter_model.safetensors`, `adapter_config.json`, `tokenizer*`
 
-3. Increase max_tokens in `config.yaml`
+## Expected Metrics (Rough Baseline)
 
-### Low Recall
+For reference, a reasonable baseline with Qwen2.5-3B on this dataset:
 
-1. Review false negatives:
-```bash
-# TODO: Add error analysis after first run
-```
+- **Detection F1**: 0.7 - 0.9 (depends on windowing quality)
+- **Severity Accuracy**: 0.6 - 0.8
+- **Disposition Accuracy**: 0.5 - 0.7
+- **Valid JSON Rate**: 0.9 - 1.0
 
-2. Check if incidents are split:
-   - Increase `--merge-gap`
-   - Review `incident_candidates.jsonl`
+Your results may vary based on:
 
-3. Check ground truth alignment:
-```bash
-python validate_ground_truth.py
-```
+- Training duration
+- Model size
+- Generation parameters
+- Random seed
 
----
+## Next Steps
 
-## File Outputs
+1. **Analyze errors**: Look at `error_analysis.json` to understand failure modes
+2. **Check candidates**: Inspect `incident_candidates.jsonl` to see if windows are correct
+3. **Iterate on config**: Adjust hyperparameters in `config.yaml`
+4. **Try different models**: Change `base_model` in `config.yaml`
+5. **Compare experiments**: Use `compare.py` to track improvements
 
-After evaluation, you'll have:
+## Need Help?
 
-```
-results/${TIMESTAMP}_eval/
-├── incident_candidates.jsonl  # Inspectable grouping logic
-├── predictions.jsonl           # Full model outputs + parsing
-├── metrics.json               # All metrics (detection, severity, latency, parsing)
-└── (error_analysis.json)      # Generated if ground truth available
-```
-
----
-
-## Next Experiments
-
-See `EVALUATION_PIPELINE_FIX_REPORT.md` section 19 for full experiment plan.
-
-**Quick sequence:**
-1. Baseline (establish true metrics)
-2. Tune merge-gap (optimize candidate count)
-3. Prompt engineering (if parse failures)
-4. Generation params (if truncation)
-5. Data augmentation (if poor detection)
-6. Hyperparameters (last resort)
-
----
-
-## Important Notes
-
-1. **DO NOT trust old metrics** - the previous evaluator was broken
-2. **First run = first valid measurement** of model quality
-3. **DO NOT retrain immediately** - iterate on clustering/prompts first
-4. **Latency is fixed** - single model load eliminates 90% of overhead
-5. **Production code unchanged** - all fixes in local-experiment/
-
----
-
-## Questions?
-
-See `EVALUATION_PIPELINE_FIX_REPORT.md` for:
-- Complete 20-question analysis
-- Production grouping documentation  
-- Before/after comparisons
-- Detailed failure mode analysis
-- Experiment recommendations
-
-**Critical insight:** Previous "poor results" were evaluator bugs, not model bugs. This run will reveal true model quality.
+- Read the full [README.md](README.md) for detailed documentation
+- Check test cases in `test_experiment.py` for examples
+- Review production code in `../log-analyzer/app/data/` and `../log-analyzer/app/serving/`
