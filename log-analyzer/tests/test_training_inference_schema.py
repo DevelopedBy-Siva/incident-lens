@@ -184,22 +184,35 @@ def test_training_prompt_matches_inference_prompt():
     """Verify training system prompt teaches the same schema as inference expects."""
     from app.training.lora_trainer import TransformersPeftTrainingEngine
     from app.serving.investigator import SYSTEM_PROMPT
+    from app.shared.incident_policy import build_user_prompt, OUTPUT_SCHEMA
     
     training_prompt = TransformersPeftTrainingEngine.system_prompt
     inference_prompt = SYSTEM_PROMPT
     
-    # Both should mention all 8 output fields
+    # System prompts should match exactly
+    assert training_prompt == inference_prompt, (
+        f"Training and inference system prompts must match.\n"
+        f"Training: {training_prompt}\n"
+        f"Inference: {inference_prompt}"
+    )
+    
+    # The complete user prompt (which includes POLICY_TEXT and OUTPUT_SCHEMA)
+    # should mention all required fields
+    user_prompt = build_user_prompt(["test log"])
     required_fields = [
         "severity", "disposition", "confidence", "summary",
         "suspected_root_cause", "next_steps", "ticket_title", "ticket_body"
     ]
     
     for field in required_fields:
-        assert field in training_prompt.lower(), (
-            f"Training prompt doesn't mention '{field}'"
+        assert field in user_prompt.lower(), (
+            f"User prompt doesn't mention '{field}'"
         )
-        assert field in inference_prompt.lower(), (
-            f"Inference prompt doesn't mention '{field}'"
+    
+    # Also verify OUTPUT_SCHEMA has all fields
+    for field in required_fields:
+        assert field in OUTPUT_SCHEMA, (
+            f"OUTPUT_SCHEMA missing field '{field}'"
         )
 
 

@@ -93,7 +93,7 @@ class ServingRuntimeIntegrationTests(unittest.TestCase):
         method, request = session.calls[0]
         self.assertEqual(method, "complete")
         self.assertEqual(request["model"], "local-qwen-model")
-        self.assertEqual(request["temperature"], 0.3)
+        self.assertEqual(request["temperature"], 0.0)
 
     def test_investigator_uses_runtime_tool_interface_and_preserves_output(self):
         content = json.dumps(
@@ -126,8 +126,8 @@ class ServingRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(method, "complete_with_tools")
         self.assertEqual(request["model"], "local-qwen-model")
         self.assertEqual(request["tool_choice"], "auto")
-        self.assertEqual(request["temperature"], 0.2)
-        self.assertEqual(request["max_tokens"], 1500)
+        self.assertEqual(request["temperature"], 0.0)
+        self.assertEqual(request["max_tokens"], 768)
 
     def test_runbook_tiebreaker_uses_local_runtime(self):
         content = json.dumps(

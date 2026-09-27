@@ -157,7 +157,7 @@ class DatasetBuilderTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            example["expected_output"]["recommended_actions"],
+            example["expected_output"]["next_steps"],
             ["notify_oncall"],
         )
         self.assertNotIn(no_analysis.id, json.dumps(examples))
@@ -187,7 +187,7 @@ class DatasetBuilderTests(unittest.TestCase):
                 "severity": "high",
                 "disposition": "NEEDS_ONCALL",
                 "summary": "The database connection pool was exhausted.",
-                "recommended_actions": ["notify_oncall"],
+                "next_steps": ["notify_oncall"],
             },
         }
 

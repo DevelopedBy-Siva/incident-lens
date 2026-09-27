@@ -2,7 +2,7 @@ name: Deploy log analyzer to EC2
 
 on:
   push:
-    branches: [main]
+    branches: [v1]
     paths:
       - "log-analyzer/**"
       - "compose.prod.yaml"

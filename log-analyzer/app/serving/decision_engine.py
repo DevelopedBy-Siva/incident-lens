@@ -7,6 +7,11 @@ from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from app.serving.model_runtime import get_model_runtime
+from app.shared.incident_policy import (
+    INFERENCE_CONFIG,
+    POLICY_TEXT,
+    SYSTEM_PROMPT as CANONICAL_SYSTEM_PROMPT,
+)
 from app.shared.observability import trace_operation
 
 load_dotenv()
@@ -107,33 +112,15 @@ class DecisionEngine:
             [
                 (
                     "system",
-                    """You are an expert SRE analyzing production incidents.
+                    f"""{CANONICAL_SYSTEM_PROMPT}
 
-You will receive:
-1. Core incident metadata (source, environment, count, timestamps)
-2. An evidence bundle containing:
-   - Sample log lines from this incident
-   - Other open incidents currently firing in the same system
-   - A known root cause link (if already established)
+{POLICY_TEXT}
 
-Use ALL of this evidence when deciding severity and disposition.
+Use ALL evidence when deciding severity and disposition.
 Key reasoning rules:
 - If multiple related incidents are firing together, treat this as a potential cascade — raise severity
 - If a root cause is already known, reflect that in the summary
 - If count is low (< 3) and no related incidents, prefer OBSERVE over ESCALATE
-
-Severity guidelines:
-- CRITICAL: Service down, data loss, OutOfMemoryError, heap space, segfaults, fatal errors
-- HIGH: Database connection errors, null pointer exceptions, major features broken
-- MEDIUM: Feature partially broken, intermittent errors
-- LOW: Minor issues, cosmetic, affects few users
-
-Disposition guidelines:
-- ESCALATE: CRITICAL/HIGH — page on-call immediately
-- NEEDS_ONCALL: HIGH — notify on-call during business hours
-- NEEDS_DEV: MEDIUM/HIGH — standard dev ticket
-- OBSERVE: LOW/MEDIUM — monitor for patterns
-- NO_ACTION: LOW — known noise
 
 CRITICAL RULES:
 - CRITICAL or HIGH severity → ESCALATE or NEEDS_ONCALL
@@ -141,7 +128,7 @@ CRITICAL RULES:
 - DB connection errors, NPE → ALWAYS HIGH minimum
 - ALWAYS provide ticket_title
 
-{format_instructions}""",
+{{format_instructions}}""",
                 ),
                 (
                     "human",
@@ -259,7 +246,7 @@ Was the new incident caused by one of the earlier incidents?
                 response = runtime_session.complete(
                     model=model_name,
                     messages=formatted,
-                    temperature=0.3,
+                    temperature=INFERENCE_CONFIG["temperature"],
                 )
                 elapsed_ms = int((time.time() - t0) * 1000)
 

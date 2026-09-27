@@ -91,11 +91,11 @@ class DatasetBuilder:
                 "explanation": incident.cause_explanation,
             }
 
-        recommended_actions = []
+        next_steps = []
         if action_log and isinstance(action_log.requested_actions, list):
-            recommended_actions = list(action_log.requested_actions)
+            next_steps = list(action_log.requested_actions)
         elif analysis and isinstance(analysis.next_steps, list):
-            recommended_actions = list(analysis.next_steps)
+            next_steps = list(analysis.next_steps)
 
         return {
             "input": {
@@ -147,7 +147,7 @@ class DatasetBuilder:
                 "disposition": analysis.disposition if analysis else None,
                 "root_cause": root_cause,
                 "summary": analysis.summary if analysis else None,
-                "recommended_actions": recommended_actions,
+                "next_steps": next_steps,
             },
         }
 

@@ -94,12 +94,12 @@ class JsonLinesDatasetSerializer:
                     raise DatasetValidationError(
                         f"Record {index} requires expected_output.{field}"
                     )
-            actions = output.get("recommended_actions")
+            actions = output.get("next_steps")
             if not isinstance(actions, list) or not all(
                 isinstance(action, str) for action in actions
             ):
                 raise DatasetValidationError(
-                    f"Record {index} requires expected_output.recommended_actions "
+                    f"Record {index} requires expected_output.next_steps "
                     "as a list of strings"
                 )
             if output.get("root_cause") is not None and not isinstance(

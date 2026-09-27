@@ -1,441 +1,674 @@
 # IncidentLens
 
-**Turn noisy application logs into explainable incidents, policy-approved actions, and project-specific model improvements.**
+**Can a small fine-tuned language model reliably analyze production-style incidents from backend logs?**
 
-IncidentLens is a policy-bound AIOps platform for incident triage. It reads application logs from Datadog, groups repeated failures into incidents, investigates them with [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B), and applies deterministic safety rules before any action is executed. Reviewed incident data can be versioned and used to train a project-specific LoRA adapter.
+[🌐 Project Portfolio](https://sivasanker.vercel.app/projects/incident-lens)
 
-![IncidentLens dashboard](imgs/dashboard.png)
+IncidentLens is an end-to-end incident analysis platform that turns backend log streams into structured incident assessments. Instead of treating every warning or error as an isolated event, it groups related log sequences into incidents and uses a fine-tuned small language model to assess severity, determine the appropriate operational response, identify a likely root cause, and recommend next steps.
 
-![IncidentLens incident investigation](imgs/incident.png)
+The project combines **log analysis, parameter-efficient fine-tuning, on-demand GPU training, model artifact management, and observability** into a single system.
 
-## The problem
+Success was measured on two dimensions: **decision quality** — choosing the right severity and response — and **explanation quality** — ensuring claims are actually supported by the logs. The second turned out to be the harder problem and became the central finding of the project.
 
-Application log streams are repetitive, high-volume, and full of values that change from one event to the next. Raw alerts reveal that something failed, but they rarely explain whether several errors belong to the same incident, whether one failure caused another, or what response is safe.
+## Application
 
-An unconstrained model is not an execution boundary. It can produce a useful diagnosis while still understating severity, overreacting to a single event, or suggesting an unsafe remediation. IncidentLens keeps model reasoning and action authority separate.
+<p align="center">
+  <img src="imgs/create-ui.png" alt="IncidentLens project interface" width="900"/>
+</p>
 
-## The solution
-
-IncidentLens combines:
-
-- Datadog log ingestion with cursor-based polling and pagination
-- Message normalization and signature-based incident clustering
-- Evidence-grounded, tool-assisted investigation with Qwen3.5 4B
-- Structured severity, disposition, root-cause, summary, and ticket output
-- A deterministic policy engine that derives, allows, or blocks actions
-- A complete investigation and action audit trail in PostgreSQL
-- Human-reviewed JSONL datasets and project-specific LoRA adapters
-- Discord and email notification routing
-
-The model explains the incident. The policy engine controls the response.
-
-## How it fits together
-
-```text
-Datadog Logs ──► IncidentLens API ──► PostgreSQL
-                       │
-                       ├──► Qwen3.5 4B + project LoRA adapter
-                       ├──► S3 datasets and adapters
-                       └──► Discord and email
-
-React dashboard ◄─────► IncidentLens API
-```
-
-FastAPI owns project setup, ingestion, investigation, policy enforcement, training, and audit history. PostgreSQL stores application state. S3 is the durable store for versioned JSONL datasets and complete LoRA adapter directories.
-
-## User setup flow
-
-Each project has its own credentials, incidents, datasets, adapter, and notification settings.
-
-```text
-Register project
-      ▼
-Configure and verify Datadog
-      ▼
-Upload dataset → review records → train adapter
-      ▼
-Adapter becomes active
-      ▼
-Monitor incidents in the dashboard
-```
-
-Datadog setup requires an API key, an application key with `logs_read_data`, a site, a query, and a service filter. Verification performs a read-only check; the user must still save the settings. Discord webhooks and an email recipient are optional.
-
-To bootstrap model training, upload [`data/dataset_v1.jsonl`](data/dataset_v1.jsonl), review the records, approve the selection, and run training. The resulting READY adapter is activated automatically. Setup is complete when both Datadog and an active adapter are configured.
-
-## IncidentLens application flow
-
-```text
-Datadog logs
-      ▼
-Normalize and cluster repeated errors
-      ▼
-Build incident evidence
-      ▼
-Qwen3.5 4B + project adapter investigates
-      ▼
-Validate severity, disposition, root cause, and next steps
-      ▼
-Policy allows safe actions and blocks unsafe actions
-      ▼
-Save the audit trail and send configured notifications
-```
-
-The polling worker queries contiguous Datadog windows and processes warning, error, and critical events. Volatile values are removed before signatures are generated, so repeated messages join the same open incident within a two-minute window. New incidents are investigated immediately; growing incidents are reconsidered at counts `5`, `10`, and `20`.
-
-The evidence bundle contains representative logs, recent related incidents, and any known causal link. The model can request recent logs, related incidents, or an incident timeline before returning structured analysis.
-
-The model cannot execute operations directly. Policy checks confidence, severity, incident state, cooldowns, and action type. Enrichment, qualifying suppression, and configured notifications can run; infrastructure changes, restarts, database changes, secret rotation, deletion, scaling, and unknown actions are blocked. Evidence, tool calls, analysis, policy reasons, and action outcomes are saved for inspection.
+IncidentLens provides a single interface for configuring log analysis, managing
+training datasets, launching fine-tuning jobs, and working with trained model
+artifacts.
 
 <table>
   <tr>
-    <td><img src="imgs/discord.png" alt="IncidentLens Discord notification"></td>
-    <td><img src="imgs/email.png" alt="IncidentLens email notification"></td>
+    <td align="center">
+      <img src="imgs/create-ui.png" alt="Create UI" width="100%"/>
+    </td>
+    <td align="center">
+      <img src="imgs/training-ui.png" alt="Training UI" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="imgs/dataset-ui.png" alt="Dataset UI" width="100%"/>
+    </td>
+    <td align="center">
+      <img src="imgs/models-ui.png" alt="Models UI" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="imgs/settings-ui.png" alt="Project Settings UI" width="50%"/>
+    </td>
   </tr>
 </table>
 
-## Training dataset
+## Technical Stack
 
-[`data/dataset_v1.jsonl`](data/dataset_v1.jsonl) is the current seed dataset for project adapter training. It contains 1,984 supervised incident examples used to teach the project adapter.
+| Layer            | Technology                                       |
+| ---------------- | ------------------------------------------------ |
+| Frontend         | React                                            |
+| Backend          | FastAPI, Python                                  |
+| Base Model       | Qwen/Qwen3.5-4B                                  |
+| Fine-Tuning      | QLoRA / LoRA                                     |
+| ML Framework     | PyTorch                                          |
+| Model Tooling    | Hugging Face Transformers, PEFT                  |
+| Database         | Neon PostgreSQL                                  |
+| Artifact Storage | Amazon S3                                        |
+| Training Compute | Amazon EC2 GPU instances                         |
+| Observability    | Datadog                                          |
+| Containerization | Docker                                           |
+| CI/CD            | GitHub Actions                                   |
+| Model Output     | Structured JSON                                  |
+| Evaluation       | 29 unseen incident scenarios (2,000+ log events) |
 
-| Dataset property | Value |
-| --- | ---: |
-| Records | 1,984 |
-| Incident types | 30 |
-| Services | 35 |
-| Regions | 26 |
-| Log lines per record | 3–6, median 5 |
-| Records with related-incident context | 311 |
+---
 
-### Label distribution
+## The Problem
 
-| Field | Value | Records |
-| --- | --- | ---: |
-| Severity | High | 1,195 |
-| Severity | Medium | 462 |
-| Severity | Critical | 327 |
-| Disposition | `NEEDS_ONCALL` | 890 |
-| Disposition | `ESCALATE` | 552 |
-| Disposition | `NEEDS_DEV` | 542 |
+A production incident rarely appears as one clean error.
 
-The dataset focuses on actionable incidents. Its 30 failure categories include database and cache exhaustion, message-queue backlog, payment timeouts, memory leaks, certificate failures, pod failures, search degradation, configuration errors, and model or adapter loading failures.
-
-Each line follows this shape:
+It is usually a sequence:
 
 ```text
-input
-├── logs[]
-├── service
-├── environment
-├── count
-├── related_incidents[]
-└── metadata
-    ├── region
-    ├── host
-    ├── trace_id
-    └── request_id
-
-output
-├── incident_type
-├── severity
-├── disposition
-├── summary
-└── recommended_actions[]
+warning
+   |
+   v
+repeated warning
+   |
+   v
+degraded capacity
+   |
+   v
+failure
+   |
+   v
+mitigation / recovery
 ```
 
-On upload, the backend validates every record and normalizes the dataset's `output` object to the internal `expected_output` schema. The dataset remains pending review until a user selects at least one record and approves it.
+Finding the `ERROR` line is easy. Answering the questions that actually matter is harder:
 
-## Model lifecycle
+- Is this a real incident?
+- How severe was the impact?
+- What operational response is appropriate?
+- What likely caused it?
+- What evidence supports that conclusion?
+- What should an engineer investigate next?
 
-1. A user uploads seed data or builds a dataset from analyzed incidents.
-2. The user reviews the records and approves the examples to use.
-3. Training creates a project-specific LoRA adapter for Qwen3.5 4B.
-4. Integrity checks verify the adapter files and metadata.
-5. A successful adapter is uploaded to S3, registered as READY, and activated.
+IncidentLens was built around that problem.
 
-### Training execution modes
+---
 
-IncidentLens supports two training execution modes:
+## Application Flow
 
-#### Local/Synchronous (Development Mode)
+A user creates a project and connects a log source. IncidentLens continuously works with incoming backend logs, groups related events into incident context, and passes the relevant evidence to the project's model for analysis.
 
-**Default behavior:** Training runs on the application server, blocking until completion.
-
-- **When:** `TRAINING_EC2_ENABLED=false` (default)
-- **Resources:** GPU/CPU on the same EC2 instance as the application
-- **Duration:** 5–15 minutes depending on dataset size and hardware
-- **Use case:** Local development, small datasets, testing
-
-Training applies the Qwen chat template and masks prompt tokens so loss is computed on the expected incident response. The default LoRA profile covers Qwen3.5's full-attention, linear-attention, and MLP projections with rank `8`, alpha `16`, dropout `0.05`, and a maximum sequence length of `1024`.
-
-#### EC2 Remote/Asynchronous (Production Mode)
-
-**Scalable alternative:** Training runs on a temporary GPU-enabled EC2 instance (g6.xlarge), returning immediately with status `RUNNING`.
-
-- **When:** `TRAINING_EC2_ENABLED=true`
-- **Resources:** Temporary g6.xlarge GPU instance launched on-demand
-- **Duration:** Instance boots (~2 min), trains (~5–15 min), terminates (~1 min)
-- **Cost:** Only GPU usage during training, no idle instance costs
-- **Use case:** Production deployments, large datasets, frequent retraining
-- **Response:** API returns `202 Accepted` with running job; training completes asynchronously
-- **Monitoring:** Poll `GET /training-jobs/{job_id}` to track progress and completion
-- **Status updates:** Bootstrap script updates job status via direct database connection
-- **Telemetry:** Training logs are sent to Datadog Live Tail for real-time monitoring (best-effort)
-
-**Architecture:**
-1. Application receives training request, validates dataset, creates configuration
-2. Determines current Git commit SHA (or uses configured SHA from environment)
-3. Launches temporary g6.xlarge EC2 instance with training configuration in User Data
-4. Returns immediately with job status `RUNNING` and instance ID (202 Accepted)
-5. Temporary instance boots and runs `/opt/incident-lens/bootstrap-training.py` from AMI
-6. Bootstrap script clones repository from Git and checks out the specified commit SHA
-7. Bootstrap activates pre-built training environment and configures Python path
-8. Bootstrap downloads dataset from S3, runs QLoRA fine-tuning, uploads artifacts
-9. Training job status updated to `PASSED` or `FAILED` in database
-10. Instance terminates automatically after completion
-
-**Key Design:**
-- Training AMI contains stable GPU drivers, Python environment (`/home/ubuntu/training-env`), and bootstrap script
-- AMI does **not** contain application source code
-- Application code is cloned fresh at runtime and pinned to a Git commit SHA
-- This ensures training uses code matching the application version that launched the job
-- AMI can be updated for GPU/Python dependencies without rebuilding for code changes
-
-**Training Observability:**
-
-While the temporary GPU instance is running, training logs are sent to **Datadog Live Tail** for real-time monitoring. This telemetry is **best-effort** and will never cause training to fail:
-
-- **Service:** `incidentlens-training`
-- **Source:** `incidentlens`
-- **Local logs:** Always written to `/var/log/incident-lens-training.log` on the instance
-- **Datadog logs:** Sent via HTTP Logs API with 5-second timeout
-- **Failure handling:** If Datadog is unavailable, logs are written locally and training continues
-
-**View training logs in Datadog Live Tail:**
-
-Filter by specific training job:
-```
-service:incidentlens-training @training_job_id:<job-id>
-```
-
-Filter by project:
-```
-service:incidentlens-training @project_id:<project-id>
-```
-
-Filter by event type:
-```
-service:incidentlens-training @event:training_progress
-service:incidentlens-training @event:training_failed
-```
-
-**Available training events:**
-- `training_worker_started` – Instance started, configuration loaded
-- `repository_clone_completed` – Git repository cloned and checked out
-- `dataset_download_started` / `dataset_download_completed` – Dataset download from S3
-- `model_loading_started` / `model_loading_completed` – Base model loading
-- `training_started` – QLoRA fine-tuning started
-- `training_progress` – Progress updates (~20 during training) with `current_step`, `total_steps`, `progress_percent`, `elapsed_seconds`
-- `training_completed` – Training finished successfully
-- `artifact_upload_started` / `artifact_upload_completed` – Adapter upload to S3
-- `job_status_updated` – Database status update
-- `training_failed` – Training failed with error details
-
-**Correlation attributes on all logs:**
-- `project_id` – Project identifier
-- `training_job_id` – Training job identifier
-- `dataset_id` – Dataset identifier
-- `ec2_instance_id` – EC2 instance identifier (if available)
-- `environment` – Always `production`
-
-Training telemetry uses the same Datadog credentials configured for the project's log ingestion. If Datadog credentials are not configured, training proceeds without telemetry.
-
-Datasets and adapters are versioned rather than overwritten. A successful run activates its new artifact; the Models page can later switch to any READY artifact owned by the project. A failed training or validation step leaves the previously active artifact unchanged.
-
-Training needs a local working directory, and inference needs local model files. Those directories are caches, not the durable store: completed adapter files are uploaded to S3 and downloaded again when a cache is empty. Datasets are written directly to S3. If `S3_BUCKET` is not configured, the filesystem implementations remain available for local development and tests.
-
-## Tech stack
-
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, React Router, Tailwind CSS, Recharts, Axios |
-| API | FastAPI, Pydantic, Uvicorn |
-| Persistence | PostgreSQL 16, SQLAlchemy |
-| Log source | Datadog Logs API |
-| Model | [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B) |
-| Model runtime | PyTorch, Transformers, PEFT |
-| Training | LoRA, Hugging Face Datasets, Safetensors |
-| Observability | Datadog APM, Logs, LLM Observability, and metrics |
-| Notifications | Discord webhooks and SMTP |
-
-## Local development
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- Docker with Docker Compose
-- Datadog API and application keys; the application key needs `logs_read_data`
-- A Hugging Face token with access to `Qwen/Qwen3.5-4B`
-- Network access to download the configured base model
-
-CPU execution is supported, but loading and training a 4B model is resource-intensive. A compatible accelerator is recommended.
-
-### 1. Configure the project
-
-```bash
-git clone https://github.com/DevelopedBy-Siva/incident-lens.git
-cd incident-lens
-cp .env.example .env
-```
-
-The defaults in `.env.example` connect the backend to the bundled PostgreSQL service. Replace `SECRET_KEY` and add Datadog observability settings if you want to trace IncidentLens itself. Credentials used to read application logs are entered per project in the UI and stored in PostgreSQL.
-
-### 2. Start PostgreSQL
-
-```bash
-docker compose up -d postgres
-docker compose ps
-```
-
-### 3. Start the backend
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r log-analyzer/requirements.txt
-
-ddtrace-run python -m uvicorn app.main:app \
-  --app-dir log-analyzer \
-  --host 0.0.0.0 \
-  --port 8000
-```
-
-The backend loads the configured shared base model during startup and fails fast if the model or database cannot be initialized.
-
-### 4. Start the frontend
-
-In a second terminal:
-
-```bash
-cd log-analyzer-frontend
-npm ci
-npm start
-```
-
-Open [http://localhost:3000](http://localhost:3000), register a project, configure Datadog under **Settings**, then upload a dataset and train an adapter under **Training**. The backend API is available at [http://localhost:8000/docs](http://localhost:8000/docs).
-
-### 5. Stream sample logs (optional)
-
-The local simulator sends the included sample stream to Datadog so the complete ingestion path can be exercised.
-
-```bash
-python3 -m venv .venv-log-server
-source .venv-log-server/bin/activate
-pip install -r log-server/requirements.txt
-python -m uvicorn server:app --app-dir log-server --port 5001
-```
-
-With `LOG_SERVER_URL=http://localhost:5001`, start and stop the stream from the dashboard.
-
-## Configuration
-
-The complete template is in [`.env.example`](.env.example). The primary settings are:
-
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection used for application and audit state |
-| `SECRET_KEY` | JWT signing key |
-| `CORS_ORIGINS` | Allowed dashboard origins |
-| `BASE_MODEL` | Shared model identifier; defaults to `Qwen/Qwen3.5-4B` |
-| `HF_TOKEN` | Hugging Face token used to download the base model |
-| `DEVICE` | PyTorch runtime device |
-| `DTYPE` | Model weight data type |
-| `AWS_REGION` | Region containing the S3 bucket |
-| `S3_BUCKET` | Private bucket for datasets and adapters; setting it enables S3 storage |
-| `S3_DATASET_PREFIX` | Dataset object prefix; defaults to `datasets` |
-| `S3_ARTIFACT_PREFIX` | Adapter object prefix; defaults to `artifacts` |
-| `DATASET_STORAGE_PATH` | Filesystem fallback used only when `S3_BUCKET` is empty |
-| `ARTIFACT_STORAGE_PATH` | Local training/inference cache and filesystem fallback |
-| `POLL_INTERVAL` | Datadog polling interval in seconds |
-| `DATADOG_LOOKBACK_SECONDS` | Initial log-search window in seconds |
-| `LOG_SERVER_URL` | Optional local simulator URL |
-
-### EC2 GPU Training Configuration (Production)
-
-To enable asynchronous training on temporary GPU instances, configure these settings:
-
-**GitHub Secrets (deployment-specific values):**
-
-| Variable | Purpose |
-| --- | --- |
-| `TRAINING_EC2_ENABLED` | Enable EC2 remote training; set to `true` (defaults to `false`) |
-| `TRAINING_EC2_AMI_ID` | **Required.** Pre-built training AMI with PyTorch, Transformers, PEFT installed (e.g., `ami-0c54a4fe99a96cfc3`) |
-| `TRAINING_EC2_IAM_INSTANCE_PROFILE` | **Required.** IAM instance profile name with S3 and PostgreSQL access |
-
-**Application defaults (non-sensitive configuration):**
-
-These values use sensible defaults and do not need to be stored as GitHub Secrets:
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `TRAINING_EC2_INSTANCE_TYPE` | GPU instance type | `g6.xlarge` (85 GB GPU memory) |
-| `TRAINING_EC2_MAX_WAIT_SECONDS` | Max time to wait for training completion | `3600` (1 hour) |
-| `TRAINING_EC2_DETAILED_MONITORING` | Enable CloudWatch detailed monitoring | `false` |
-| `TRAINING_EC2_TERMINATE_ON_COMPLETION` | Auto-terminate instance after completion | `true` |
-| `TRAINING_EC2_ASSOCIATE_PUBLIC_IP` | Assign public IP to training instances | `false` |
-| `TRAINING_EC2_SUBNET_ID` | VPC subnet for instance (optional) | Uses default VPC |
-| `TRAINING_EC2_SECURITY_GROUP_IDS` | Comma-separated security group IDs (optional) | Uses default security group |
-
-The application must have AWS credentials (via IAM role) to launch EC2 instances. No AWS access keys are required as GitHub Secrets.
-
-Datadog application-observability variables (`DD_*`) are separate from the per-project credentials used to search logs.
-
-With S3 enabled, datasets use keys such as `datasets/projects/<project-id>/dataset-v1.jsonl`. Adapter directories are uploaded under `artifacts/<project-id>/adapter-vN/`, including weights, adapter configuration, tokenizer files, metadata, and the integrity manifest.
-
-## Testing
-
-```bash
-# Backend
-cd log-analyzer
-python -m pytest -q
-
-# Frontend build
-cd ../log-analyzer-frontend
-npm run build
-```
-
-## Repository layout
+The application also supports project-specific model training. Instead of maintaining an expensive GPU instance continuously, training compute is provisioned only when a user requests a fine-tuning job.
 
 ```text
-incident-lens/
-├── data/
-│   └── dataset_v1.jsonl    Seed incident-training dataset
-├── log-analyzer/           FastAPI backend and Python test suite
-│   └── app/
-│       ├── control/        Project setup and lifecycle management
-│       ├── data/           Ingestion and incident formation
-│       ├── serving/        Investigation, policy, and actions
-│       └── training/       Datasets, LoRA training, and artifacts
-├── log-analyzer-frontend/  React dashboard
-├── log-server/             Optional Datadog log simulator
-├── imgs/                   Product screenshots
-└── compose.yaml            Local PostgreSQL
+                         IncidentLens
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+          v                   v                   v
+     Backend Logs       Application State     Model Training
+          |                   |                   |
+          v                   v                   v
+     Log Analysis       Neon PostgreSQL       Training Job
+          |             - Projects                |
+          |             - Incidents               v
+          |             - Training Jobs     On-Demand GPU EC2
+          |             - Model Metadata          |
+          |                                       v
+          |                                QLoRA Fine-Tuning
+          |                                       |
+          |                              +--------+--------+
+          |                              |                 |
+          |                              v                 v
+          |                         Amazon S3          Datadog
+          |                       Model Artifacts    Training Logs
+          |                              |
+          +------------------------------+
+                         |
+                         v
+                 Incident Analysis
 ```
 
-## Known limitations
+**Neon PostgreSQL** stores persistent application state such as projects, incidents, training jobs, and model metadata. **Amazon S3** stores larger ML artifacts including training inputs, configuration, and LoRA adapters.
 
-- Datadog is currently the only implemented log-source connector.
-- The polling cursor is kept in process memory and resets when the backend restarts.
-- Model-backed investigation requires a READY active adapter for the project.
-- There is no remote-model or base-model-only inference fallback.
-- Local training runs synchronously and is resource-intensive on CPU; use EC2 mode for production.
-- EC2 training requires a pre-built AMI and IAM instance profile configuration.
-- Polling and verification workers run inside the API process, so the current architecture assumes one backend instance.
+---
 
-## What I learned
+## Incident Analysis
 
-- Safe automation needs an enforcement boundary outside the model.
-- Incident quality depends as much on normalization and evidence selection as it does on model capability.
-- Human-reviewed operational history can form a reproducible training loop when datasets and artifacts are immutable.
-- A model lifecycle is trustworthy only when failures cannot replace the last known-good artifact.
+IncidentLens analyzes related events as a sequence rather than independently classifying individual log lines.
+
+For example:
+
+```text
+Kafka consumer lag increases
+            |
+            v
+lag continues rising
+            |
+            v
+consumer rebalance
+            |
+            v
+processing failures
+            |
+            v
+scaling / recovery
+            |
+            v
+      Incident Context
+            |
+            v
+   Fine-Tuned Qwen3.5-4B
+            |
+            v
+   Structured Assessment
+```
+
+This context allows the model to reason about persistence, escalation, impact, and recovery rather than reacting to the severity label attached to a single log message.
+
+The model produces:
+
+- severity
+- operational disposition
+- confidence
+- summary
+- suspected root cause
+- next steps
+- ticket title
+- ticket body
+
+---
+
+## Model Output
+
+Every assessment follows a fixed JSON contract:
+
+```json
+{
+  "severity": "high",
+  "disposition": "NEEDS_ONCALL",
+  "confidence": 0.91,
+  "summary": "Consumer lag increased and was accompanied by repeated consumer rebalances.",
+  "suspected_root_cause": "Consumer instability reduced processing capacity and caused backlog growth.",
+  "next_steps": [
+    "Inspect consumer health and rebalance frequency.",
+    "Verify partition assignment and downstream processing latency."
+  ],
+  "ticket_title": "Investigate sustained Kafka consumer lag",
+  "ticket_body": "Review consumer stability, partition assignment, and downstream processing behavior."
+}
+```
+
+Severity represents **how serious the observed impact was**, while disposition represents **what operational response is required**.
+
+---
+
+## On-Demand Fine-Tuning
+
+Model training is designed as an ephemeral workload.
+
+When a training job is requested, IncidentLens dynamically launches a GPU-backed EC2 instance from a prepared training image. The instance retrieves its training inputs, performs QLoRA fine-tuning, stores the resulting adapter, updates the model metadata, and terminates when the job finishes.
+
+```text
+User Starts Training
+        |
+        v
+Training Job Created
+        |
+        v
+Dataset + Config
+        |
+        v
+     Amazon S3
+        |
+        v
+Launch GPU EC2
+        |
+        v
+Download Training Inputs
+        |
+        v
+QLoRA Fine-Tuning
+        |
+        +----------------------+
+        |                      |
+        v                      v
+ Training Progress          Datadog
+        |
+        v
+LoRA Adapter
+        |
+        v
+    Amazon S3
+        |
+        v
+Model Artifact Registered
+        |
+        v
+Training Job Completed
+        |
+        v
+Terminate GPU Instance
+```
+
+### Ephemeral GPU Training
+
+##### GPU Instances
+
+<p align="center">
+  <img src="imgs/ec2.png" alt="On-demand EC2 GPU training instance" />
+</p>
+
+##### Training AMI
+
+<p align="center">
+  <img src="imgs/ami.png" alt="IncidentLens training AMI" />
+</p>
+
+This keeps GPU compute **on demand**: the expensive training instance exists only while a model is being fine-tuned.
+
+Training progress is observable through Datadog, including model/system information, progress percentage, loss, validation, artifact creation, completion, and failure information.
+
+---
+
+## Model Artifact Lifecycle
+
+Fine-tuning does not create another complete copy of the 4B base model for every experiment.
+
+QLoRA produces a project-specific LoRA adapter:
+
+```text
+Qwen3.5-4B
+    +
+Training Dataset
+    |
+    v
+QLoRA Fine-Tuning
+    |
+    v
+LoRA Adapter
+    |
+    v
+Amazon S3
+    |
+    +--> Versioned Artifact
+    |
+    +--> Metadata in Neon
+    |
+    v
+Incident Analysis
+```
+
+This separates the reusable base model from the learned project-specific parameters and makes individual training runs independently versionable.
+
+### Artifact & Model State
+
+<p align="center">
+  <img src="imgs/s3.png" alt="IncidentLens model artifacts in Amazon S3" width="48%"/>
+  <img src="imgs/neon-db.png" alt="IncidentLens application state in Neon PostgreSQL" width="48%"/>
+</p>
+
+---
+
+## Deployment
+
+IncidentLens is deployed as separate frontend, backend, data, model-storage, and training layers.
+
+```text
+                    GitHub
+                       |
+                       v
+                 GitHub Actions
+                       |
+              +--------+--------+
+              |                 |
+              v                 v
+           Frontend          Backend
+            React            FastAPI
+              |                 |
+              +--------+--------+
+                       |
+             +---------+----------+
+             |                    |
+             v                    v
+      Neon PostgreSQL        Amazon S3
+      Application State      ML Artifacts
+                                  |
+                                  v
+                         On-Demand GPU EC2
+                                  |
+                                  v
+                           QLoRA Training
+
+                    Datadog
+                       ^
+                       |
+             Logs + Training Telemetry
+```
+
+The backend is containerized with **Docker**, while **GitHub Actions** provides the automated build/deployment workflow.
+
+Persistent application state and large ML artifacts are deliberately separated: PostgreSQL handles relational application data, while S3 handles datasets, configuration objects, and model adapters.
+
+GPU training is also isolated from the main application so model fine-tuning does not consume resources from the incident-analysis service.
+
+<p align="center">
+  <img src="imgs/ui-vercel-deploy.png" alt="IncidentLens deployed application" width="900"/>
+</p>
+
+---
+
+## Fine-Tuning & Dataset
+
+The final experiment fine-tunes **Qwen/Qwen3.5-4B** using QLoRA/LoRA on approximately **2,200 incident-analysis examples**.
+
+| Parameter               |            Value |
+| ----------------------- | ---------------: |
+| LoRA rank               |                8 |
+| LoRA alpha              |               16 |
+| Dropout                 |             0.05 |
+| Target modules          |       all-linear |
+| Learning rate           |             1e-4 |
+| Epochs                  |                1 |
+| Batch size              |                1 |
+| Gradient accumulation   |                1 |
+| Maximum sequence length |             1024 |
+| Validation split        |              10% |
+| Split strategy          | Group-stratified |
+| Seed                    |               42 |
+
+Each training example contains a sequence of related backend logs paired with the expected structured assessment.
+
+The loss is applied to the assistant response rather than the input prompt, focusing training on generation of the expected incident assessment.
+
+### Dataset Evolution
+
+The dataset went through several redesigns as weaknesses became visible during experimentation.
+
+| Problem                       | Change                                        | Why it mattered                                            |
+| ----------------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| Dataset leakage               | Grouped related scenarios during validation   | Prevented near-identical scenarios appearing on both sides |
+| Label imbalance               | Diversified severity/disposition combinations | Reduced simple label shortcuts                             |
+| Recovery bias                 | Used maximum observed impact                  | Prevented recovery from artificially lowering severity     |
+| Severity/disposition coupling | Modeled them separately                       | Allowed different responses for similar impact             |
+| Template repetition           | Increased scenario diversity                  | Reduced memorization                                       |
+| Chronological inconsistency   | Enforced ordered log sequences                | Preserved incident progression                             |
+| Limited context               | Increased multi-event sequences               | Better represented real incidents                          |
+| Structured output             | Fixed JSON training contract                  | Improved output reliability                                |
+
+---
+
+## Validation Strategy
+
+A naive random split initially allowed variations of the same synthetic scenario to appear in both training and validation.
+
+For example:
+
+```text
+TRAIN
+Kafka lag -> rebalance -> processing failure -> recovery
+
+VALIDATION
+Kafka lag -> rebalance -> processing failure -> recovery
+```
+
+Changing timestamps or identifiers does not make these genuinely independent scenarios.
+
+The final training process therefore uses **group-stratified validation**:
+
+```text
+2,200 Examples
+      |
+      v
+Scenario Groups
+      |
+      v
+Group-Stratified Split
+     / \
+    /   \
+   v     v
+Train   Validation
+```
+
+The final split achieved **zero overlapping scenario groups** between training and validation.
+
+---
+
+## Evaluation
+
+Evaluation was kept completely separate from training.
+
+The final benchmark contains **29 manually curated unseen incident scenarios** with known incident boundaries, severity, disposition, and relevant evidence.
+
+The scenarios cover a broad range of backend failures, including:
+
+- Kafka consumer lag
+- expired TLS certificates
+- memory pressure and OOM
+- database connectivity failures
+- Redis memory exhaustion
+- deployment failures
+- queue backlogs
+- Kafka broker failures
+- database connection-pool exhaustion
+- configuration failures
+- Elasticsearch failures
+- pod crash loops
+- disk pressure
+- vendor API timeouts
+- thread-pool exhaustion
+- database deadlocks
+- payment degradation
+- DNS resolution failures
+
+Three dimensions were evaluated separately:
+
+**Classification** — Did the model choose the correct severity and disposition?
+
+**Structured output** — Did it consistently produce the required machine-readable schema?
+
+**Grounding** — Were the claims in the explanation actually supported by the supplied logs?
+
+---
+
+## Results
+
+The final classification-focused experiment achieved:
+
+| Metric                         |    Result |
+| ------------------------------ | --------: |
+| Severity accuracy              | **82.8%** |
+| Supported-class severity F1    | **0.778** |
+| Disposition accuracy           | **89.7%** |
+| Supported-class disposition F1 | **0.914** |
+| Critical recall                |  **100%** |
+| ESCALATE recall                |  **100%** |
+| JSON validity                  |  **100%** |
+
+The model learned the decision-making portion of the task particularly well: all critical incidents and all `ESCALATE` cases in the evaluation set were identified.
+
+---
+
+## Classification vs. Grounding
+
+The experiments exposed an important distinction.
+
+```text
+                  Incident Logs
+                       |
+                       v
+                 Fine-Tuned Model
+                    /       \
+                   /         \
+                  v           v
+           Classification   Explanation
+              |     |        |    |
+              v     v        v    v
+          Severity Action   RCA  Next Steps
+```
+
+The final experiment performed strongly on the **classification side**, but explanation grounding remained harder.
+
+Even when severity and disposition were correct, generated explanations could introduce details not established by the evidence, including:
+
+- request counts
+- error percentages
+- customer-impact claims
+- failover actions
+- paging activity
+- mitigation or recovery details
+
+For example:
+
+```text
+Observed:
+Kafka consumer lag increased significantly.
+
+Supported:
+high / NEEDS_ONCALL
+
+Unsupported:
+"1,000 customers were affected."
+```
+
+The model may know that this type of incident often causes customer impact, but that does not mean the supplied logs establish that it happened in this particular incident.
+
+Later experiments tightened evidence-grounding constraints. Grounding improved, but classification performance decreased.
+
+```text
+Classification-Focused Run
+        |
+        +--> Strong classification
+        |
+        +--> Weaker grounding
+
+
+Grounding-Focused Runs
+        |
+        +--> Better evidence discipline
+        |
+        +--> Lower classification performance
+```
+
+The classification-focused experiment was therefore retained as the final model result, while grounded explanation remained the primary limitation.
+
+> **Correct classification does not automatically mean grounded generation.**
+
+---
+
+## Observability
+
+Datadog provides visibility into both sides of the system.
+
+Application logs provide the raw operational signals used by IncidentLens, while temporary training instances emit training telemetry.
+
+A training run exposes a lifecycle similar to:
+
+```text
+Training Started
+       |
+       v
+Model / GPU / Memory
+       |
+       v
+Dataset Loaded
+       |
+       v
+Training Progress
+       |
+       +--> Percentage
+       +--> Step
+       +--> Loss
+       +--> Elapsed Time
+       |
+       v
+Validation
+       |
+       v
+Artifact Upload
+       |
+       v
+Model Registered
+       |
+       v
+Instance Cleanup
+```
+
+This makes fine-tuning observable without requiring direct access to the temporary GPU instance.
+
+### Live Training Telemetry
+
+Training progress from temporary GPU instances is streamed into Datadog, making
+the full training lifecycle observable without SSH access to the instance.
+
+<p align="center">
+  <img src="imgs/datadog-training-log-1.png" alt="IncidentLens live training logs in Datadog" width="900"/>
+</p>
+
+<p align="center">
+  <img src="imgs/datadog-training-log-2.png" alt="IncidentLens training progress in Datadog" width="900"/>
+</p>
+
+---
+
+## What I Learned
+
+1. **Validation loss alone can be misleading.** With synthetic or template-heavy data, the split strategy matters as much as the metric.
+
+2. **Dataset design mattered more than hyperparameter tuning.** Improving scenario structure and label relationships had greater impact than repeatedly adjusting LoRA parameters.
+
+3. **Severity and disposition are separate decisions.** Severity describes impact; disposition describes the required operational response.
+
+4. **Recovery does not erase impact.** A recovered incident may still have experienced serious production impact earlier in the sequence.
+
+5. **Sequence context matters.** Escalation, persistence, mitigation, and recovery provide information that an isolated error line cannot.
+
+6. **Structured generation can be trained reliably.** The final experiment achieved 100% valid JSON.
+
+7. **Classification and grounding are different problems.** A model can correctly decide what happened operationally while still making unsupported claims when explaining why.
+
+---
+
+## Limitations and Future Work
+
+The primary remaining limitation is **evidence-grounded explanation generation**.
+
+The current model demonstrates strong incident classification, but explanatory text can still go beyond what the supplied logs establish.
+
+Promising future directions include:
+
+- explicit evidence extraction before explanation generation
+- span-level grounding between claims and log lines
+- citation-backed incident explanations
+- evidence-constrained decoding
+- separating classification from explanation generation
+- more diverse incident sequences
+- dedicated factual-consistency evaluation
+
+---
+
+## Final Takeaway
+
+IncidentLens started as a question about whether a small fine-tuned model could understand production incidents, but the project ultimately exposed a more interesting problem.
+
+The final model achieved:
+
+```text
+Severity Accuracy       82.8%
+Disposition Accuracy    89.7%
+Critical Recall        100.0%
+ESCALATE Recall        100.0%
+Valid JSON             100.0%
+```
+
+But strong classification did not automatically produce fully trustworthy explanations.
+
+That became the central lesson of the project:
+
+> **Getting the incident decision right is only part of getting the incident analysis right.**

@@ -271,10 +271,21 @@ class LocalModelCache:
                     }
                     if tools:
                         template_args["tools"] = tools
-                    inputs = self._base.tokenizer.apply_chat_template(
-                        messages,
-                        **template_args,
-                    )
+                    
+                    # Try to disable thinking for Qwen models
+                    try:
+                        inputs = self._base.tokenizer.apply_chat_template(
+                            messages,
+                            enable_thinking=False,
+                            **template_args,
+                        )
+                    except TypeError:
+                        # Fallback for tokenizers without enable_thinking parameter
+                        inputs = self._base.tokenizer.apply_chat_template(
+                            messages,
+                            **template_args,
+                        )
+                    
                     inputs = inputs.to(self.settings.device)
                     input_tokens = int(inputs["input_ids"].shape[-1])
                     generation_args = {

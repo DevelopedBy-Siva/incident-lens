@@ -9,7 +9,15 @@ from app.serving.local_model import (
     LocalInferenceError,
 )
 from app.serving.model_runtime import get_model_runtime
+from app.shared.incident_policy import (
+    INFERENCE_CONFIG,
+    POLICY_TEXT,
+    SYSTEM_PROMPT as CANONICAL_SYSTEM_PROMPT,
+)
 from app.shared.observability import trace_operation
+
+# Export SYSTEM_PROMPT for testing
+SYSTEM_PROMPT = CANONICAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -202,10 +210,11 @@ class ToolExecutor:
             db.close()
 
 
-SYSTEM_PROMPT = """You are an expert SRE autonomous agent investigating a production incident.
+# Build investigation system prompt using canonical policy
+INVESTIGATION_SYSTEM_PROMPT = f"""{CANONICAL_SYSTEM_PROMPT}
 
 You have access to tools to gather evidence before making your final diagnosis.
-Use them strategically — you have at most {max_iter} rounds.
+Use them strategically — you have at most {{max_iter}} rounds.
 
 Investigation strategy:
 1. If you see a DB/connection error, call get_related_incidents to detect cascades
@@ -213,30 +222,9 @@ Investigation strategy:
 3. If timing of incidents matters, call get_incident_timeline
 4. When you have enough evidence, produce your final JSON analysis
 
-CRITICAL: After your investigation, you MUST output a JSON object (no markdown, no prose) with:
-{{
-  "severity": "low|medium|high|critical",
-  "disposition": "NO_ACTION|OBSERVE|NEEDS_DEV|NEEDS_ONCALL|ESCALATE",
-  "confidence": 0.0-1.0,
-  "summary": "2-3 sentence summary",
-  "suspected_root_cause": "short explanation of the most likely underlying cause, or null",
-  "next_steps": ["step1", "step2", "step3"],
-  "ticket_title": "concise title under 100 chars",
-  "ticket_body": "detailed description for developers"
-}}
+{POLICY_TEXT}
 
-Severity rules:
-- CRITICAL: OOM, heap exhaustion, segfaults, service completely down
-- HIGH: DB connection errors, NPE, major features broken, cascade detected
-- MEDIUM: Partial degradation, intermittent errors
-- LOW: Single occurrence, cosmetic, known noise
-
-Disposition rules:
-- ESCALATE: page on-call NOW (critical/high + cascades)
-- NEEDS_ONCALL: notify on-call during business hours
-- NEEDS_DEV: create a dev ticket
-- OBSERVE: watch for recurrence
-- NO_ACTION: known noise, ignore
+CRITICAL: After your investigation, you MUST output a JSON object (no markdown, no prose) with the exact schema specified in the policy above.
 """
 
 USER_PROMPT = """Investigate this incident:
@@ -283,7 +271,7 @@ class InvestigationLoop:
         messages = [
             {
                 "role": "system",
-                "content": SYSTEM_PROMPT.format(max_iter=MAX_ITERATIONS),
+                "content": INVESTIGATION_SYSTEM_PROMPT.format(max_iter=MAX_ITERATIONS),
             },
             {
                 "role": "user",
@@ -323,8 +311,8 @@ class InvestigationLoop:
                         messages=messages,
                         tools=TOOLS if iteration < MAX_ITERATIONS else None,
                         tool_choice="auto" if iteration < MAX_ITERATIONS else None,
-                        temperature=0.2,
-                        max_tokens=1500,
+                        temperature=INFERENCE_CONFIG["temperature"],
+                        max_tokens=INFERENCE_CONFIG["max_new_tokens"],
                     )
                     msg = response
                     span.metrics(

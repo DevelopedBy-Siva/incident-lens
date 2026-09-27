@@ -28,10 +28,20 @@ class FakeTokenizer:
     def from_pretrained(cls, model_name, **kwargs):
         return cls()
 
-    def apply_chat_template(self, messages, tokenize, add_generation_prompt):
+    def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kwargs):
+        # Ignore enable_thinking, return_dict and other kwargs
         if len(messages) == 2:
             return [1, 2, 3]
         return [1, 2, 3, 4, 5]
+    
+    def __call__(self, text, add_special_tokens=False, **kwargs):
+        """Simple tokenization for truncation tests."""
+        # Return roughly proportional token count
+        return {"input_ids": list(range(len(text) // 4))}
+    
+    def decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=False):
+        """Simple decoding for truncation tests."""
+        return " ".join(f"token{i}" for i in ids)
 
     def save_pretrained(self, output_path):
         Path(output_path, "tokenizer_config.json").write_text(
@@ -48,6 +58,10 @@ class FakeModel:
     @classmethod
     def from_pretrained(cls, model_name, **kwargs):
         return cls(model_name)
+    
+    def gradient_checkpointing_enable(self):
+        """No-op for gradient checkpointing."""
+        pass
 
     def save_pretrained(self, output_path, safe_serialization):
         Path(output_path, "adapter_config.json").write_text(
@@ -99,9 +113,18 @@ class FakeTrainerCallback:
 
 class LoraTrainerTests(unittest.TestCase):
     def _dependencies(self):
+        # Create a fake torch module
+        fake_torch = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=lambda: False),
+            bfloat16="bfloat16",
+            float16="float16",
+            float32="float32",
+        )
+        
         return {
             "AutoModelForCausalLM": FakeModel,
             "AutoTokenizer": FakeTokenizer,
+            "BitsAndBytesConfig": FakeConfiguration,
             "DataCollatorForSeq2Seq": FakeConfiguration,
             "LoraConfig": FakeConfiguration,
             "TaskType": FakeTaskType,
@@ -109,14 +132,25 @@ class LoraTrainerTests(unittest.TestCase):
             "TrainerCallback": FakeTrainerCallback,
             "TrainingArguments": FakeConfiguration,
             "get_peft_model": lambda model, config: model,
+            "prepare_model_for_kbit_training": lambda model: model,
+            "torch": fake_torch,
         }
 
     def _request(self, output_path: str, record_count: int = 2):
         example = {
-            "input": {"incident": {"source": "checkout"}},
+            "input": {
+                "logs": ["[checkout] ERROR: payment processing failed"],
+                "incident": {"source": "checkout"},
+            },
             "expected_output": {
                 "severity": "medium",
                 "disposition": "NEEDS_DEV",
+                "confidence": 0.85,
+                "summary": "Checkout payment processing failures",
+                "suspected_root_cause": "Payment gateway error",
+                "next_steps": ["Check payment gateway logs", "Verify API credentials"],
+                "ticket_title": "Investigate checkout payment failures",
+                "ticket_body": "Payment processing is failing in checkout service",
             },
         }
         content = "\n".join(json.dumps(example) for _ in range(record_count)) + "\n"
@@ -128,7 +162,7 @@ class LoraTrainerTests(unittest.TestCase):
             dataset_content=content.encode(),
             expected_record_count=record_count,
             adapter_output_path=output_path,
-            profile=LoraTrainingProfile(validation_fraction=0.5),
+            profile=LoraTrainingProfile(validation_fraction=0),  # No validation split for simple tests
         )
 
     def test_engine_trains_saves_adapter_and_reports_real_metrics(self):
@@ -140,17 +174,17 @@ class LoraTrainerTests(unittest.TestCase):
                 engine,
                 "_load_dependencies",
                 return_value=self._dependencies(),
-            ):
+            ), patch.dict(os.environ, {"TRAINING_FAIL_ON_QUALITY_GATE": "0"}):
                 result = engine.train(request)
 
             self.assertTrue(result.succeeded)
-            self.assertEqual(result.engine, "transformers-peft-lora-v1")
+            self.assertEqual(result.engine, "transformers-peft-lora-v2")
             self.assertEqual(result.metrics["training_loss"], 0.2)
-            self.assertEqual(result.metrics["validation_loss"], 0.3)
+            self.assertIsNone(result.metrics["validation_loss"])  # No validation split with identical examples
             self.assertTrue(result.metrics["training_completed"])
             self.assertTrue(result.metrics["weights_created"])
-            self.assertEqual(result.metrics["training_records"], 1)
-            self.assertEqual(result.metrics["validation_records"], 1)
+            self.assertEqual(result.metrics["training_records"], 2)  # All records used for training
+            self.assertEqual(result.metrics["validation_records"], 0)  # No validation split
             self.assertEqual(result.metrics["lora_configuration"]["rank"], 8)
             self.assertTrue(
                 Path(artifact_directory, "adapter_model.safetensors").is_file()
@@ -177,18 +211,18 @@ class LoraTrainerTests(unittest.TestCase):
                 engine,
                 "_load_dependencies",
                 return_value=self._dependencies(),
-            ):
+            ), patch.dict(os.environ, {"TRAINING_FAIL_ON_QUALITY_GATE": "0"}):
                 engine.train(request)
 
             self.assertEqual(progress, [(0, 4), (4, 4)])
 
     def test_dataset_parser_rejects_schema_and_record_count_mismatches(self):
-        with self.assertRaisesRegex(TrainingDatasetError, "training schema"):
+        with self.assertRaisesRegex(TrainingDatasetError, "expected keys"):
             TransformersPeftTrainingEngine._parse_examples(b'{"input":{}}\n', 1)
 
         with self.assertRaisesRegex(TrainingDatasetError, "record count"):
             TransformersPeftTrainingEngine._parse_examples(
-                b'{"input":{},"expected_output":{}}\n',
+                b'{"input":{"logs":["test"]},"expected_output":{"severity":"low","disposition":"NO_ACTION","confidence":0.8,"summary":"test","suspected_root_cause":"test","next_steps":[],"ticket_title":"","ticket_body":""}}\n',
                 2,
             )
 

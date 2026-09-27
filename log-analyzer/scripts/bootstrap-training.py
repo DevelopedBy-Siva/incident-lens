@@ -794,8 +794,8 @@ class TrainingBootstrap:
     def _report_progress(self, current: int, total: int) -> None:
         """Report training progress to local logs and Datadog.
         
-        Emits progress updates at regular intervals (approximately 20 times during training)
-        to avoid flooding Datadog with excessive log entries.
+        Emits progress updates with visual clarity for monitoring.
+        Reports progress percentage, step counts, and elapsed time.
         
         Args:
             current: Current training step
@@ -810,21 +810,27 @@ class TrainingBootstrap:
             # Log progress locally at regular intervals
             if current % report_interval == 0 or current == total:
                 elapsed = None
+                elapsed_str = ""
                 if self.training_start_time:
                     elapsed = time.time() - self.training_start_time
+                    elapsed_str = f" elapsed={elapsed:.0f}s"
                 
+                # Format with visual clarity: [TRAINING] INFO: Training progress 45.2% (234/518) elapsed=120s
                 logger.info(
-                    f"Training progress: {current}/{total} ({percent:.1f}%)"
-                    + (f" - {elapsed:.1f}s elapsed" if elapsed else "")
+                    f"Training progress {percent:.1f}% ({current}/{total}){elapsed_str}"
                 )
                 
-                # Send to Datadog at the same interval
+                # Send to Datadog at the same interval with structured fields
                 if self.datadog_logger:
-                    self.datadog_logger.progress(
-                        current_step=current,
-                        total_steps=total,
-                        training_loss=None,  # Loss not available in progress callback
-                        elapsed_seconds=elapsed,
+                    self.datadog_logger.info(
+                        "training_progress",
+                        {
+                            "current_step": current,
+                            "total_steps": total,
+                            "progress_percent": round(percent, 1),
+                            "elapsed_seconds": round(elapsed, 1) if elapsed else None,
+                        },
+                        message=f"Training progress {percent:.1f}% ({current}/{total}){elapsed_str}",
                     )
 
     def _upload_artifacts(self, adapter_path: str, artifact_version: str) -> tuple[int, float]:
