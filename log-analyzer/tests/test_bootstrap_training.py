@@ -205,6 +205,35 @@ class BootstrapConfigLoadingTests(unittest.TestCase):
             # AWS region should be in config
             self.assertEqual(bootstrap.config["aws_region"], "us-east-1")
 
+    def test_ec2_artifact_manifest_is_written_before_upload(self):
+        bootstrap = bootstrap_training.TrainingBootstrap.__new__(
+            bootstrap_training.TrainingBootstrap
+        )
+        bootstrap.config = {
+            "s3_bucket": "test-bucket",
+            "project_id": "project-1",
+            "dataset_id": "dataset-1",
+            "base_model": "Qwen/Qwen3.5-4B",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            adapter_path = Path(directory)
+            artifact_id = bootstrap._write_artifact_metadata(
+                {
+                    "adapter_path": str(adapter_path),
+                    "engine": "transformers-peft-lora-v3",
+                    "metrics": {"training_loss": 0.2},
+                    "framework_versions": {"transformers": "x"},
+                    "artifact_files": ({"name": "adapter_model.safetensors"},),
+                },
+                "adapter-v1",
+            )
+
+            metadata = json.loads((adapter_path / "metadata.json").read_text())
+            self.assertEqual(metadata["artifact_id"], artifact_id)
+            self.assertEqual(metadata["project_id"], "project-1")
+            self.assertEqual(metadata["base_model"], "Qwen/Qwen3.5-4B")
+            self.assertTrue(metadata["contains_adapter_weights"])
+
 
 class BootstrapTerminationTests(unittest.TestCase):
     """Test EC2 instance termination behavior."""

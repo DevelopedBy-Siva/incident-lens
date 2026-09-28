@@ -11,6 +11,7 @@ from app.data.ingestion.datadog_connector import (
 )
 from app.data.ingestion.log_source import LogSourceAuthenticationError
 from app.data.ingestion.log_source_watcher import (
+    INITIAL_LOOKBACK_SECONDS,
     LOOKBACK_SECONDS,
     poll_project,
     process_envelopes,
@@ -212,7 +213,7 @@ class DatadogWatcherTests(unittest.TestCase):
 
         self.assertEqual(
             ranges[0],
-            (first_end - timedelta(seconds=LOOKBACK_SECONDS), first_end),
+            (first_end - timedelta(seconds=INITIAL_LOOKBACK_SECONDS), first_end),
         )
         self.assertEqual(ranges[1], (first_end, second_end))
         self.assertEqual(second_cursor, second_end)
@@ -244,7 +245,14 @@ class DatadogWatcherTests(unittest.TestCase):
         self.assertEqual(batches[0]["project_id"], "project-1")
         self.assertEqual(batches[0]["source"], "checkout")
         self.assertEqual(batches[0]["environment"], "prod")
-        self.assertEqual(batches[0]["logs"], ["ERROR one", "ERROR two"])
+        self.assertEqual(
+            [event["message"] for event in batches[0]["events"]],
+            ["ERROR one", "ERROR two"],
+        )
+        self.assertEqual(
+            [event["provider_id"] for event in batches[0]["events"]],
+            ["1", "2"],
+        )
         self.assertEqual(result["incidents_created"], 2)
 
 

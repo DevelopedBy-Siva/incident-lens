@@ -187,7 +187,7 @@ class TransformersPeftTrainingEngine(TrainingEngine):
         return full_ids, [-100] * len(context_ids) + target
 
     def _tokenize_example(self, tokenizer, example, max_length):
-        messages = build_training_messages(example["input"]["logs"], example["expected_output"])
+        messages = build_training_messages(example["input"], example["expected_output"])
         prompt = self._template_ids(tokenizer, messages[:-1], True)
         full = self._template_ids(tokenizer, messages, False)
         ids, labels = self._completion_labels(prompt, full, max_length)

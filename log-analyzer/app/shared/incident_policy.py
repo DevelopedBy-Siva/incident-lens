@@ -82,37 +82,78 @@ GROUNDING RULES:
 - next_steps must be a JSON array of strings only."""
 
 
-def build_user_prompt(logs: list[str] | str) -> str:
+_EVIDENCE_METADATA_FIELDS = frozenset({
+    "host", "hostname", "pod", "container", "namespace", "region", "zone",
+    "domain", "endpoint", "topic", "partition", "deployment_version", "trace_id",
+    "request_id", "peer", "dependency",
+})
+
+
+def normalize_incident_input(value: dict[str, Any] | list[str] | str) -> dict[str, Any]:
+    """Return the evidence contract shared by dataset training and inference.
+
+    Synthetic dataset bookkeeping (for example ``incident_type`` and policy
+    profile) is intentionally excluded: it would leak the answer into training
+    and is not available from a production log stream.
     """
-    Build the canonical user prompt for training and inference.
-    
-    Args:
-        logs: List of log lines or single log text string
-    
-    Returns:
-        Formatted user prompt with policy, schema, and logs
-    """
-    if isinstance(logs, list):
-        log_text = "\n".join(logs)
-    else:
-        log_text = logs
-    
+    if not isinstance(value, dict):
+        value = {"logs": value if isinstance(value, list) else [str(value)]}
+    logs = value.get("logs") or []
+    if isinstance(logs, str):
+        logs = [logs]
+    logs = [str(line).strip() for line in logs if str(line).strip()]
+    metadata = value.get("metadata") if isinstance(value.get("metadata"), dict) else {}
+    evidence_metadata = {
+        key: metadata[key]
+        for key in sorted(metadata)
+        if key in _EVIDENCE_METADATA_FIELDS and metadata[key] not in (None, "", [], {})
+    }
+    related = value.get("related_incidents") if isinstance(value.get("related_incidents"), list) else []
+    related = [
+        {
+            key: item[key]
+            for key in ("source", "count", "severity", "disposition", "summary", "first_seen", "last_seen")
+            if key in item and item[key] not in (None, "", [], {})
+        }
+        for item in related
+        if isinstance(item, dict)
+    ][:5]
+    return {
+        "service": str(value.get("service") or "unknown"),
+        "environment": str(value.get("environment") or "unknown"),
+        "observed_event_count": max(1, int(value.get("count") or len(logs) or 1)),
+        "metadata": evidence_metadata,
+        "related_incidents": related,
+        "logs": logs,
+    }
+
+
+def build_user_prompt(incident_input: dict[str, Any] | list[str] | str) -> str:
+    """Build the canonical evidence prompt for training and inference."""
+    context = normalize_incident_input(incident_input)
     return (
         POLICY_TEXT + "\n\n"
         "OUTPUT JSON SCHEMA:\n"
         + json.dumps(OUTPUT_SCHEMA, ensure_ascii=False)
         + "\nBenign => low/NO_ACTION. next_steps must contain strings only.\n\n"
+        "INCIDENT CONTEXT (observed facts):\n"
+        + json.dumps(
+            {key: value for key, value in context.items() if key != "logs"},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        + "\n\n"
         "LOGS:\n"
-        + log_text
+        + "\n".join(context["logs"])
     )
 
 
-def build_training_messages(logs: list[str], expected_output: dict[str, Any]) -> list[dict[str, str]]:
+def build_training_messages(incident_input: dict[str, Any] | list[str] | str, expected_output: dict[str, Any]) -> list[dict[str, str]]:
     """
     Build complete message list for training examples.
     
     Args:
-        logs: List of log lines from training example
+        incident_input: Canonical evidence object (or legacy log list)
         expected_output: Expected JSON output from training example
     
     Returns:
@@ -120,7 +161,7 @@ def build_training_messages(logs: list[str], expected_output: dict[str, Any]) ->
     """
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_user_prompt(logs)},
+        {"role": "user", "content": build_user_prompt(incident_input)},
         {
             "role": "assistant",
             "content": json.dumps(
@@ -132,19 +173,19 @@ def build_training_messages(logs: list[str], expected_output: dict[str, Any]) ->
     ]
 
 
-def build_inference_messages(logs: list[str] | str) -> list[dict[str, str]]:
+def build_inference_messages(incident_input: dict[str, Any] | list[str] | str) -> list[dict[str, str]]:
     """
     Build message list for inference (no assistant response).
     
     Args:
-        logs: List of log lines or single log text string
+        incident_input: Canonical evidence object (or legacy log list)
     
     Returns:
         List of message dicts for chat template
     """
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_user_prompt(logs)},
+        {"role": "user", "content": build_user_prompt(incident_input)},
     ]
 
 

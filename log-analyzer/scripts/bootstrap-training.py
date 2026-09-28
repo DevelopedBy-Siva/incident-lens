@@ -24,6 +24,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -500,6 +502,10 @@ class TrainingBootstrap:
             # This must be done before artifact upload to ensure S3 path matches DB record
             artifact_version = self._determine_artifact_version()
             training_result["artifact_version"] = artifact_version
+            training_result["artifact_id"] = self._write_artifact_metadata(
+                training_result,
+                artifact_version,
+            )
             
             if self.datadog_logger:
                 elapsed = time.time() - self.training_start_time
@@ -718,6 +724,17 @@ class TrainingBootstrap:
                     result.error or "Training engine reported failure"
                 )
 
+            from types import SimpleNamespace
+            from app.training.evaluation import BasicEvaluationService
+
+            evaluation = BasicEvaluationService().evaluate(
+                SimpleNamespace(record_count=training_request.expected_record_count),
+                dataset_content,
+                result,
+            )
+            if not evaluation.passed:
+                raise TrainingExecutionError("Adapter integrity evaluation did not pass")
+
             logger.info(
                 f"Training completed: {result.metrics.get('training_loss', 'unknown')} loss"
             )
@@ -727,6 +744,10 @@ class TrainingBootstrap:
                 "engine": result.engine,
                 "framework_versions": result.framework_versions,
                 "artifact_files": result.artifact_files,
+                "evaluation": {
+                    "score": evaluation.score,
+                    "metrics": evaluation.metrics,
+                },
             }
 
         except ImportError as exc:
@@ -903,6 +924,59 @@ class TrainingBootstrap:
         except Exception as exc:
             raise ArtifactUploadError(f"Failed to upload artifacts: {exc}") from exc
 
+    def _write_artifact_metadata(
+        self,
+        training_result: dict[str, Any],
+        artifact_version: str,
+    ) -> str:
+        """Write the runtime manifest before uploading the adapter.
+
+        The serving runtime rejects an adapter without this manifest.  Local and
+        EC2 training must therefore publish the same artifact contract.
+        """
+        adapter_path = Path(training_result["adapter_path"])
+        metadata_path = adapter_path / "metadata.json"
+        if not adapter_path.is_dir():
+            raise ArtifactUploadError(f"Adapter directory does not exist: {adapter_path}")
+        if metadata_path.exists():
+            raise ArtifactUploadError(f"Adapter metadata already exists: {metadata_path}")
+
+        artifact_id = str(uuid.uuid4())
+        s3_prefix = os.getenv("S3_ARTIFACT_PREFIX", "artifacts").strip("/")
+        adapter_s3_path = (
+            f"s3://{self.config['s3_bucket']}/{s3_prefix}/"
+            f"{self.config['project_id']}/{artifact_version}"
+        )
+        metadata = {
+            "schema_version": "incidentlens-lora-artifact-v1",
+            "artifact_id": artifact_id,
+            "artifact_version": artifact_version,
+            "project_id": self.config["project_id"],
+            "dataset_id": self.config["dataset_id"],
+            "dataset_version": "training",
+            "base_model": self.config["base_model"],
+            "adapter_path": adapter_s3_path,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "training_engine": training_result["engine"],
+            "training_duration_seconds": training_result.get("metrics", {}).get("duration_seconds"),
+            "lora_configuration": training_result.get("metrics", {}).get("lora_configuration", {}),
+            "training_metrics": training_result.get("metrics", {}),
+            "evaluation_score": training_result.get("evaluation", {}).get("score"),
+            "evaluation_metrics": training_result.get("evaluation", {}).get("metrics", {}),
+            "framework_versions": training_result.get("framework_versions", {}),
+            "artifact_files": list(training_result.get("artifact_files", ())),
+            "contains_adapter_weights": True,
+            "contains_base_model_weights": False,
+        }
+        try:
+            metadata_path.write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            raise ArtifactUploadError(f"Failed to write adapter metadata: {exc}") from exc
+        return artifact_id
+
     def _update_job_status(
         self, status: str, result: dict[str, Any]
     ) -> None:
@@ -1024,11 +1098,11 @@ class TrainingBootstrap:
                     s3_prefix = os.getenv("S3_ARTIFACT_PREFIX", "artifacts")
                     adapter_s3_path = f"s3://{s3_bucket}/{s3_prefix}/{project_id}/{artifact_version}"
                     
-                    # Extract evaluation score from result (basic evaluation: training succeeded)
-                    evaluation_score = result.get("metrics", {}).get("training_loss", 0.0)
+                    evaluation_score = result.get("evaluation", {}).get("score")
                     
                     # Create ModelArtifact record
                     artifact = ModelArtifact(
+                        id=result["artifact_id"],
                         project_id=project_id,
                         artifact_version=artifact_version,
                         base_model=self.config["base_model"],

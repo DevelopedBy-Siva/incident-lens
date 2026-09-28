@@ -19,6 +19,7 @@ worker has no deployment-level credential fallback.
 
 ```env
 DATADOG_LOOKBACK_SECONDS=30
+DATADOG_INITIAL_LOOKBACK_SECONDS=600
 POLL_INTERVAL=30
 
 DD_API_KEY=your_rotated_api_key
@@ -35,6 +36,18 @@ Configuration button tests credentials and log-search access without saving;
 the normal Save Settings button persists them. A polling cursor advances after
 a successful query and remains unchanged after a request or processing
 failure.
+
+On a fresh worker start, `DATADOG_INITIAL_LOOKBACK_SECONDS` controls the replay
+window (ten minutes by default); normal polls then advance contiguously at
+`POLL_INTERVAL`. Provider event IDs are added to the idempotency ledger only
+after the incident and its analysis have been persisted. If a worker is
+interrupted, it retries the same window and also recovers any stored incident
+that has no analysis.
+
+Container logs are emitted at `LOG_LEVEL=INFO` with `[LOG-SOURCE]`,
+`[PIPELINE]`, `[RECOVERY]`, and `[ANALYSIS]` prefixes. They include each query
+window, event/incident persistence, baseline-analysis persistence, model
+enrichment outcome, policy completion, and full tracebacks for failures.
 
 On startup, migration `0006_datadog_log_source` adds the Datadog project
 settings and removes the retired provider columns. No incident or model

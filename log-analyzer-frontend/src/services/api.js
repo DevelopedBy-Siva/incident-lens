@@ -31,6 +31,7 @@ export const incidentsAPI = {
   clear: () => api.delete("/api/incidents"),
   close: (id) => api.post(`/api/incidents/${id}/close`),
   ignore: (id) => api.post(`/api/incidents/${id}/ignore`),
+  analyze: (id) => api.post(`/api/incidents/${id}/analyze`),
   // Agent visibility — new
   getEvidence: (id) => api.get(`/api/incidents/${id}/evidence`),
   getActions: (id) => api.get(`/api/incidents/${id}/actions`),

@@ -5,6 +5,7 @@ DEFAULT_BASE_MODEL = "Qwen/Qwen3.5-4B"
 DEFAULT_MODEL_PROVIDER = "local"
 DEFAULT_MODEL_DEVICE = "cpu"
 DEFAULT_MODEL_DTYPE = "auto"
+DEFAULT_MAX_NEW_TOKENS = 256
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class RuntimeModelSettings:
     base_model: str = DEFAULT_BASE_MODEL
     device: str = DEFAULT_MODEL_DEVICE
     dtype: str = DEFAULT_MODEL_DTYPE
-    max_new_tokens: int = 1500
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS
 
     def __post_init__(self) -> None:
         if self.provider != "local":
@@ -40,4 +41,7 @@ def configured_runtime_settings() -> RuntimeModelSettings:
         base_model=configured_base_model(),
         device=os.getenv("DEVICE", DEFAULT_MODEL_DEVICE).strip().lower(),
         dtype=os.getenv("DTYPE", DEFAULT_MODEL_DTYPE).strip().lower(),
+        max_new_tokens=int(
+            os.getenv("MAX_NEW_TOKENS", str(DEFAULT_MAX_NEW_TOKENS)).strip()
+        ),
     )

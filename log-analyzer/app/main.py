@@ -4,6 +4,7 @@ app/main.py  —  IncidentLens
 
 import os
 import threading
+import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -42,52 +43,60 @@ def _validate_production_config() -> None:
 load_dotenv()
 
 
+def _configure_logging() -> None:
+    """Ensure background worker lifecycle logs reach container stdout."""
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+_configure_logging()
+logger = logging.getLogger(__name__)
+
+
 def _should_reset_data_on_startup() -> bool:
     value = os.getenv("RESET_DATA_ON_STARTUP", "").strip().lower()
     return value in {"1", "true", "yes", "on"}
 
 
 def start_worker():
-    import traceback
-
     try:
         from app.data.ingestion.log_source_watcher import run as run_worker
 
         run_worker()
-    except Exception as e:
-        print(f"[MAIN] Log source watcher failed: {e}")
-        traceback.print_exc()
+    except Exception:
+        logger.exception("[MAIN] Log source watcher stopped unexpectedly")
 
 
 def start_verifier():
-    import traceback
-
     try:
         from app.serving.verification import run as run_verifier
 
         run_verifier()
-    except Exception as e:
-        print(f"[MAIN] Verifier failed: {e}")
-        traceback.print_exc()
+    except Exception:
+        logger.exception("[MAIN] Verifier stopped unexpectedly")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Starting IncidentLens...")
+    logger.info("[MAIN] Starting IncidentLens")
     _validate_production_config()
     init_db()
     get_model_runtime().initialize()
-    print("[MODEL] Shared local base model loaded")
+    logger.info("[MODEL] Shared local base model loaded")
     if _should_reset_data_on_startup():
         cleanup_all_data()
-        print("[MAIN] RESET_DATA_ON_STARTUP enabled — cleared incident-processing data")
+        logger.warning("[MAIN] RESET_DATA_ON_STARTUP enabled; cleared incident-processing data")
 
     threading.Thread(target=start_worker, daemon=True).start()
     threading.Thread(target=start_verifier, daemon=True).start()
-    print("[MAIN] Worker + verifier threads started")
+    logger.info("[MAIN] Worker and verifier threads started")
 
     yield
-    print("[MAIN] Shutting down")
+    logger.info("[MAIN] Shutting down")
 
 
 app = FastAPI(title="IncidentLens", version="1.0.0", lifespan=lifespan)

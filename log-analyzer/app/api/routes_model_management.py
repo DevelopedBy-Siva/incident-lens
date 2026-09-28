@@ -133,6 +133,8 @@ class ModelRuntimeResponse(BaseModel):
     adapter_path: str | None
     artifact_storage: str
     dataset_storage: str
+    inference_ready: bool
+    validation_warnings: list[str]
 
 
 @router.get("/datasets", response_model=list[DatasetResponse])
@@ -443,15 +445,26 @@ def get_model_runtime_status(
     db: Session = Depends(get_db),
 ):
     """Expose the existing local runtime configuration to the dashboard."""
+    from app.serving.model_runtime import get_model_runtime
+
     settings = configured_runtime_settings()
     artifact = None
+    resolved_artifact = None
+    warnings: list[str] = []
+    inference_ready = False
     if project.active_artifact_id:
         candidate = ModelArtifactRepository(db).get_for_project(
             project.active_artifact_id, project.id
         )
-        # Do not present an adapter trained for a different base model as active.
         if candidate and candidate.status == ModelArtifactStatus.READY and candidate.base_model == settings.base_model:
             artifact = candidate
+    try:
+        session = get_model_runtime().resolve_project_model(project.id, project=project)
+        resolved_artifact = session.active_artifact
+        inference_ready = session.provider_available
+        warnings = list(session.validation_warnings)
+    except Exception as exc:  # A status endpoint must expose, not hide, load failure.
+        warnings = [f"Runtime resolution failed: {type(exc).__name__}: {exc}"]
     return ModelRuntimeResponse(
         project_id=project.id,
         project_name=project.name,
@@ -461,11 +474,15 @@ def get_model_runtime_status(
         model_path=settings.base_model,
         device=settings.device,
         dtype=settings.dtype,
-        active_artifact_id=artifact.id if artifact else None,
-        active_artifact_version=artifact.artifact_version if artifact else None,
-        adapter_path=artifact.adapter_path if artifact else None,
+        active_artifact_id=(resolved_artifact or artifact).id if (resolved_artifact or artifact) else None,
+        active_artifact_version=(
+            resolved_artifact.version if resolved_artifact else (artifact.artifact_version if artifact else None)
+        ),
+        adapter_path=(resolved_artifact or artifact).adapter_path if (resolved_artifact or artifact) else None,
         artifact_storage=configured_artifact_storage_location(),
         dataset_storage=configured_dataset_storage_location(),
+        inference_ready=inference_ready,
+        validation_warnings=warnings,
     )
 
 

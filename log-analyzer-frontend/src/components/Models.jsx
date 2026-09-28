@@ -40,9 +40,7 @@ function Models() {
       await modelLifecycleAPI.activateArtifact(artifact.id);
       invalidateModelLifecycleCache();
       await refresh(true);
-      setMessage(
-        `${artifact.artifact_version} will now analyze new incidents.`,
-      );
+      setMessage(`${artifact.artifact_version} was activated. Check runtime readiness below before relying on it.`);
     } catch (requestError) {
       setActionError(
         errorMessage(requestError, "Could not switch to this model."),
@@ -105,10 +103,16 @@ function Models() {
               <Layers3 size={13} /> Active Custom Model
             </div>
             <div className="text-lg text-google-text">
-              {runtime?.active_artifact_version || "Using base model only"}
+              {runtime?.inference_ready
+                ? runtime?.active_artifact_version
+                : runtime?.active_artifact_version
+                  ? `${runtime.active_artifact_version} unavailable`
+                  : "No loadable custom model"}
             </div>
             <div className="text-xs text-google-muted mt-1">
-              Used to analyze new incidents
+              {runtime?.inference_ready
+                ? "Loaded and used for new incidents"
+                : runtime?.validation_warnings?.[0] || "Train and activate a compatible artifact"}
             </div>
           </div>
         </section>

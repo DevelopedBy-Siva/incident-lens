@@ -12,6 +12,8 @@ from app.shared.migrations.versions import (
     v0010_trained_dataset_status,
     v0011_training_job_progress,
     v0012_qwen35_base_model,
+    v0013_ingested_log_ledger,
+    v0014_analysis_root_cause,
 )
 
 MIGRATIONS = (
@@ -26,6 +28,8 @@ MIGRATIONS = (
     v0010_trained_dataset_status,
     v0011_training_job_progress,
     v0012_qwen35_base_model,
+    v0013_ingested_log_ledger,
+    v0014_analysis_root_cause,
 )
 
 

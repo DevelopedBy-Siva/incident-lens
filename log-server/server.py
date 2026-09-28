@@ -1,6 +1,7 @@
 """A deliberately small Datadog log replay service for IncidentLens demos."""
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,11 @@ from fastapi import FastAPI, Header, HTTPException
 app = FastAPI(title="IncidentLens Log Server", version="2.0.0")
 DATA_LOG_PATH = Path(__file__).resolve().parent / "data" / "data.log"
 SUPPORTED_DATADOG_SITES = {"datadoghq.com", "datadoghq.eu", "us3.datadoghq.com", "us5.datadoghq.com", "ap1.datadoghq.com", "ap2.datadoghq.com", "uk1.datadoghq.com", "ddog-gov.com", "us2.ddog-gov.com"}
+_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+")
+_LEVEL = re.compile(r"^(?:TRACE|DEBUG|INFO|WARN|WARNING|ERROR|CRITICAL|FATAL)\b", re.I)
+_BRACKET_COMPONENT = re.compile(r"\[([^\]]+)\]")
+_K8S_CONTAINER = re.compile(r"\bcontainer\s+([A-Za-z0-9][A-Za-z0-9_.-]*)", re.I)
+_SERVICE_FIELD = re.compile(r"\b(?:service(?:\.name)?|component)=([A-Za-z0-9][A-Za-z0-9_.-]*)", re.I)
 
 
 @dataclass(frozen=True)
@@ -42,7 +48,20 @@ def _status(line: str) -> str:
 
 
 async def push_to_datadog(lines: list[str], config: DatadogWriteConfig, *, client: httpx.AsyncClient | None = None) -> bool:
-    payload = [{"message": line, "service": config.service, "status": _status(line), "ddsource": "incidentlens", "ddtags": "env:prod"} for line in lines]
+    # ``service`` is the project routing key. The analyzer always searches this
+    # configured service, while the real emitting component remains visible in
+    # the message and custom field for incident-level parsing.
+    payload = [
+        {
+            "message": line,
+            "service": config.service,
+            "incidentlens_service": _service(line, config.service),
+            "status": _status(line),
+            "ddsource": "incidentlens",
+            "ddtags": "env:prod",
+        }
+        for line in lines
+    ]
     owns_client = client is None
     request_client = client or httpx.AsyncClient(timeout=10)
     try:
@@ -78,7 +97,7 @@ class LogStreamer:
             raise RuntimeError("Log replay is already running")
         if not DATA_LOG_PATH.is_file():
             raise FileNotFoundError(f"Log data not found: {DATA_LOG_PATH}")
-        lines = [line.strip() for line in DATA_LOG_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
+        lines = _records(DATA_LOG_PATH.read_text(encoding="utf-8").splitlines())
         self.stop_event.clear()
         self.stats = {"loaded": len(lines), "shipped": 0, "failed": 0}
         self.task = asyncio.create_task(self._run(lines, config, max(1, duration), max(0.01, interval_seconds)))
@@ -104,6 +123,32 @@ class LogStreamer:
 
 
 streamer = LogStreamer()
+
+
+def _records(lines: list[str]) -> list[str]:
+    """Keep multiline exceptions as one Datadog log event during replay."""
+    records: list[str] = []
+    current: list[str] = []
+    for raw in lines:
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        starts_event = bool(_TIMESTAMP.match(line) or _LEVEL.match(line))
+        if starts_event and current:
+            records.append("\n".join(current))
+            current = []
+        current.append(line)
+    if current:
+        records.append("\n".join(current))
+    return records
+
+
+def _service(line: str, fallback: str) -> str:
+    for pattern in (_BRACKET_COMPONENT, _K8S_CONTAINER, _SERVICE_FIELD):
+        match = pattern.search(line)
+        if match:
+            return match.group(1)
+    return fallback
 
 
 @app.post("/api/start")

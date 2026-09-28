@@ -16,6 +16,7 @@ class Analysis(Base):
     disposition = Column(String)
     confidence = Column(Float)
     summary = Column(String)
+    suspected_root_cause = Column(Text, nullable=True)
     next_steps = Column(JSON)
     matched_runbook_id = Column(String)
     runbook_match_score = Column(Float)

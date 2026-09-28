@@ -25,6 +25,68 @@ from app.api.routes_auth import get_current_project
 router = APIRouter()
 
 
+@router.post("/incidents/{incident_id}/analyze")
+def analyze_existing_incident(
+    incident_id: str,
+    project: Project = Depends(get_current_project),
+    db: Session = Depends(get_db),
+):
+    """Run a pending incident through the active local model on demand."""
+    incident = _get_incident_or_404(incident_id, project.id, db)
+
+    from app.serving.model_runtime import get_model_runtime
+
+    try:
+        runtime = get_model_runtime().resolve_project_model(
+            project.id, project=project
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model runtime could not be resolved: {exc}",
+        ) from exc
+    if not runtime.provider_available:
+        warnings = "; ".join(runtime.validation_warnings) or "no active loadable adapter"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Model is not ready to analyze this incident: {warnings}",
+        )
+
+    try:
+        from app.serving.orchestrator import analyze_incident
+
+        existing = (
+            db.query(Analysis)
+            .filter(Analysis.incident_id == incident_id)
+            .order_by(Analysis.created_at.desc())
+            .first()
+        )
+        analysis = analyze_incident(
+            incident,
+            project=project,
+            force=bool(existing and not str(existing.summary or "").strip()),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Analysis did not complete: {exc}",
+        ) from exc
+    return {
+        "incident_id": incident.id,
+        "analysis": {
+            "severity": analysis.severity,
+            "disposition": analysis.disposition,
+            "confidence": analysis.confidence,
+            "summary": analysis.summary,
+            "suspected_root_cause": analysis.suspected_root_cause,
+            "next_steps": analysis.next_steps,
+            "ticket_title": analysis.ticket_title,
+            "ticket_body": analysis.ticket_body,
+            "analysis_source": analysis.analysis_source,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # /incidents/{id}/evidence
 # ---------------------------------------------------------------------------
@@ -216,6 +278,7 @@ def get_investigation(
             "disposition": analysis.disposition,
             "confidence": analysis.confidence,
             "summary": analysis.summary,
+            "suspected_root_cause": analysis.suspected_root_cause,
             "next_steps": analysis.next_steps,
             "ticket_title": analysis.ticket_title,
             "ticket_body": analysis.ticket_body,

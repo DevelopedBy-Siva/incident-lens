@@ -2,6 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Keep native CPU libraries from creating an unbounded worker pool when the
+# analyzer invokes the local model from its ingestion worker.  The value can be
+# overridden at deployment time after the instance has been sized accordingly.
+ENV TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    TORCH_NUM_THREADS=1
+
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \

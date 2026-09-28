@@ -161,6 +161,10 @@ function Dashboard() {
     await incidentsAPI.ignore(id);
     fetchIncidents(debouncedFilters, pagination.page, pagination.pageSize);
   };
+  const handleAnalyze = async (id) => {
+    await incidentsAPI.analyze(id);
+    await fetchIncidents(debouncedFilters, pagination.page, pagination.pageSize);
+  };
 
   const stats = {
     total: pagination.total,
@@ -385,9 +389,10 @@ function Dashboard() {
                   key={incident.id}
                   incident={incident}
                   analysis={incident.analysis}
-                  modelInfo={modelLifecycle.runtime}
-                  onClose={handleClose}
-                  onIgnore={handleIgnore}
+              modelInfo={modelLifecycle.runtime}
+              onClose={handleClose}
+              onIgnore={handleIgnore}
+              onAnalyze={handleAnalyze}
                 />
               ))}
             </div>

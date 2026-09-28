@@ -18,7 +18,7 @@ def test_only_replay_endpoints_are_public():
     assert set(server.app.openapi()["paths"]) == {"/api/start", "/api/stop"}
 
 
-def test_datadog_payload_preserves_log_and_service():
+def test_datadog_payload_preserves_project_routing_service_and_event_service():
     captured = {}
 
     def handler(request):
@@ -27,12 +27,17 @@ def test_datadog_payload_preserves_log_and_service():
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            return await server.push_to_datadog(["ERROR checkout failed"], server.DatadogWriteConfig("key", "datadoghq.com", "checkout"), client=client)
+            return await server.push_to_datadog(
+                ["ERROR [payments-api] checkout failed"],
+                server.DatadogWriteConfig("key", "datadoghq.com", "checkout"),
+                client=client,
+            )
 
     assert asyncio.run(run()) is True
     event = json.loads(captured["request"].content)[0]
-    assert event["message"] == "ERROR checkout failed"
+    assert event["message"] == "ERROR [payments-api] checkout failed"
     assert event["service"] == "checkout"
+    assert event["incidentlens_service"] == "payments-api"
     assert event["status"] == "error"
     assert event["ddtags"] == "env:prod"
 
@@ -51,3 +56,18 @@ def test_replay_sends_each_line_in_order():
     streamer, ship = asyncio.run(run())
     assert streamer.stats == {"loaded": 2, "shipped": 2, "failed": 0}
     assert [call.args[0] for call in ship.await_args_list] == [["WARN first"], ["ERROR second"]]
+
+
+def test_replay_keeps_stacktrace_and_derives_service_from_event():
+    records = server._records([
+        "2026-09-22T14:00:00Z ERROR [checkout] task failed",
+        "Traceback (most recent call last):",
+        "  File '/app/task.py', line 1",
+        "KeyError: 'order_id'",
+        "2026-09-22T14:00:01Z ERROR k8s event Pod checkout-abc container checkout OOMKilled",
+    ])
+
+    assert len(records) == 2
+    assert "KeyError" in records[0]
+    assert server._service(records[0], "project") == "checkout"
+    assert server._service(records[1], "project") == "checkout"

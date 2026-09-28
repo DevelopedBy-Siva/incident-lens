@@ -36,3 +36,14 @@ def test_builder_emits_the_exact_inference_contract():
     records = DatasetBuilder(SimpleNamespace(list_for_project=lambda _project: [source])).build("project-1")
     JsonLinesDatasetSerializer().validate(records)
     assert records[0]["expected_output"]["severity"] == "high"
+
+
+def test_builder_excludes_rule_fallbacks_from_training_data():
+    incident = SimpleNamespace(id="incident-1", source="checkout", environment="prod", signature="sig", count=1, sample_lines=canonical_record()["input"]["logs"], cause_explanation=None)
+    analysis = SimpleNamespace(
+        severity="medium", disposition="NEEDS_DEV", confidence=0.7,
+        summary="fallback", next_steps=["generic"], ticket_title="fallback",
+        ticket_body="fallback", analysis_source="rules",
+    )
+    source = SimpleNamespace(incident=incident, analysis=analysis)
+    assert DatasetBuilder(SimpleNamespace(list_for_project=lambda _project: [source])).build("project-1") == []

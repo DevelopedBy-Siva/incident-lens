@@ -29,6 +29,10 @@ class DatasetBuilder:
             logs = list(incident.sample_lines)
             if not analysis or not logs or not all(isinstance(line, str) and line.strip() for line in logs):
                 continue
+            # Rule-only fallbacks are operational safety output, not ground
+            # truth. Training on them teaches the adapter repeated boilerplate.
+            if getattr(analysis, "analysis_source", None) == "rules":
+                continue
             if not all(isinstance(getattr(analysis, field, None), str) and getattr(analysis, field).strip() for field in ("severity", "disposition", "summary")):
                 continue
             records.append({
@@ -42,6 +46,7 @@ class DatasetBuilder:
                         "signature": incident.signature,
                         "count": incident.count,
                         "scenario_group_id": incident.signature,
+                        "label_source": getattr(analysis, "analysis_source", "reviewed"),
                     },
                 },
                 "expected_output": {

@@ -52,6 +52,7 @@ def _incident_to_dict(inc: Incident, analysis: Optional[Analysis]) -> dict:
             "disposition": analysis.disposition,
             "confidence": analysis.confidence,
             "summary": analysis.summary,
+            "suspected_root_cause": analysis.suspected_root_cause,
             "next_steps": analysis.next_steps,
             "ticket_title": analysis.ticket_title,
             "ticket_body": analysis.ticket_body,

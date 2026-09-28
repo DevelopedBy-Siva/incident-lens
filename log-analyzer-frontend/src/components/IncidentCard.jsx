@@ -100,8 +100,11 @@ function AgentTrail({ incidentId, modelInfo, analysisSource }) {
       .then((response) => {
         if (active) setData(response.data);
       })
-      .catch(() => {
-        if (active) setError("Could not load investigation trail");
+      .catch((requestError) => {
+        if (!active) return;
+        const detail = requestError.response?.data?.detail || requestError.response?.data?.note;
+        const status = requestError.response?.status;
+        setError(detail || `Could not load investigation trail${status ? ` (HTTP ${status})` : ""}`);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -353,13 +356,15 @@ function AgentTrail({ incidentId, modelInfo, analysisSource }) {
   );
 }
 
-function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
+function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore, onAnalyze }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const displaySeverity =
     analysis?.severity || fallbackSeverity(incident.count);
+  const hasCompleteAnalysis = Boolean(analysis?.summary?.trim());
 
   const handleClose = async () => {
     setIsProcessing(true);
@@ -373,6 +378,17 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
     setIsProcessing(true);
     try {
       await onIgnore(incident.id);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  const handleAnalyze = async () => {
+    setActionError("");
+    setIsProcessing(true);
+    try {
+      await onAnalyze(incident.id);
+    } catch (error) {
+      setActionError(error.response?.data?.detail || "Analysis could not be started.");
     } finally {
       setIsProcessing(false);
     }
@@ -412,7 +428,19 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
           </div>
         )}
 
-        {analysis && (
+        <div className="mb-4">
+          <p className="text-sm font-medium text-google-text">{incident.source || "Unknown service"}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-google-muted">
+            {incident.sample_lines?.[0] || "No log sample was retained for this incident."}
+          </p>
+          {!hasCompleteAnalysis && (
+            <p className="mt-2 text-xs text-google-muted">
+              Analysis pending — the incident has been recorded and is awaiting a completed agent result.
+            </p>
+          )}
+        </div>
+
+        {hasCompleteAnalysis && (
           <div className="bg-white border border-google-border rounded-lg p-4 mb-4">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-start gap-2">
@@ -444,6 +472,13 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               <span className="text-xs text-google-muted">
                 {Math.round(analysis.confidence * 100)}% confidence
               </span>
+            </div>
+
+            <div className="mb-3 rounded bg-google-subtle px-3 py-2">
+              <p className="text-xs text-google-muted">Suspected root cause</p>
+              <p className="mt-1 text-xs leading-relaxed text-google-text">
+                {analysis.suspected_root_cause || "Not established from the available evidence."}
+              </p>
             </div>
 
             {detailsOpen && analysis.next_steps?.length > 0 && (
@@ -485,7 +520,19 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
         </button>
 
         {detailsOpen && (incident.status === "open" ? (
-          <div className="flex gap-2">
+          <div className="space-y-2">
+            {!hasCompleteAnalysis && (
+              <button
+                onClick={handleAnalyze}
+                disabled={isProcessing}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-google-blue px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isProcessing ? <Loader2 size={12} className="animate-spin" /> : <BrainCircuit size={12} />}
+                Analyze now
+              </button>
+            )}
+            {actionError && <p className="text-xs text-google-red">{actionError}</p>}
+            <div className="flex gap-2">
             <button
               onClick={handleClose}
               disabled={isProcessing}
@@ -510,6 +557,7 @@ function IncidentCard({ incident, analysis, modelInfo, onClose, onIgnore }) {
               )}
               Ignore
             </button>
+            </div>
           </div>
         ) : (
           <div className="text-center py-2 px-4 bg-google-chip rounded-lg">

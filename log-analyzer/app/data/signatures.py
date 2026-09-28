@@ -23,8 +23,12 @@ def normalize_message(message: str) -> str:
 
 
 def generate_signature(source: str, parsed_log) -> str:
-    """Group the same failure shape while retaining level and service boundaries."""
-    text = "|".join(
-        (str(source).strip().lower(), parsed_log.level, parsed_log.exception_type or "", normalize_message(parsed_log.message))
-    )
+    """Create a short-lived incident-window key, not a per-line error key.
+
+    Different symptoms from the same pod/service (for example OOMKilled followed
+    by SIGKILL) must reach analysis together.  A concrete pod/host entity gives
+    the narrowest window; otherwise the service is the correlation boundary.
+    """
+    entity = getattr(parsed_log, "entity", None) or "service"
+    text = "|".join((str(source).strip().lower(), str(entity).strip().lower()))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]

@@ -63,6 +63,7 @@ class BaseModelLoader:
         ) as span:
             try:
                 auto_model, auto_tokenizer, torch_module = self._dependencies()
+                self._configure_cpu_threads(torch_module, settings)
                 token = os.getenv("HF_TOKEN", "").strip() or None
                 tokenizer = auto_tokenizer.from_pretrained(
                     settings.base_model,
@@ -89,6 +90,30 @@ class BaseModelLoader:
                     f"Unable to load shared base model {settings.base_model!r} "
                     f"on {settings.device!r}: {exc}"
                 ) from exc
+
+    @staticmethod
+    def _configure_cpu_threads(torch_module, settings: RuntimeModelSettings) -> None:
+        """Bound CPU native worker pools before loading a model.
+
+        The analyzer runs inference from a background worker alongside Uvicorn.
+        On small production instances, the default OpenMP pool can create far
+        more native threads than the container can support and terminate the
+        process during generation.  One worker is deliberately conservative;
+        operators can increase it with ``TORCH_NUM_THREADS`` after sizing the
+        instance for the model.
+        """
+        if settings.device != "cpu":
+            return
+        configured = os.getenv("TORCH_NUM_THREADS", "1").strip()
+        try:
+            thread_count = max(1, int(configured))
+            torch_module.set_num_threads(thread_count)
+            # PyTorch permits this only once and before parallel work begins.
+            torch_module.set_num_interop_threads(thread_count)
+        except (AttributeError, RuntimeError, ValueError):
+            # Loading must remain compatible with lightweight test doubles and
+            # environments that have already initialized their thread pools.
+            pass
 
     def _dependencies(self):
         if self.auto_model is not None:
