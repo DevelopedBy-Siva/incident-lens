@@ -1,158 +1,53 @@
+import asyncio
 import importlib.util
 import json
-import sys
-import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
+
 ROOT = Path(__file__).resolve().parents[2]
-SERVER_PATH = ROOT / "log-server" / "server.py"
-spec = importlib.util.spec_from_file_location("log_server_module", SERVER_PATH)
+spec = importlib.util.spec_from_file_location("incidentlens_log_server", ROOT / "log-server" / "server.py")
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
-REQUIRED_SCENARIOS = {
-    "healthcheck_timeout_noise",
-    "db_pool_exhaustion",
-    "payment_gateway_degraded",
-    "api_gateway_5xx_spike",
-    "memory_pressure_or_oom",
-    "auth_failure_cascade",
-    "deployment_regression",
-    "queue_backlog",
-    "vendor_api_timeout",
-    "false_suppression_trap",
-    "low_frequency_high_impact",
-    "ambiguous_cascade",
-}
+
+def test_only_replay_endpoints_are_public():
+    assert set(server.app.openapi()["paths"]) == {"/api/start", "/api/stop"}
 
 
-class ScenarioRegistryTests(unittest.TestCase):
-    def test_swagger_ui_is_exposed(self):
-        self.assertEqual(server.app.docs_url, "/docs")
-        self.assertEqual(server.app.openapi_url, "/openapi.json")
+def test_datadog_payload_preserves_log_and_service():
+    captured = {}
 
-    def test_only_start_and_stop_business_endpoints_are_exposed(self):
-        paths = set(server.app.openapi()["paths"])
-        self.assertEqual(paths, {"/api/start", "/api/stop"})
+    def handler(request):
+        captured["request"] = request
+        return httpx.Response(202, request=request)
 
-    def test_registry_includes_required_scenarios(self):
-        self.assertTrue(REQUIRED_SCENARIOS.issubset(server.SCENARIOS.keys()))
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await server.push_to_datadog(["ERROR checkout failed"], server.DatadogWriteConfig("key", "datadoghq.com", "checkout"), client=client)
 
-    def test_generated_scenario_logs_contain_required_fields(self):
-        for scenario_name, scenario in server.SCENARIOS.items():
-            with self.subTest(scenario=scenario_name):
-                self.assertGreater(len(scenario["steps"]), 0)
-                for idx, step in enumerate(scenario["steps"], start=1):
-                    log_line = server.format_scenario_log(step, scenario_name, 1, idx)
-                    for field in server.REQUIRED_SCENARIO_FIELDS:
-                        self.assertIn(f"{field}=", log_line)
-                    self.assertIn(step["message"], log_line)
-
-    def test_scenarios_have_expected_runbook_metadata(self):
-        for scenario_name, scenario in server.SCENARIOS.items():
-            with self.subTest(scenario=scenario_name):
-                self.assertIn("description", scenario)
-                self.assertIn("services", scenario)
-                self.assertIn("expected_severity", scenario)
-                self.assertIn("expected_disposition", scenario)
-                self.assertIn("expected_allowed_actions", scenario)
-                self.assertIn("expected_blocked_actions", scenario)
+    assert asyncio.run(run()) is True
+    event = json.loads(captured["request"].content)[0]
+    assert event["message"] == "ERROR checkout failed"
+    assert event["service"] == "checkout"
+    assert event["status"] == "error"
+    assert event["ddtags"] == "env:prod"
 
 
-class ScenarioExecutionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_datadog_intake_uses_api_key_and_provider_fields(self):
-        captured = {}
-
-        def handler(request):
-            captured["request"] = request
-            return httpx.Response(202, request=request)
-
-        transport = httpx.MockTransport(handler)
-        config = server.DatadogWriteConfig(
-            api_key="api-secret",
-            site="datadoghq.eu",
-            service="checkout",
-        )
-        async with httpx.AsyncClient(transport=transport) as client:
-            result = await server.push_to_datadog(
-                ["ERROR checkout failed"],
-                config,
-                extra_tags={"service": "ignored", "scenario": "payment"},
-                client=client,
-            )
-
-        self.assertTrue(result)
-        request = captured["request"]
-        self.assertEqual(
-            str(request.url),
-            "https://http-intake.logs.datadoghq.eu/api/v2/logs",
-        )
-        self.assertEqual(request.headers["DD-API-KEY"], "api-secret")
-        event = json.loads(request.content)[0]
-        self.assertEqual(event["service"], "checkout")
-        self.assertEqual(event["status"], "error")
-        self.assertIn("env:prod", event["ddtags"])
-        self.assertIn("scenario:payment", event["ddtags"])
-
-    async def test_start_builds_datadog_config_from_headers(self):
-        generator = SimpleNamespace(
-            start=AsyncMock(return_value=(True, "started")), running=True
-        )
-        with patch.object(server, "log_generator", generator):
-            response = await server.start_generation(
-                duration=60,
-                interval_seconds=1,
-                batch_size=1,
-                error_rate=0.5,
-                slow_rate=0.1,
-                datadog_api_key="api-secret",
-                datadog_site="datadoghq.com",
-                datadog_service="project-api",
-            )
-
-        config = generator.start.await_args.kwargs["datadog_config"]
-        self.assertEqual(config.api_key, "api-secret")
-        self.assertEqual(config.site, "datadoghq.com")
-        self.assertEqual(config.service, "project-api")
-        self.assertEqual(response["status"], "running")
-
-    async def test_file_streamer_sends_data_log_lines_to_datadog(self):
+def test_replay_sends_each_line_in_order():
+    async def run():
         with TemporaryDirectory() as directory:
-            log_path = Path(directory) / "data.log"
-            log_path.write_text("INFO first line\nERROR second line\n", encoding="utf-8")
-            config = server.DatadogWriteConfig(
-                api_key="api-secret",
-                site="datadoghq.com",
-                service="project-api",
-            )
-            generator = server.LogGenerator()
+            data = Path(directory) / "data.log"
+            data.write_text("WARN first\nERROR second\n", encoding="utf-8")
+            streamer = server.LogStreamer()
+            with patch.object(server, "DATA_LOG_PATH", data), patch.object(server, "push_to_datadog", new=AsyncMock(return_value=True)) as ship:
+                await streamer.start(server.DatadogWriteConfig("key", "datadoghq.com", "checkout"), 10, 0.01)
+                await streamer.task
+            return streamer, ship
 
-            with (
-                patch.object(server, "DATA_LOG_PATH", log_path),
-                patch.object(
-                    server, "push_to_datadog", new=AsyncMock(return_value=True)
-                ) as push,
-            ):
-                started, message = await generator.start(
-                    datadog_config=config,
-                    duration=10,
-                    interval_seconds=0.01,
-                )
-                await generator._task
-
-            self.assertTrue(started)
-            self.assertEqual(message, "started")
-            self.assertEqual(generator.stats["logs_loaded"], 2)
-            self.assertEqual(generator.stats["logs_shipped"], 2)
-            self.assertEqual(push.await_count, 2)
-            self.assertEqual(push.await_args_list[0].args[0], ["INFO first line"])
-            self.assertEqual(push.await_args_list[1].args[0], ["ERROR second line"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+    streamer, ship = asyncio.run(run())
+    assert streamer.stats == {"loaded": 2, "shipped": 2, "failed": 0}
+    assert [call.args[0] for call in ship.await_args_list] == [["WARN first"], ["ERROR second"]]

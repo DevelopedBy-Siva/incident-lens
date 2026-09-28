@@ -178,14 +178,14 @@ class LoraTrainerTests(unittest.TestCase):
                 result = engine.train(request)
 
             self.assertTrue(result.succeeded)
-            self.assertEqual(result.engine, "transformers-peft-lora-v2")
+            self.assertEqual(result.engine, "transformers-peft-lora-v3")
             self.assertEqual(result.metrics["training_loss"], 0.2)
             self.assertIsNone(result.metrics["validation_loss"])  # No validation split with identical examples
             self.assertTrue(result.metrics["training_completed"])
             self.assertTrue(result.metrics["weights_created"])
             self.assertEqual(result.metrics["training_records"], 2)  # All records used for training
             self.assertEqual(result.metrics["validation_records"], 0)  # No validation split
-            self.assertEqual(result.metrics["lora_configuration"]["rank"], 8)
+            self.assertEqual(result.metrics["lora_configuration"]["rank"], 16)
             self.assertTrue(
                 Path(artifact_directory, "adapter_model.safetensors").is_file()
             )

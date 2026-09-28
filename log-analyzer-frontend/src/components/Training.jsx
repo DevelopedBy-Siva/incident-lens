@@ -962,7 +962,7 @@ function Training() {
                             </div>
                           </div>
                           <div>
-                            <span className="text-google-muted">Quality score</span>
+                            <span className="text-google-muted">Artifact validation</span>
                             <div className="text-google-text mt-1">
                               {artifact?.evaluation_score?.toFixed(3) ?? "—"}
                             </div>

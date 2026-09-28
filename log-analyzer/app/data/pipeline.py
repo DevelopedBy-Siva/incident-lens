@@ -1,106 +1,50 @@
-"""Provider-independent log processing for connector and evaluation ingestion."""
+"""The single synchronous path from normalized logs to incident analyses."""
 
 from app.control.models import Project
 from app.data.clustering import cluster_log_db
 from app.data.parser import ParsedLog
 from app.data.signatures import generate_signature
 from app.shared.database import SessionLocal
-from app.shared.observability import trace_operation
 
 
-def process_log_batch(payload: dict):
-    # Imported lazily to keep the data modules independently importable while the
-    # existing synchronous pipeline still hands new incidents to the serving plane.
-    from app.serving.orchestrator import analyze_incident, run_root_cause_chaining
+ACTIONABLE_LEVELS = {"WARN", "ERROR", "CRITICAL"}
+REANALYSE_COUNTS = {2, 5, 10, 20, 50}
 
-    project_id = payload.get("project_id")
-    source = payload["source"]
-    environment = payload["environment"]
-    logs = payload["logs"]
-    project = payload.get("_project")
 
+def process_log_batch(payload: dict) -> dict[str, int]:
+    from app.serving.orchestrator import analyze_incident
+
+    project = payload.get("_project") or _project(payload["project_id"])
     if project is None:
-        db = SessionLocal()
+        return {"incidents_created": 0, "incidents_updated": 0, "failed": 1}
+
+    totals = {"incidents_created": 0, "incidents_updated": 0, "failed": 0}
+    for raw in payload.get("logs", []):
         try:
-            project = db.query(Project).filter(Project.id == project_id).first()
-            if project:
-                db.expunge(project)
-            else:
-                print(f"[WORKER] Project {project_id} not found")
-                return
-        finally:
-            db.close()
+            parsed = ParsedLog(raw)
+            if parsed.level not in ACTIONABLE_LEVELS:
+                continue
+            incident, created = cluster_log_db(
+                project_id=project.id,
+                source=payload["source"],
+                environment=payload.get("environment", "prod"),
+                parsed_log=parsed,
+                signature=generate_signature(payload["source"], parsed),
+            )
+            totals["incidents_created" if created else "incidents_updated"] += 1
+            if created or incident.count in REANALYSE_COUNTS:
+                analyze_incident(incident, project=project, force=not created)
+        except Exception:
+            totals["failed"] += 1
+    return totals
 
-    with trace_operation(
-        "log_processing",
-        plane="data",
-        metadata={
-            "project_id": project_id,
-            "source": source,
-            "environment": environment,
-            "log_count": len(logs),
-        },
-    ) as batch_span:
-        print(f"[WORKER] {len(logs)} logs for '{project.name}'")
-        created = updated = failed = 0
 
-        for log_line in logs:
-            try:
-                with trace_operation(
-                    "parsing",
-                    plane="data",
-                    metadata={"project_id": project_id, "source": source},
-                ):
-                    parsed = ParsedLog(log_line)
-                if parsed.level not in ["ERROR", "WARN", "WARNING", "CRITICAL"]:
-                    continue
-
-                sig = generate_signature(source, parsed)
-                with trace_operation(
-                    "clustering",
-                    plane="data",
-                    metadata={"project_id": project_id, "source": source},
-                ) as cluster_span:
-                    incident, is_new = cluster_log_db(
-                        project_id=project_id,
-                        source=source,
-                        environment=environment,
-                        parsed_log=parsed,
-                        signature=sig,
-                    )
-                    cluster_span.tags(
-                        {
-                            "incident_id": str(incident.id),
-                            "result": "created" if is_new else "updated",
-                        }
-                    )
-
-                if is_new:
-                    analyze_incident(incident, project=project, force=False)
-                    run_root_cause_chaining(incident, project_id, project=project)
-                    created += 1
-                else:
-                    if incident.count in {5, 10, 20}:
-                        analyze_incident(incident, project=project, force=True)
-                    updated += 1
-
-            except Exception as e:
-                print(f"[WORKER] Failed: {e} | {log_line[:80]}")
-                failed += 1
-
-        print(f"[WORKER] created={created} updated={updated} failed={failed}")
-        batch_span.metrics(
-            {
-                "incidents_created": created,
-                "incidents_updated": updated,
-                "failed_logs": failed,
-            }
-        )
-        if failed > 0 and created == 0 and updated == 0:
-            raise RuntimeError(f"Batch entirely failed — {failed} errors")
-
-        return {
-            "incidents_created": created,
-            "incidents_updated": updated,
-            "failed": failed,
-        }
+def _project(project_id: str):
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            db.expunge(project)
+        return project
+    finally:
+        db.close()

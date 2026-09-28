@@ -35,23 +35,23 @@ policy:
 
 dataset_builder:
   source: dataset_v2.jsonl
-  output: dataset_v4.jsonl
+  output: ../data/dataset_v4.jsonl
   seed: 42
 
 training:
-  data: dataset_v4.jsonl
+  data: ../data/dataset_v4.jsonl
   output: null
 
-  lora_r: 8
-  lora_alpha: 16
+  lora_r: 16
+  lora_alpha: 32
   lora_dropout: 0.05
   lora_target_modules: all-linear
 
   learning_rate: 1.0e-4
-  epochs: 1
-  batch_size: 1
-  gradient_accumulation_steps: 1
-  max_sequence_length: 1024
+  epochs: 3
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  max_sequence_length: 1536
 
   validation_split: 0.10
   split_strategy: group-stratified

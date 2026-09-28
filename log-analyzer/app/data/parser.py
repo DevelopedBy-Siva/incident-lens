@@ -1,53 +1,61 @@
+"""Parse the plain-text log format used by Datadog and the demo streamer."""
+
+from __future__ import annotations
+
 import re
-from datetime import datetime
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 
+_LINE = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
+    r"(?P<level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|CRITICAL|FATAL)\s+"
+    r"(?P<message>.*)$",
+    re.IGNORECASE,
+)
+_BRACKET_TIME = re.compile(r"\[(?P<timestamp>\d{4}-\d{2}-\d{2}T[^\]]+)\]")
+_LEVEL = re.compile(r"\b(?P<level>CRITICAL|FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE)\b", re.I)
+_EXCEPTION = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*(?:Exception|Error))\b")
+
+
+@dataclass(frozen=True)
 class ParsedLog:
-    """Structured representation of a log line"""
+    raw: str
+    timestamp: datetime
+    level: str
+    message: str
+    exception_type: str | None
 
     def __init__(self, raw: str):
-        self.raw = raw
-        self.timestamp = self._extract_timestamp()
-        self.level = self._extract_level()
-        self.message = self._extract_message()
-        self.exception_type = self._extract_exception()
-
-    def _extract_timestamp(self) -> Optional[datetime]:
-        """Extract ISO timestamp from log line"""
-        match = re.search(r"\[([\d\-T:.]+)\]", self.raw)
+        raw = str(raw or "").strip()
+        match = _LINE.match(raw)
         if match:
-            try:
-                return datetime.fromisoformat(match.group(1))
-            except:
-                pass
-        return datetime.utcnow()
+            timestamp = _parse_timestamp(match.group("timestamp"))
+            level = _normalise_level(match.group("level"))
+            message = match.group("message").strip()
+        else:
+            bracket = _BRACKET_TIME.search(raw)
+            timestamp = _parse_timestamp(bracket.group("timestamp")) if bracket else datetime.now(timezone.utc)
+            level_match = _LEVEL.search(raw)
+            level = _normalise_level(level_match.group("level")) if level_match else "INFO"
+            message = raw[level_match.end() :].lstrip(" :|-[]") if level_match else raw
 
-    def _extract_level(self) -> str:
-        """Extract log level (ERROR, WARN, INFO, etc.)"""
-        for level in ["CRITICAL", "ERROR", "WARN", "WARNING", "INFO", "DEBUG"]:
-            if level in self.raw.upper():
-                return level
-        return "INFO"
+        exception = _EXCEPTION.search(message)
+        object.__setattr__(self, "raw", raw)
+        object.__setattr__(self, "timestamp", timestamp)
+        object.__setattr__(self, "level", level)
+        object.__setattr__(self, "message", message)
+        object.__setattr__(self, "exception_type", exception.group(1) if exception else None)
 
-    def _extract_message(self) -> str:
-        """Extract the actual message, removing timestamp and level"""
-        msg = re.sub(r"\[[\d\-T:.]+\]", "", self.raw)
-        msg = re.sub(
-            r"(CRITICAL|ERROR|WARN|WARNING|INFO|DEBUG):", "", msg, flags=re.IGNORECASE
-        )
-        return msg.strip()
 
-    def _extract_exception(self) -> Optional[str]:
-        """Extract exception type if present"""
-        match = re.search(r"(\w+Exception)", self.message)
-        if match:
-            return match.group(1)
+def _parse_timestamp(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.now(timezone.utc)
 
-        if "Traceback" in self.message or "Error:" in self.message:
-            return "PythonException"
 
-        if "SQLSyntaxError" in self.message or "SQLError" in self.message:
-            return "SQLException"
-
-        return None
+def _normalise_level(value: str) -> str:
+    value = value.upper()
+    return "WARN" if value == "WARNING" else ("CRITICAL" if value == "FATAL" else value)

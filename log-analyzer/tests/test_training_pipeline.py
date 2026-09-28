@@ -124,7 +124,12 @@ class TrainingPipelineTests(unittest.TestCase):
         storage: LocalDatasetStorage,
         *,
         record_count: int = 1,
-        content: bytes = b'{"input":{"incident":"x"},"expected_output":{"severity":"low"}}\n',
+        content: bytes = (
+            b'{"input":{"logs":["ERROR test failure"],"service":"test","environment":"prod","metadata":{}},'
+            b'"expected_output":{"severity":"low","disposition":"NO_ACTION","confidence":0.9,'
+            b'"summary":"test","suspected_root_cause":null,"next_steps":[],"ticket_title":"",'
+            b'"ticket_body":""}}\n'
+        ),
         selected_record_indices: list[int] | None = None,
     ):
         key = storage.storage_key(self.project.id, "dataset-v1", "jsonl")
@@ -218,7 +223,7 @@ class TrainingPipelineTests(unittest.TestCase):
                 self.assertTrue(metadata["contains_adapter_weights"])
                 self.assertFalse(metadata["contains_base_model_weights"])
                 self.assertEqual(metadata["training_duration_seconds"], 1.25)
-                self.assertEqual(metadata["lora_configuration"]["rank"], 8)
+                self.assertEqual(metadata["lora_configuration"]["rank"], 16)
                 self.assertEqual(metadata["framework_versions"]["peft"], "test")
                 self.assertNotIn("training_simulated", metadata)
 
@@ -236,8 +241,8 @@ class TrainingPipelineTests(unittest.TestCase):
 
     def test_worker_trains_only_selected_dataset_records(self):
         records = [
-            {"input": {"incident": "first"}, "expected_output": {"severity": "low"}},
-            {"input": {"incident": "second"}, "expected_output": {"severity": "high"}},
+            {"input": {"logs": ["ERROR first"], "service": "test", "environment": "prod", "metadata": {}}, "expected_output": {"severity": "low", "disposition": "NO_ACTION", "confidence": 0.9, "summary": "first", "suspected_root_cause": None, "next_steps": [], "ticket_title": "", "ticket_body": ""}},
+            {"input": {"logs": ["ERROR second"], "service": "test", "environment": "prod", "metadata": {}}, "expected_output": {"severity": "high", "disposition": "NEEDS_ONCALL", "confidence": 0.9, "summary": "second", "suspected_root_cause": None, "next_steps": ["inspect"], "ticket_title": "second", "ticket_body": "second"}},
         ]
         content = b"".join(
             json.dumps(record, separators=(",", ":")).encode() + b"\n"

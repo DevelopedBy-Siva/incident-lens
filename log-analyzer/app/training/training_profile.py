@@ -5,30 +5,17 @@ from typing import Any
 
 @dataclass(frozen=True)
 class LoraTrainingProfile:
-    rank: int = 8
-    alpha: int = 16
+    rank: int = 16
+    alpha: int = 32
     dropout: float = 0.05
-    epochs: float = 1.0
+    epochs: float = 3.0
     learning_rate: float = 0.0001
-    batch_size: int = 1
-    gradient_accumulation_steps: int = 1
-    max_sequence_length: int = 1024
+    batch_size: int = 2
+    gradient_accumulation_steps: int = 8
+    max_sequence_length: int = 1536
     validation_fraction: float = 0.1
     seed: int = 42
-    target_modules: tuple[str, ...] = (
-        "q_proj",
-        "k_proj",
-        "v_proj",
-        "o_proj",
-        "in_proj_qkv",
-        "in_proj_z",
-        "in_proj_b",
-        "in_proj_a",
-        "out_proj",
-        "gate_proj",
-        "up_proj",
-        "down_proj",
-    )
+    target_modules: tuple[str, ...] = ("all-linear",)
 
     def __post_init__(self) -> None:
         if self.rank <= 0:
@@ -64,21 +51,20 @@ def configured_training_profile() -> LoraTrainingProfile:
         for module in os.getenv(
             "LORA_TARGET_MODULES",
             (
-                "q_proj,k_proj,v_proj,o_proj,in_proj_qkv,in_proj_z,"
-                "in_proj_b,in_proj_a,out_proj,gate_proj,up_proj,down_proj"
+                "all-linear"
             ),
         ).split(",")
         if module.strip()
     )
     return LoraTrainingProfile(
-        rank=_integer("LORA_RANK", 8),
-        alpha=_integer("LORA_ALPHA", 16),
+        rank=_integer("LORA_RANK", 16),
+        alpha=_integer("LORA_ALPHA", 32),
         dropout=_floating("LORA_DROPOUT", 0.05),
-        epochs=_floating("LORA_EPOCHS", 1.0),
+        epochs=_floating("LORA_EPOCHS", 3.0),
         learning_rate=_floating("LORA_LEARNING_RATE", 0.0001),
-        batch_size=_integer("LORA_BATCH_SIZE", 1),
-        gradient_accumulation_steps=_integer("LORA_GRADIENT_ACCUMULATION_STEPS", 1),
-        max_sequence_length=_integer("LORA_MAX_SEQUENCE_LENGTH", 1024),
+        batch_size=_integer("LORA_BATCH_SIZE", 2),
+        gradient_accumulation_steps=_integer("LORA_GRADIENT_ACCUMULATION_STEPS", 8),
+        max_sequence_length=_integer("LORA_MAX_SEQUENCE_LENGTH", 1536),
         validation_fraction=_floating("LORA_VALIDATION_FRACTION", 0.1),
         seed=_integer("LORA_SEED", 42),
         target_modules=target_modules,

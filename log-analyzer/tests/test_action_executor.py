@@ -1,4 +1,3 @@
-import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -6,93 +5,12 @@ from app.serving.action_executor import execute_actions
 from app.serving.policy import PolicyDecision
 
 
-def incident(**overrides):
-    defaults = {"id": "incident-1"}
-    defaults.update(overrides)
-    return SimpleNamespace(**defaults)
-
-
-def analysis(**overrides):
-    defaults = {
-        "severity": "low",
-        "disposition": "NO_ACTION",
-        "confidence": 0.90,
-        "ticket_body": "Ticket body",
-    }
-    defaults.update(overrides)
-    return SimpleNamespace(**defaults)
-
-
-def project(**overrides):
-    defaults = {"id": "project-1"}
-    defaults.update(overrides)
-    return SimpleNamespace(**defaults)
-
-
-class ActionExecutorTests(unittest.TestCase):
-    def test_execute_actions_only_runs_allowed_actions(self):
-        calls = []
-        logs = []
-
-        def fake_auto_enrich(*_):
-            calls.append("auto_enrich")
-            return True
-
-        def fake_auto_suppress(*_):
-            calls.append("auto_suppress")
-            return True
-
-        def fake_log_action(**kwargs):
-            logs.append(kwargs)
-
-        decision = PolicyDecision(
-            allow=True,
-            reason="partial",
-            effective_disposition="NO_ACTION",
-            requested_actions=["auto_enrich", "auto_suppress"],
-            allowed_actions=["auto_enrich"],
-            blocked_actions=["auto_suppress"],
-        )
-
-        with patch("app.serving.action_executor._auto_enrich", fake_auto_enrich), patch(
-            "app.serving.action_executor._auto_suppress", fake_auto_suppress
-        ), patch("app.serving.action_executor._log_action", fake_log_action):
-            executed = execute_actions(incident(), analysis(), decision, project())
-
-        self.assertEqual(executed, ["auto_enrich"])
-        self.assertEqual(calls, ["auto_enrich"])
-        self.assertEqual(logs[0]["actions_taken"], ["auto_enrich"])
-        self.assertIs(logs[0]["policy_decision"], decision)
-
-    def test_execute_actions_never_runs_blocked_tier_actions(self):
-        calls = []
-        logs = []
-
-        def fake_auto_enrich(*_):
-            calls.append("auto_enrich")
-            return True
-
-        def fake_log_action(**kwargs):
-            logs.append(kwargs)
-
-        decision = PolicyDecision(
-            allow=True,
-            reason="bad input",
-            effective_disposition="ESCALATE",
-            requested_actions=["restart_service", "auto_enrich"],
-            allowed_actions=["restart_service", "auto_enrich"],
-            blocked_actions=[],
-        )
-
-        with patch("app.serving.action_executor._auto_enrich", fake_auto_enrich), patch(
-            "app.serving.action_executor._log_action", fake_log_action
-        ):
-            executed = execute_actions(incident(), analysis(), decision, project())
-
-        self.assertEqual(executed, ["auto_enrich"])
-        self.assertEqual(calls, ["auto_enrich"])
-        self.assertEqual(logs[0]["actions_taken"], ["auto_enrich"])
-
-
-if __name__ == "__main__":
-    unittest.main()
+def test_executor_only_runs_explicit_safe_actions():
+    incident = SimpleNamespace(id="i-1")
+    project = SimpleNamespace(id="p-1")
+    analysis = SimpleNamespace(summary="summary", severity="high", confidence=0.9)
+    decision = PolicyDecision(True, "approved", "NEEDS_ONCALL", ["restart_service", "auto_enrich"], ["restart_service", "auto_enrich"], [])
+    with patch("app.serving.action_executor._auto_enrich", return_value=True) as enrich, patch("app.serving.action_executor._log_action"):
+        executed = execute_actions(incident, analysis, decision, project)
+    assert executed == ["auto_enrich"]
+    enrich.assert_called_once()

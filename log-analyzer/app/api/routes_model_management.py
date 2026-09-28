@@ -446,9 +446,12 @@ def get_model_runtime_status(
     settings = configured_runtime_settings()
     artifact = None
     if project.active_artifact_id:
-        artifact = ModelArtifactRepository(db).get_for_project(
+        candidate = ModelArtifactRepository(db).get_for_project(
             project.active_artifact_id, project.id
         )
+        # Do not present an adapter trained for a different base model as active.
+        if candidate and candidate.status == ModelArtifactStatus.READY and candidate.base_model == settings.base_model:
+            artifact = candidate
     return ModelRuntimeResponse(
         project_id=project.id,
         project_name=project.name,
@@ -493,6 +496,11 @@ def activate_model_artifact(
     if artifact.status != ModelArtifactStatus.READY:
         raise HTTPException(
             status_code=409, detail="Only READY artifacts can be activated"
+        )
+    if artifact.base_model != configured_runtime_settings().base_model:
+        raise HTTPException(
+            status_code=409,
+            detail="This adapter was trained for a different base model. Train a new adapter before activation.",
         )
     ModelManagementService(db).update_active_artifact(project.id, artifact.id)
     return artifact

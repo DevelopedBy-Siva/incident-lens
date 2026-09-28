@@ -166,7 +166,7 @@ function Models() {
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-2 text-xs">
                           <div>
-                            <span className="text-google-muted">Quality score</span>
+                            <span className="text-google-muted">Artifact validation</span>
                             <div className="text-google-text mt-0.5">
                               {score(artifact.evaluation_score)}
                             </div>
