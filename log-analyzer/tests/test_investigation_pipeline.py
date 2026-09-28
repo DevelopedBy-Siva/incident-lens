@@ -24,3 +24,19 @@ def test_missing_model_uses_reliable_rule_based_result():
     assert result.severity == "high"
     assert result.disposition == "NEEDS_ONCALL"
     assert result.ticket_title
+
+
+def test_fallback_preserves_observed_tls_event_without_embedded_playbooks():
+    result = InvestigationLoop().investigate(
+        incident(["2026-09-22T14:08:56.045Z ERROR [webhook-dispatcher] TLS handshake error from 41.199.8.101:59398: remote error: tls: bad certificate"]),
+        SimpleNamespace(id="project-1"),
+    )
+
+    assert result.severity == "medium"
+    assert result.confidence == 0.7
+    assert "webhook-dispatcher" in result.summary
+    assert "41.199.8.101:59398" in result.summary
+    assert "TLS handshake error" in result.summary
+    assert "root cause" in result.suspected_root_cause
+    assert "certificate" not in result.ticket_title.lower()
+    assert all("CA trust chain" not in step for step in result.next_steps)

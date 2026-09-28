@@ -1,7 +1,13 @@
-"""Deterministic incident classification used before any optional model enrichment."""
+"""Conservative evidence baseline for incident analysis.
+
+This module classifies urgency from observed log evidence.  It intentionally does
+not encode incident-specific diagnoses or runbooks: those belong to the trained
+model and project data, not application code.
+"""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -32,6 +38,7 @@ class TriageResult:
     summary: str
     root_cause: str | None
     next_steps: list[str]
+    ticket_title: str = ""
 
 
 def classify(incident, evidence=None) -> TriageResult:
@@ -50,11 +57,22 @@ def classify(incident, evidence=None) -> TriageResult:
     else:
         severity, disposition = "low", "OBSERVE"
 
-    signal = _first_signal(text) or "repeated warning or error"
-    summary = f"{getattr(incident, 'source', 'service')} shows {signal} ({count} observed event{'s' if count != 1 else ''})."
-    root_cause = f"The logs indicate {signal}; confirm the affected dependency and recent changes." if severity != "low" else None
-    next_steps = _steps(severity, signal)
-    return TriageResult(severity, disposition, 0.9 if severity != "low" else 0.7, summary, root_cause, next_steps)
+    source = _component(lines, getattr(incident, "source", "service"))
+    event = _event_excerpt(lines)
+    signal = _first_signal(text) or "an anomalous event"
+    event_count = f"{count} observed event{'s' if count != 1 else ''}"
+    return TriageResult(
+        severity=severity,
+        disposition=disposition,
+        confidence=_confidence(severity, count),
+        summary=f"{source}: {event} ({event_count}).",
+        root_cause=(
+            f"The event establishes {signal}, but the supplied logs do not establish a root cause."
+            if severity != "low" else None
+        ),
+        next_steps=_baseline_steps(source, severity),
+        ticket_title=f"{source}: {severity} incident",
+    )
 
 
 def merge_with_baseline(candidate, baseline: TriageResult):
@@ -70,6 +88,41 @@ def merge_with_baseline(candidate, baseline: TriageResult):
     return candidate
 
 
+def _baseline_steps(source: str, severity: str) -> list[str]:
+    if severity == "low":
+        return [f"Monitor {source} for the same event signature before taking action."]
+    return [
+        f"Search {source} logs for the same signature around this timestamp to establish recurrence and scope.",
+        "Correlate the event with available request, peer, dependency, and deployment metadata.",
+        "Verify whether the event recurs before selecting a remediation.",
+    ]
+
+
+def _confidence(severity: str, count: int) -> float:
+    if severity == "critical":
+        return 0.95
+    if severity == "high":
+        return 0.9
+    if severity == "medium":
+        return 0.8 if count >= 2 else 0.7
+    return 0.7
+
+
+def _component(lines: list[str], fallback: str) -> str:
+    for line in lines:
+        match = re.search(r"\[([^\]]+)\]", line)
+        if match:
+            return match.group(1)
+    return str(fallback or "service")
+
+
+def _event_excerpt(lines: list[str]) -> str:
+    line = next((item.strip() for item in lines if item.strip()), "log event")
+    line = re.sub(r"^\S+\s+(?:TRACE|DEBUG|INFO|WARN|WARNING|ERROR|CRITICAL)\s+", "", line, flags=re.IGNORECASE)
+    line = re.sub(r"^\[[^\]]+\]\s*", "", line)
+    return line[:300].rstrip(".")
+
+
 def _contains(text: str, signals: tuple[str, ...]) -> bool:
     return any(signal in text for signal in signals)
 
@@ -79,13 +132,3 @@ def _first_signal(text: str) -> str | None:
         if signal in text:
             return signal.replace("connectionpoolexhausted", "connection pool exhaustion").replace("databaseconnection", "database connection failure")
     return None
-
-
-def _steps(severity: str, signal: str) -> list[str]:
-    if severity == "critical":
-        return ["Page the incident owner and assess the active impact.", "Stabilize the affected service before applying a permanent fix.", f"Inspect logs and metrics related to {signal}."]
-    if severity == "high":
-        return [f"Inspect logs and metrics related to {signal}.", "Verify whether the failure is still occurring.", "Assign operational ownership and mitigate if it persists."]
-    if severity == "medium":
-        return [f"Investigate the source of {signal}.", "Check recent deploys and dependency health.", "Monitor recurrence after the fix."]
-    return ["Monitor for recurrence before taking action."]

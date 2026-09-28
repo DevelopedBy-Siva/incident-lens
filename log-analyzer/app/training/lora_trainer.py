@@ -160,18 +160,31 @@ class TransformersPeftTrainingEngine(TrainingEngine):
 
     @staticmethod
     def _completion_labels(prompt_ids, full_ids, max_length):
-        if full_ids[: len(prompt_ids)] != prompt_ids:
-            raise TrainingDatasetError("Could not identify assistant token boundary")
-        target = full_ids[len(prompt_ids) :]
+        # A rendered chat prompt with ``add_generation_prompt=True`` is not
+        # guaranteed to be an exact token prefix of the same conversation with
+        # an assistant response.  Qwen (and several other templates) render a
+        # different assistant marker in those two cases.  The user/system
+        # context is still the common token prefix; train from the first token
+        # after that shared context rather than rejecting an otherwise valid
+        # example.
+        boundary = 0
+        for prompt_token, full_token in zip(prompt_ids, full_ids):
+            if prompt_token != full_token:
+                break
+            boundary += 1
+        if boundary == 0:
+            raise TrainingDatasetError("Could not identify a shared chat context")
+        context_ids = full_ids[:boundary]
+        target = full_ids[boundary:]
         if not target:
             raise TrainingDatasetError("Assistant target is empty")
         if len(full_ids) > max_length:
             available_prompt = max_length - len(target)
             if available_prompt <= 0:
                 raise TrainingDatasetError("Assistant target exceeds maximum sequence length")
-            prompt_ids = prompt_ids[-available_prompt:]
-            full_ids = prompt_ids + target
-        return full_ids, [-100] * len(prompt_ids) + target
+            context_ids = context_ids[-available_prompt:]
+            full_ids = context_ids + target
+        return full_ids, [-100] * len(context_ids) + target
 
     def _tokenize_example(self, tokenizer, example, max_length):
         messages = build_training_messages(example["input"]["logs"], example["expected_output"])
@@ -183,9 +196,24 @@ class TransformersPeftTrainingEngine(TrainingEngine):
     @staticmethod
     def _template_ids(tokenizer, messages, generation):
         try:
-            return tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=generation, enable_thinking=False)
+            rendered = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=generation, enable_thinking=False)
         except TypeError:
-            return tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=generation)
+            rendered = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=generation)
+        # Qwen3.5's tokenizer can return a BatchEncoding instead of a bare
+        # token-id list.  Iterating a BatchEncoding yields field names
+        # (``input_ids``, ``attention_mask``), which made the previous code
+        # see an empty assistant response.  Normalize both forms here.
+        if isinstance(rendered, dict) or hasattr(rendered, "input_ids"):
+            rendered = rendered["input_ids"]
+        if hasattr(rendered, "tolist"):
+            rendered = rendered.tolist()
+        if rendered and isinstance(rendered[0], (list, tuple)):
+            if len(rendered) != 1:
+                raise TrainingDatasetError("Chat template must render one training example")
+            rendered = rendered[0]
+        if not isinstance(rendered, (list, tuple)) or not all(isinstance(token, int) for token in rendered):
+            raise TrainingDatasetError("Chat template did not return token IDs")
+        return list(rendered)
 
     @staticmethod
     def _split(examples, records, fraction, seed):

@@ -236,6 +236,28 @@ class LoraTrainerTests(unittest.TestCase):
         self.assertEqual(input_ids, [1, 2, 3, 4, 5])
         self.assertEqual(labels, [-100, -100, -100, 4, 5])
 
+    def test_completion_labels_accepts_a_different_generation_marker(self):
+        input_ids, labels = TransformersPeftTrainingEngine._completion_labels(
+            [1, 2, 99],
+            [1, 2, 3, 4, 5],
+            10,
+        )
+
+        self.assertEqual(input_ids, [1, 2, 3, 4, 5])
+        self.assertEqual(labels, [-100, -100, 3, 4, 5])
+
+    def test_template_ids_accepts_batch_encoding_output(self):
+        class BatchEncodingTokenizer:
+            def apply_chat_template(self, messages, **kwargs):
+                return {"input_ids": [[1, 2, 3]], "attention_mask": [[1, 1, 1]]}
+
+        self.assertEqual(
+            TransformersPeftTrainingEngine._template_ids(
+                BatchEncodingTokenizer(), [{"role": "user", "content": "test"}], False
+            ),
+            [1, 2, 3],
+        )
+
     def test_training_profile_is_configurable_and_validated(self):
         with patch.dict(
             os.environ,

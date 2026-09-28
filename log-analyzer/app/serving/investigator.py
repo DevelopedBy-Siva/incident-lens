@@ -65,7 +65,6 @@ class InvestigationLoop:
 
 
 def _from_baseline(incident, baseline) -> IncidentAnalysis:
-    title = f"{incident.source}: {baseline.severity} incident"
     return IncidentAnalysis(
         severity=baseline.severity,
         disposition=baseline.disposition,
@@ -73,7 +72,7 @@ def _from_baseline(incident, baseline) -> IncidentAnalysis:
         summary=baseline.summary,
         suspected_root_cause=baseline.root_cause,
         next_steps=baseline.next_steps,
-        ticket_title=title,
+        ticket_title=baseline.ticket_title,
         ticket_body=f"{baseline.summary}\n\nRecommended next steps: " + "; ".join(baseline.next_steps),
     )
 

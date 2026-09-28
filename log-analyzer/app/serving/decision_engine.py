@@ -48,7 +48,7 @@ class DecisionEngine:
             summary=result.summary,
             suspected_root_cause=result.root_cause,
             next_steps=result.next_steps,
-            ticket_title=f"{incident.source}: {result.severity} incident",
+            ticket_title=result.ticket_title,
             ticket_body=result.summary,
         )
 
