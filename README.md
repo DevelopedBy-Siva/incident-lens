@@ -13,7 +13,7 @@ Success was measured on two dimensions: **decision quality** — choosing the ri
 ## Application
 
 <p align="center">
-  <img src="imgs/create-ui.png" alt="IncidentLens project interface" width="900"/>
+  <img src="imgs/dashboard-ui.png" alt="IncidentLens project interface" width="900"/>
 </p>
 
 IncidentLens provides a single interface for configuring log analysis, managing
