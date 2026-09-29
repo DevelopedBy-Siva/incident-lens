@@ -11,6 +11,7 @@ Tests verify:
 import importlib.util
 import json
 import os
+import signal
 import sys
 import tempfile
 import unittest
@@ -89,6 +90,26 @@ class BootstrapConfigLoadingTests(unittest.TestCase):
             
             # Verify S3 bucket was added to config
             self.assertEqual(config["s3_bucket"], "test-bucket")
+
+    def test_termination_signal_unwinds_training_for_cleanup(self):
+        """SIGTERM is translated to an exception so run()'s finally executes."""
+        bootstrap = Mock()
+        handlers = {}
+
+        def capture_handler(signum, handler):
+            handlers[signum] = handler
+
+        def interrupt_during_run():
+            handlers[signal.SIGTERM](signal.SIGTERM, None)
+
+        bootstrap.run.side_effect = interrupt_during_run
+        with patch.object(bootstrap_training, "TrainingBootstrap", return_value=bootstrap), patch.object(
+            bootstrap_training.signal, "signal", side_effect=capture_handler
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                bootstrap_training.main()
+
+        self.assertIn(signal.SIGTERM, handlers)
 
     def test_config_loading_requires_environment_variables(self):
         """Test that config loading requires S3 bucket and key."""

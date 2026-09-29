@@ -20,6 +20,7 @@ while application code is cloned fresh at runtime and pinned to a specific Git c
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -1334,6 +1335,14 @@ def main() -> int:
     """Main entry point."""
     try:
         bootstrap = TrainingBootstrap()
+
+        def interrupt(signum, _frame):
+            # Raise an exception so the active training try/finally can run
+            # _cleanup(), including termination of this temporary EC2 host.
+            raise KeyboardInterrupt(f"received signal {signum}")
+
+        signal.signal(signal.SIGTERM, interrupt)
+        signal.signal(signal.SIGINT, interrupt)
         return bootstrap.run()
     except Exception as exc:
         logger.error(f"Bootstrap failed: {exc}", exc_info=True)

@@ -27,7 +27,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-002",
@@ -50,7 +52,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-003",
@@ -77,7 +81,9 @@
         "jwt expired",
         "session churn"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "token_expired_noise"
   },
   {
     "id": "triage-004",
@@ -104,7 +110,9 @@
         "malformed row",
         "column count"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "csv_parse_error"
   },
   {
     "id": "triage-005",
@@ -131,7 +139,9 @@
         "flag service",
         "service unreachable"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "feature_flag_timeout"
   },
   {
     "id": "triage-006",
@@ -158,7 +168,9 @@
         "redis",
         "stateless"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "session_store"
   },
   {
     "id": "triage-007",
@@ -185,7 +197,9 @@
         "attack",
         "failed attempts"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-008",
@@ -212,7 +226,9 @@
         "stripe",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_gateway"
   },
   {
     "id": "triage-009",
@@ -239,7 +255,9 @@
         "schema",
         "data rejected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "data_validation"
   },
   {
     "id": "triage-010",
@@ -266,7 +284,9 @@
         "object storage",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_upload"
   },
   {
     "id": "triage-011",
@@ -289,7 +309,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-012",
@@ -316,7 +338,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-013",
@@ -343,7 +367,9 @@
         "connection dropped",
         "ping timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "websocket_connection_dropped"
   },
   {
     "id": "triage-014",
@@ -370,7 +396,9 @@
         "api response",
         "expected field"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "api_schema_mismatch"
   },
   {
     "id": "triage-015",
@@ -401,7 +429,9 @@
         "rollback",
         "pool size"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "bad_deployment_changed_checkout_config"
   },
   {
     "id": "triage-016",
@@ -432,7 +462,9 @@
         "x509",
         "expired"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "expired_partner_tls_certificate"
   },
   {
     "id": "triage-017",
@@ -459,7 +491,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-018",
@@ -486,7 +520,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-019",
@@ -513,7 +549,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-020",
@@ -540,7 +578,9 @@
         "origin",
         "stale cache"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cdn_origin_pull_failed"
   },
   {
     "id": "triage-021",
@@ -567,7 +607,9 @@
         "deadline exceeded",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "grpc_deadline_exceeded"
   },
   {
     "id": "triage-022",
@@ -594,7 +636,9 @@
         "transaction",
         "rolled back"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_deadlock"
   },
   {
     "id": "triage-023",
@@ -621,7 +665,9 @@
         "replica",
         "read consistency"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_replication_lag"
   },
   {
     "id": "triage-024",
@@ -648,7 +694,9 @@
         "duplicate payment",
         "duplicate request"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "idempotency_violation"
   },
   {
     "id": "triage-025",
@@ -675,7 +723,9 @@
         "risk engine",
         "score"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_fraud"
   },
   {
     "id": "triage-026",
@@ -702,7 +752,9 @@
         "tmp",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_not_found"
   },
   {
     "id": "triage-027",
@@ -729,7 +781,9 @@
         "connection",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "redis_connection"
   },
   {
     "id": "triage-028",
@@ -756,7 +810,9 @@
         "heap",
         "gc"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_pressure"
   },
   {
     "id": "triage-029",
@@ -779,7 +835,9 @@
         "maximum call depth",
         "circular reference"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "stack_overflow"
   },
   {
     "id": "triage-030",
@@ -806,7 +864,9 @@
         "connection timeout",
         "db"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_timeout"
   },
   {
     "id": "triage-031",
@@ -833,7 +893,9 @@
         "token expired",
         "container image"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "container_registry_auth_token_expired_blocking_deploy"
   },
   {
     "id": "triage-032",
@@ -860,7 +922,9 @@
         "getaddrinfo",
         "service discovery"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "intermittent_internal_dns_resolution_failures"
   },
   {
     "id": "triage-033",
@@ -887,7 +951,9 @@
         "carrier api",
         "fedex"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "third_party_carrier_api_rate_limiting_shipment_labels"
   },
   {
     "id": "triage-034",
@@ -909,7 +975,9 @@
         "mass logout",
         "sessions invalidated"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "mass_session_invalidation_misread_as_routine_token_expiry_noise"
   },
   {
     "id": "triage-035",
@@ -931,7 +999,9 @@
         "discrepancy",
         "ledger"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "silent_financial_reconciliation_discrepancy"
   },
   {
     "id": "triage-036",
@@ -953,7 +1023,9 @@
         "sync connector",
         "client-facing"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "low_occurrence_but_urgent_client_integration_outage"
   },
   {
     "id": "triage-037",
@@ -980,7 +1052,9 @@
         "exception",
         "500"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "application_exceptions"
   },
   {
     "id": "triage-038",
@@ -1007,7 +1081,9 @@
         "tampering",
         "rate limit"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "auth_errors"
   },
   {
     "id": "triage-039",
@@ -1030,7 +1106,9 @@
         "out of memory",
         "java"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_error"
   },
   {
     "id": "triage-040",
@@ -1057,7 +1135,9 @@
         "insufficient funds",
         "payment"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_failed"
   },
   {
     "id": "triage-041",
@@ -1083,7 +1163,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-042",
@@ -1106,7 +1188,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-043",
@@ -1129,7 +1213,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-044",
@@ -1152,7 +1238,9 @@
         "payload",
         "sanitization"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-045",
@@ -1175,7 +1263,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-046",
@@ -1198,7 +1288,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-047",
@@ -1221,7 +1313,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-048",
@@ -1244,7 +1338,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-049",
@@ -1266,7 +1362,9 @@
         "deprecated schema",
         "address parsing"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "geocoding_api_deprecated_response_schema"
   },
   {
     "id": "triage-050",
@@ -1288,7 +1386,9 @@
         "okta",
         "identity provider"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "sso_provider_intermittent_500s_on_employee_logins"
   },
   {
     "id": "triage-051",
@@ -1310,7 +1410,9 @@
         "schema stitching",
         "subgraph"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "graphql_federation_schema_stitching_failure"
   },
   {
     "id": "triage-052",
@@ -1332,7 +1434,9 @@
         "fluentd",
         "heartbeat"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "log_shipping_agent_silently_stopped_forwarding"
   },
   {
     "id": "triage-053",
@@ -1354,7 +1458,9 @@
         "pixel",
         "attribution"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "analytics_conversion_pixel_failing_to_fire"
   },
   {
     "id": "triage-054",
@@ -1376,7 +1482,9 @@
         "pending pods",
         "node provisioning"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cluster_autoscaler_stuck_under_pending_pods"
   },
   {
     "id": "triage-055",
@@ -1398,7 +1506,9 @@
         "signature verification",
         "library upgrade"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "inbound_webhook_signatures_rejected_after_library_upgrade"
   },
   {
     "id": "triage-056",
@@ -1420,7 +1530,9 @@
         "permission denied",
         "s3 bucket"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "admin_tool_losing_s3_access_after_iam_migration"
   },
   {
     "id": "triage-057",
@@ -1442,7 +1554,9 @@
         "deletion job",
         "pii retained"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "silently_failed_gdpr_deletion_job"
   },
   {
     "id": "triage-058",
@@ -1464,7 +1578,9 @@
         "partially applied",
         "inconsistent state"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "schema_migration_partially_applied_during_deploy"
   },
   {
     "id": "triage-059",
@@ -1486,7 +1602,9 @@
         "index rebuild",
         "expected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "high_volume_but_expected_cache_pre_warm_notice"
   },
   {
     "id": "triage-060",
@@ -1508,7 +1626,9 @@
         "deliverability",
         "email"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elevated_transactional_email_bounce_rate"
   },
   {
     "id": "triage-061",
@@ -1538,7 +1658,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-062",
@@ -1561,7 +1683,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-063",
@@ -1588,7 +1712,9 @@
         "jwt expired",
         "session churn"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "token_expired_noise"
   },
   {
     "id": "triage-064",
@@ -1615,7 +1741,9 @@
         "malformed row",
         "column count"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "csv_parse_error"
   },
   {
     "id": "triage-065",
@@ -1642,7 +1770,9 @@
         "flag service",
         "service unreachable"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "feature_flag_timeout"
   },
   {
     "id": "triage-066",
@@ -1669,7 +1799,9 @@
         "redis",
         "stateless"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "session_store"
   },
   {
     "id": "triage-067",
@@ -1696,7 +1828,9 @@
         "attack",
         "failed attempts"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-068",
@@ -1723,7 +1857,9 @@
         "stripe",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_gateway"
   },
   {
     "id": "triage-069",
@@ -1750,7 +1886,9 @@
         "schema",
         "data rejected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "data_validation"
   },
   {
     "id": "triage-070",
@@ -1777,7 +1915,9 @@
         "object storage",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_upload"
   },
   {
     "id": "triage-071",
@@ -1800,7 +1940,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-072",
@@ -1827,7 +1969,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-073",
@@ -1854,7 +1998,9 @@
         "connection dropped",
         "ping timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "websocket_connection_dropped"
   },
   {
     "id": "triage-074",
@@ -1881,7 +2027,9 @@
         "api response",
         "expected field"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "api_schema_mismatch"
   },
   {
     "id": "triage-075",
@@ -1908,7 +2056,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-076",
@@ -1935,7 +2085,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-077",
@@ -1962,7 +2114,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-078",
@@ -1989,7 +2143,9 @@
         "origin",
         "stale cache"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cdn_origin_pull_failed"
   },
   {
     "id": "triage-079",
@@ -2016,7 +2172,9 @@
         "deadline exceeded",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "grpc_deadline_exceeded"
   },
   {
     "id": "triage-080",
@@ -2043,7 +2201,9 @@
         "transaction",
         "rolled back"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_deadlock"
   },
   {
     "id": "triage-081",
@@ -2070,7 +2230,9 @@
         "replica",
         "read consistency"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_replication_lag"
   },
   {
     "id": "triage-082",
@@ -2097,7 +2259,9 @@
         "duplicate payment",
         "duplicate request"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "idempotency_violation"
   },
   {
     "id": "triage-083",
@@ -2124,7 +2288,9 @@
         "risk engine",
         "score"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_fraud"
   },
   {
     "id": "triage-084",
@@ -2151,7 +2317,9 @@
         "tmp",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_not_found"
   },
   {
     "id": "triage-085",
@@ -2178,7 +2346,9 @@
         "connection",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "redis_connection"
   },
   {
     "id": "triage-086",
@@ -2205,7 +2375,9 @@
         "heap",
         "gc"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_pressure"
   },
   {
     "id": "triage-087",
@@ -2228,7 +2400,9 @@
         "maximum call depth",
         "circular reference"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "stack_overflow"
   },
   {
     "id": "triage-088",
@@ -2255,7 +2429,9 @@
         "connection timeout",
         "db"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_timeout"
   },
   {
     "id": "triage-089",
@@ -2282,7 +2458,9 @@
         "exception",
         "500"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "application_exceptions"
   },
   {
     "id": "triage-090",
@@ -2309,7 +2487,9 @@
         "tampering",
         "rate limit"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "auth_errors"
   },
   {
     "id": "triage-091",
@@ -2332,7 +2512,9 @@
         "out of memory",
         "java"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_error"
   },
   {
     "id": "triage-092",
@@ -2359,7 +2541,9 @@
         "insufficient funds",
         "payment"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_failed"
   },
   {
     "id": "triage-093",
@@ -2385,7 +2569,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-094",
@@ -2408,7 +2594,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-095",
@@ -2431,7 +2619,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-096",
@@ -2454,7 +2644,9 @@
         "payload",
         "sanitization"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-097",
@@ -2477,7 +2669,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-098",
@@ -2500,7 +2694,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-099",
@@ -2523,7 +2719,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-100",
@@ -2546,7 +2744,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-101",
@@ -2576,7 +2776,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-102",
@@ -2599,7 +2801,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-103",
@@ -2626,7 +2830,9 @@
         "jwt expired",
         "session churn"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "token_expired_noise"
   },
   {
     "id": "triage-104",
@@ -2653,7 +2859,9 @@
         "malformed row",
         "column count"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "csv_parse_error"
   },
   {
     "id": "triage-105",
@@ -2680,7 +2888,9 @@
         "flag service",
         "service unreachable"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "feature_flag_timeout"
   },
   {
     "id": "triage-106",
@@ -2707,7 +2917,9 @@
         "redis",
         "stateless"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "session_store"
   },
   {
     "id": "triage-107",
@@ -2734,7 +2946,9 @@
         "attack",
         "failed attempts"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-108",
@@ -2761,7 +2975,9 @@
         "stripe",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_gateway"
   },
   {
     "id": "triage-109",
@@ -2788,7 +3004,9 @@
         "schema",
         "data rejected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "data_validation"
   },
   {
     "id": "triage-110",
@@ -2815,7 +3033,9 @@
         "object storage",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_upload"
   },
   {
     "id": "triage-111",
@@ -2838,7 +3058,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-112",
@@ -2865,7 +3087,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-113",
@@ -2892,7 +3116,9 @@
         "connection dropped",
         "ping timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "websocket_connection_dropped"
   },
   {
     "id": "triage-114",
@@ -2919,7 +3145,9 @@
         "api response",
         "expected field"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "api_schema_mismatch"
   },
   {
     "id": "triage-115",
@@ -2946,7 +3174,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-116",
@@ -2973,7 +3203,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-117",
@@ -3000,7 +3232,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-118",
@@ -3027,7 +3261,9 @@
         "origin",
         "stale cache"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cdn_origin_pull_failed"
   },
   {
     "id": "triage-119",
@@ -3054,7 +3290,9 @@
         "deadline exceeded",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "grpc_deadline_exceeded"
   },
   {
     "id": "triage-120",
@@ -3081,7 +3319,9 @@
         "transaction",
         "rolled back"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_deadlock"
   },
   {
     "id": "triage-121",
@@ -3108,7 +3348,9 @@
         "replica",
         "read consistency"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_replication_lag"
   },
   {
     "id": "triage-122",
@@ -3135,7 +3377,9 @@
         "duplicate payment",
         "duplicate request"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "idempotency_violation"
   },
   {
     "id": "triage-123",
@@ -3162,7 +3406,9 @@
         "risk engine",
         "score"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_fraud"
   },
   {
     "id": "triage-124",
@@ -3189,7 +3435,9 @@
         "tmp",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_not_found"
   },
   {
     "id": "triage-125",
@@ -3216,7 +3464,9 @@
         "connection",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "redis_connection"
   },
   {
     "id": "triage-126",
@@ -3243,7 +3493,9 @@
         "heap",
         "gc"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_pressure"
   },
   {
     "id": "triage-127",
@@ -3266,7 +3518,9 @@
         "maximum call depth",
         "circular reference"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "stack_overflow"
   },
   {
     "id": "triage-128",
@@ -3293,7 +3547,9 @@
         "connection timeout",
         "db"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_timeout"
   },
   {
     "id": "triage-129",
@@ -3320,7 +3576,9 @@
         "exception",
         "500"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "application_exceptions"
   },
   {
     "id": "triage-130",
@@ -3347,7 +3605,9 @@
         "tampering",
         "rate limit"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "auth_errors"
   },
   {
     "id": "triage-131",
@@ -3370,7 +3630,9 @@
         "out of memory",
         "java"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_error"
   },
   {
     "id": "triage-132",
@@ -3397,7 +3659,9 @@
         "insufficient funds",
         "payment"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_failed"
   },
   {
     "id": "triage-133",
@@ -3423,7 +3687,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-134",
@@ -3446,7 +3712,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-135",
@@ -3469,7 +3737,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-136",
@@ -3492,7 +3762,9 @@
         "payload",
         "sanitization"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-137",
@@ -3515,7 +3787,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-138",
@@ -3538,7 +3812,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-139",
@@ -3561,7 +3837,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-140",
@@ -3584,7 +3862,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-141",
@@ -3614,7 +3894,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-142",
@@ -3637,7 +3919,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-143",
@@ -3664,7 +3948,9 @@
         "jwt expired",
         "session churn"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "token_expired_noise"
   },
   {
     "id": "triage-144",
@@ -3691,7 +3977,9 @@
         "malformed row",
         "column count"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "csv_parse_error"
   },
   {
     "id": "triage-145",
@@ -3718,7 +4006,9 @@
         "flag service",
         "service unreachable"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "feature_flag_timeout"
   },
   {
     "id": "triage-146",
@@ -3745,7 +4035,9 @@
         "redis",
         "stateless"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "session_store"
   },
   {
     "id": "triage-147",
@@ -3772,7 +4064,9 @@
         "attack",
         "failed attempts"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-148",
@@ -3799,7 +4093,9 @@
         "stripe",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_gateway"
   },
   {
     "id": "triage-149",
@@ -3826,7 +4122,9 @@
         "schema",
         "data rejected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "data_validation"
   },
   {
     "id": "triage-150",
@@ -3853,7 +4151,9 @@
         "object storage",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_upload"
   },
   {
     "id": "triage-151",
@@ -3876,7 +4176,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-152",
@@ -3903,7 +4205,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-153",
@@ -3930,7 +4234,9 @@
         "connection dropped",
         "ping timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "websocket_connection_dropped"
   },
   {
     "id": "triage-154",
@@ -3957,7 +4263,9 @@
         "api response",
         "expected field"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "api_schema_mismatch"
   },
   {
     "id": "triage-155",
@@ -3984,7 +4292,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-156",
@@ -4011,7 +4321,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-157",
@@ -4038,7 +4350,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-158",
@@ -4065,7 +4379,9 @@
         "origin",
         "stale cache"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cdn_origin_pull_failed"
   },
   {
     "id": "triage-159",
@@ -4092,7 +4408,9 @@
         "deadline exceeded",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "grpc_deadline_exceeded"
   },
   {
     "id": "triage-160",
@@ -4119,7 +4437,9 @@
         "transaction",
         "rolled back"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_deadlock"
   },
   {
     "id": "triage-161",
@@ -4146,7 +4466,9 @@
         "replica",
         "read consistency"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_replication_lag"
   },
   {
     "id": "triage-162",
@@ -4173,7 +4495,9 @@
         "duplicate payment",
         "duplicate request"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "idempotency_violation"
   },
   {
     "id": "triage-163",
@@ -4200,7 +4524,9 @@
         "risk engine",
         "score"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_fraud"
   },
   {
     "id": "triage-164",
@@ -4227,7 +4553,9 @@
         "tmp",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_not_found"
   },
   {
     "id": "triage-165",
@@ -4254,7 +4582,9 @@
         "connection",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "redis_connection"
   },
   {
     "id": "triage-166",
@@ -4281,7 +4611,9 @@
         "heap",
         "gc"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_pressure"
   },
   {
     "id": "triage-167",
@@ -4304,7 +4636,9 @@
         "maximum call depth",
         "circular reference"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "stack_overflow"
   },
   {
     "id": "triage-168",
@@ -4331,7 +4665,9 @@
         "connection timeout",
         "db"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_timeout"
   },
   {
     "id": "triage-169",
@@ -4358,7 +4694,9 @@
         "exception",
         "500"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "application_exceptions"
   },
   {
     "id": "triage-170",
@@ -4385,7 +4723,9 @@
         "tampering",
         "rate limit"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "auth_errors"
   },
   {
     "id": "triage-171",
@@ -4408,7 +4748,9 @@
         "out of memory",
         "java"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_error"
   },
   {
     "id": "triage-172",
@@ -4435,7 +4777,9 @@
         "insufficient funds",
         "payment"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_failed"
   },
   {
     "id": "triage-173",
@@ -4461,7 +4805,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-174",
@@ -4484,7 +4830,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-175",
@@ -4507,7 +4855,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-176",
@@ -4530,7 +4880,9 @@
         "payload",
         "sanitization"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-177",
@@ -4553,7 +4905,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-178",
@@ -4576,7 +4930,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-179",
@@ -4599,7 +4955,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-180",
@@ -4622,7 +4980,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-181",
@@ -4652,7 +5012,9 @@
         "connection pool",
         "pool exhausted"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_pool_exhausted"
   },
   {
     "id": "triage-182",
@@ -4675,7 +5037,9 @@
         "memory limit",
         "killed"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "kubernetes_oom_kill"
   },
   {
     "id": "triage-183",
@@ -4702,7 +5066,9 @@
         "jwt expired",
         "session churn"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "token_expired_noise"
   },
   {
     "id": "triage-184",
@@ -4729,7 +5095,9 @@
         "malformed row",
         "column count"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "csv_parse_error"
   },
   {
     "id": "triage-185",
@@ -4756,7 +5124,9 @@
         "flag service",
         "service unreachable"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "feature_flag_timeout"
   },
   {
     "id": "triage-186",
@@ -4783,7 +5153,9 @@
         "redis",
         "stateless"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "session_store"
   },
   {
     "id": "triage-187",
@@ -4810,7 +5182,9 @@
         "attack",
         "failed attempts"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "security_alerts"
   },
   {
     "id": "triage-188",
@@ -4837,7 +5211,9 @@
         "stripe",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_gateway"
   },
   {
     "id": "triage-189",
@@ -4864,7 +5240,9 @@
         "schema",
         "data rejected"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "data_validation"
   },
   {
     "id": "triage-190",
@@ -4891,7 +5269,9 @@
         "object storage",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_upload"
   },
   {
     "id": "triage-191",
@@ -4914,7 +5294,9 @@
         "disk full",
         "write operations"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "disk_space"
   },
   {
     "id": "triage-192",
@@ -4941,7 +5323,9 @@
         "cache miss",
         "simultaneous db queries"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cache_stampede"
   },
   {
     "id": "triage-193",
@@ -4968,7 +5352,9 @@
         "connection dropped",
         "ping timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "websocket_connection_dropped"
   },
   {
     "id": "triage-194",
@@ -4995,7 +5381,9 @@
         "api response",
         "expected field"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "api_schema_mismatch"
   },
   {
     "id": "triage-195",
@@ -5022,7 +5410,9 @@
         "503",
         "circuit breaker"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "service_unavailable"
   },
   {
     "id": "triage-196",
@@ -5049,7 +5439,9 @@
         "consumer lag",
         "backlog"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "message_queue"
   },
   {
     "id": "triage-197",
@@ -5076,7 +5468,9 @@
         "elasticsearch",
         "search"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "elasticsearch_shard_failure"
   },
   {
     "id": "triage-198",
@@ -5103,7 +5497,9 @@
         "origin",
         "stale cache"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "cdn_origin_pull_failed"
   },
   {
     "id": "triage-199",
@@ -5130,7 +5526,9 @@
         "deadline exceeded",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "grpc_deadline_exceeded"
   },
   {
     "id": "triage-200",
@@ -5157,7 +5555,9 @@
         "transaction",
         "rolled back"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_deadlock"
   },
   {
     "id": "triage-201",
@@ -5184,7 +5584,9 @@
         "replica",
         "read consistency"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_replication_lag"
   },
   {
     "id": "triage-202",
@@ -5211,7 +5613,9 @@
         "duplicate payment",
         "duplicate request"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "idempotency_violation"
   },
   {
     "id": "triage-203",
@@ -5238,7 +5642,9 @@
         "risk engine",
         "score"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "payment_fraud"
   },
   {
     "id": "triage-204",
@@ -5265,7 +5671,9 @@
         "tmp",
         "upload"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "file_not_found"
   },
   {
     "id": "triage-205",
@@ -5292,7 +5700,9 @@
         "connection",
         "timeout"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "redis_connection"
   },
   {
     "id": "triage-206",
@@ -5319,7 +5729,9 @@
         "heap",
         "gc"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "memory_pressure"
   },
   {
     "id": "triage-207",
@@ -5342,7 +5754,9 @@
         "maximum call depth",
         "circular reference"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "stack_overflow"
   },
   {
     "id": "triage-208",
@@ -5369,7 +5783,9 @@
         "connection timeout",
         "db"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "db_connection_timeout"
   },
   {
     "id": "triage-209",
@@ -5396,7 +5812,9 @@
         "exception",
         "500"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "application_exceptions"
   },
   {
     "id": "triage-210",
@@ -5423,6 +5841,8 @@
         "tampering",
         "rate limit"
       ]
-    }
+    },
+    "synthetic": true,
+    "scenario_family": "auth_errors"
   }
 ]
